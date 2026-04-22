@@ -1,0 +1,24 @@
+"""Shared fixtures. TDX-dependent tests are skipped if the TDX client is offline."""
+import pytest
+
+
+@pytest.fixture(scope='session')
+def tdx_ready():
+    """Returns the live tdx singleton; skips the test if TDX is unreachable."""
+    try:
+        from tdx_service import tdx
+    except ImportError as e:
+        pytest.skip(f'tqcenter SDK not importable: {e}')
+        return  # unreachable; silence linters
+    if not tdx.initialize():
+        pytest.skip('TDX failed to initialize — start 通达信 and press F12')
+    if not tdx.is_connected():
+        pytest.skip('TDX not connected')
+    return tdx
+
+
+@pytest.fixture(scope='session')
+def vnpy_configured():
+    """Point vnpy at data/vnpy_data.db once per session."""
+    from scripts.setup.vnpy_config import configure
+    return configure()
