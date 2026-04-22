@@ -1,0 +1,19 @@
+"""Tool callables for LLM agents. Each module exports SPEC + call(input)."""
+from __future__ import annotations
+
+from llm.base import ToolSpec
+
+from . import place_decision
+
+ALL_TOOLS: dict = {
+    'place_decision': (place_decision.SPEC, place_decision.call),
+}
+
+
+def filter_allowed(tool_names: list[str]) -> dict:
+    """Return registry subset. place_decision is ALWAYS included."""
+    result = {'place_decision': ALL_TOOLS['place_decision']}
+    for name in tool_names:
+        if name in ALL_TOOLS:
+            result[name] = ALL_TOOLS[name]
+    return result
