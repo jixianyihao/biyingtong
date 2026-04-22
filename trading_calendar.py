@@ -32,13 +32,17 @@ def _try_tdx_calendar(start: date, end: date) -> list[date] | None:
             tdx.initialize()
         if not tdx.is_connected():
             return None
-        # tqcenter API: varies by version. Try the most common shape.
+        # Real signature (tqcenter source):
+        #   tq.get_trading_calendar(market: str, start_time: str, end_time: str) -> List[str]
+        # market is REQUIRED (e.g. 'SH' for A-shares). Dates are YYYYMMDD strings.
+        # Requires client to have downloaded 上证指数 (999999) 盘后数据.
         from tqcenter import tq
         if not hasattr(tq, 'get_trading_calendar'):
             return None
         raw = tq.get_trading_calendar(
-            start_date=start.strftime('%Y-%m-%d'),
-            end_date=end.strftime('%Y-%m-%d'),
+            'SH',
+            start.strftime('%Y%m%d'),
+            end.strftime('%Y%m%d'),
         )
         if not raw:
             return None
