@@ -2,17 +2,49 @@
 
 ## Overview
 
-Build an LLM-driven trading agent system with 1-year backtesting. Each agent gets ¥100,000 initial capital. All market data (K-line, financials, snapshots) comes from TDX via tqcenter SDK. No fake data, no random numbers — everything is real.
+Build an LLM-driven trading agent system with 1-year backtesting. Each agent gets ¥100,000 initial capital. **Backtest infrastructure uses vnpy (VeighNa) framework** — no reinventing the wheel. We only build the LLM integration layer on top of vnpy's proven engine.
 
-## Architecture: Flask + SSE + SQLite + LLM
+## Architecture: Flask + vnpy + LLM
 
 ```
-React (Vite) <-- SSE/polling --> Flask <---> TDX SDK (market data)
-                                     <---> LLM APIs (Claude/GPT/DeepSeek)
-                                     <---> SQLite (K-line cache + backtest results)
+React (Vite) <-- SSE/polling --> Flask
+                                    |
+                                    +--> vnpy BacktestingEngine (portfolio simulation, matching, commission)
+                                    |       +--> LLM Strategy (calls Claude/GPT/DeepSeek per bar)
+                                    |       +--> vnpy_sqlite (K-line cache)
+                                    |       +--> vnpy-tdx (data loading)
+                                    |       +--> vnpy_riskmanager (pre-trade checks)
+                                    |
+                                    +--> tdx_service.py (existing: live trading via tqcenter SDK)
 ```
 
-Single `python app.py` runs everything. No Redis/Celery. SSE streams backtest progress in real-time.
+### What vnpy provides (reuse directly):
+
+| Component | vnpy Module | What it gives us |
+|-----------|------------|-----------------|
+| Backtesting engine | `vnpy_portfoliostrategy.BacktestingEngine` | Multi-stock portfolio replay, order matching, NAV tracking, daily statistics |
+| Data storage | `vnpy_sqlite` | SQLite persistence for K-line data via vnpy's BaseDatabase API |
+| Data loading | `vnpy-tdx` | Fetch historical K-line from TDX servers into vnpy's database |
+| Strategy template | `vnpy_portfoliostrategy.StrategyTemplate` | `on_bars()` callback, `buy()`/`sell()` API, position tracking |
+| Technical indicators | `vnpy.trader.tech.ArrayManager` | MA/MACD/RSI/Bollinger built-in (wraps numpy) |
+| Risk management | `vnpy_riskmanager` | Pre-trade order flow control, quantity limits, position limits |
+| Event system | `vnpy.event.EventEngine` | Thread-safe event queue for real-time data dispatch |
+| Data objects | `vnpy.trader.object` | BarData, TickData, OrderData, TradeData, PositionData — clean dataclasses |
+| Performance metrics | `BacktestingEngine.calculate_result()` | Sharpe, max drawdown, return/drawdown ratio, daily PnL, trade count |
+
+### What we build ourselves:
+
+| Component | Purpose |
+|-----------|---------|
+| `LLMStrategy` (inherits vnpy StrategyTemplate) | Strategy that calls LLM on each bar instead of using fixed rules |
+| `llm/` adapter layer | Multi-model LLM calls (Claude/GPT/DeepSeek) |
+| `agents/` persona definitions | System prompts + context builders per agent style |
+| A-share T+1 enforcement | vnpy doesn't enforce T+1 natively — we add it in strategy code |
+| A-share commission override | vnpy uses `rate * turnover` — we override with exact A-share fee schedule |
+| SSE streaming wrapper | Wraps vnpy's backtest loop to emit real-time progress events |
+| Flask API routes | REST + SSE endpoints for frontend |
+| Prompt context builder | Assembles market data into LLM-ready text per bar |
+| Agent deployment system | Live agent runner with semi-automatic confirmation |
 
 ---
 
@@ -69,42 +101,82 @@ Step 4: If trade decision:
 
 ## 2. TDX Interaction
 
-### 2.1 Data APIs Used
+### 2.1 Two TDX Data Paths
 
-| Data Type | TDX SDK Call | Purpose | Cache |
-|-----------|-------------|---------|-------|
-| Daily K-line | `tq.get_market_data(field_list=['Open','High','Low','Close','Volume'], period='1d', count=250)` | 1-year price history for each stock | SQLite |
-| Financial data | `tq.get_stock_info(stock_code)` | PE/PB/ROE/Revenue/Profit | SQLite (monthly refresh) |
-| Index data | `tq.get_market_snapshot(stock_code)` for 000001.SH, 399001.SZ, etc. | Market overview context | In-memory |
-| Stock list | `tq.get_stock_list(market='5')` | Universe definition | SQLite |
-| Real-time snapshot | `tq.get_market_snapshot(stock_code)` | 5-level bid/ask (live only) | Not cached |
+This project uses TDX data in two different ways:
 
-### 2.2 Interaction Timing (Backtest)
+| Purpose | Module | API | When Used |
+|---------|--------|-----|-----------|
+| **Backtest data** (historical K-line) | `vnpy-tdx` (datafeed) | vnpy's `BaseDatafeed` → TDX servers | Pre-backtest: load 1 year of data into vnpy_sqlite |
+| **Live data** (real-time quotes, trading) | `tqcenter` SDK (existing) | `tq.get_market_snapshot()`, `tq.order_stock()` | During live trading |
+| **Financial data** (PE/PB/ROE) | `tqcenter` SDK | `tq.get_stock_info()` | Both backtest and live |
+
+Why two paths:
+- `vnpy-tdx` integrates directly with vnpy's BacktestingEngine — it loads data into vnpy's BarData format
+- `tqcenter` SDK provides live trading, account management, and real-time snapshots — vnpy-tdx does not support these
+- Financial data (PE/PB/ROE) is not available via vnpy-tdx, only via tqcenter
+
+### 2.2 Backtest Data Flow (via vnpy-tdx)
 
 ```
-Before backtest starts:
-  1. Fetch stock list → get CSI300 codes (~300 stocks)
-  2. For each stock: fetch 1 year daily K-line (250 bars) → store in SQLite
-     - API call: tq.get_market_data(stock_list=[...all codes...], period='1d', count=250)
-     - Batch fetch: can pass stock_list with up to 50 stocks per call
-     - Total: ~6 API calls for all 300 stocks
-  3. For each stock: fetch financial info → store in SQLite
-     - API call: tq.get_stock_info(stock_code=code)
-     - Total: 300 calls, but cached permanently
+Step 1: Data Loading (before backtest, one-time)
+  vnpy-tdx datafeed → fetch K-line from TDX servers → store in vnpy_sqlite database
+  
+  Python code:
+    from vnpy_tdx import TdxDatafeed
+    datafeed = TdxDatafeed()
+    datafeed.query_bar_history(
+        symbol="600519", exchange=Exchange.SSE,
+        interval=Interval.DAILY, 
+        start="2025-04-22", end="2026-04-22"
+    )
+  → Data stored in vnpy_sqlite, reused for all subsequent backtests
 
-During backtest (no TDX calls needed — all from SQLite cache):
-  For each trading day:
-    1. Read K-line from SQLite for this date range
-    2. Read financial data from SQLite
-    3. Calculate technical indicators (MA/MACD/RSI) in Python
-    4. Build prompt context
-    5. Call LLM (this is the only external call during backtest)
-    6. Simulate execution in portfolio
+Step 2: Backtest Engine (reads from vnpy_sqlite, no TDX calls)
+  vnpy BacktestingEngine.load_data() → reads from vnpy_sqlite
+  → Replays bars to strategy via on_bars() callback
+  → Strategy calls LLM on each bar
+  → vnpy handles order matching, commission, NAV tracking internally
+
+Step 3: Financial Data (separate, via tqcenter)
+  Before backtest: fetch PE/PB/ROE for universe via tqcenter
+  → Store in separate SQLite table (not vnpy's, since it's not K-line data)
+  → Strategy reads from this cache during context building
+```
+
+### 2.3 Live Data Flow (via tqcenter SDK — existing)
+
+```
+Agent trigger → tdx_service.get_snapshot() → real-time 5-level quotes
+Agent decision → tdx_service.place_order() → execute via tqcenter
+Position check → tdx_service.get_positions() → current holdings
+```
+
+### 2.4 Financial Data Cache
+
+vnpy does not store PE/PB/ROE data. We build a separate cache:
+
+```python
+# data/financial_cache.db (separate from vnpy's database)
+CREATE TABLE financial_data (
+    stock_code TEXT,
+    date DATE,
+    pe REAL,
+    pb REAL,
+    roe REAL,
+    gross_margin REAL,         # 毛利率
+    revenue_growth REAL,       # 营收增长率
+    net_profit_growth REAL,    # 净利润增长率
+    PRIMARY KEY (stock_code, date)
+);
+```
+
+Refreshed monthly via `tqcenter` SDK. Used by prompt context builder during backtest. Since user has already downloaded financial data locally via TDX, we read directly from the local cache — no remote API calls needed.
 
 TDX is NOT called during the backtest loop itself. All data is pre-cached.
 ```
 
-### 2.3 Interaction Timing (Live Trading — future)
+### 2.5 Interaction Timing (Live Trading — future)
 
 ```
 Agent trigger (scheduled or event):
@@ -292,28 +364,45 @@ buy|sell|hold | 股票代码 | 数量(股) | 决策理由(一句话)
 
 ---
 
-## 4. Backtest Engine — Detailed
+## 4. Backtest Engine — vnpy Integration
 
-### 4.1 Matching Rules: 五档撮合 + T+1
+### 4.1 What vnpy's BacktestingEngine Handles
 
-**Price determination:**
-- **Buy order**: executed at next trading day's **open price** (simulates buying at ask price at market open)
-- **Sell order**: executed at next trading day's **open price** (simulates selling at bid price at market open)
-- **Slippage**: add ±0.1% random slippage to simulate real bid-ask spread
+vnpy's `vnpy_portfoliostrategy.BacktestingEngine` provides out of the box:
 
-**T+1 enforcement:**
-- Stocks bought on day D cannot be sold until day D+1 at earliest
-- Portfolio tracks `buy_date` per position for T+1 check
-- A stock that was bought today and LLM says "sell" → trade rejected, logged as "T+1 violation"
+| Feature | How vnpy handles it | Our code |
+|---------|-------------------|----------|
+| K-line replay | `load_data()` reads from vnpy_sqlite, calls `on_bars()` per bar | None — vnpy does this |
+| Order matching | `buy()`/`sell()`/`short()`/`cover()` API, matches against bar OHLCV | We call vnpy's API |
+| Position tracking | Automatic position dict per symbol | Read from vnpy state |
+| NAV calculation | Daily NAV = cash + sum(positions × price) | Read from vnpy result |
+| Statistics | `calculate_result()` → Sharpe, max drawdown, return/dd ratio, trade count | We use vnpy's output |
+| Slippage model | Configurable: fixed, percentage, or random | Set in engine config |
+
+### 4.2 What We Add on Top of vnpy
+
+vnpy is generic — it doesn't know A-share specifics. We add:
+
+**A-share T+1 enforcement (in LLMStrategy.on_bars()):**
+- Track `buy_date` per position in a dict
+- Before executing `sell()`: check if position was bought today
+- If T+1 violated → reject trade, log to `blocked_trades`
+- vnpy doesn't enforce T+1 natively, so this is our responsibility
+
+**A-share commission override (runner/commission.py):**
+- vnpy uses `rate * turnover` — we override with exact A-share fee schedule
+- Set engine's `commission_rate`, `slippage` parameters
+- Add custom commission calculator that applies: 佣金0.025% + 印花税0.1%(sell only) + 过户费0.001%
+- Minimum commission ¥5 per order
 
 **Board lot rules:**
 - A-shares trade in 100-share lots (手)
 - Minimum buy: 100 shares (1手)
 - Sell: can sell any amount if holding (odd lots allowed for partial sells)
 
-### 4.2 Commission (A股标准费率)
+### 4.3 Commission (A股标准费率) — Decimal Precision
 
-All amounts in ¥, calculated to 2 decimal places:
+All amounts in ¥, calculated with `decimal.Decimal`:
 
 | Fee | Rate | Charged When |
 |-----|------|-------------|
@@ -322,44 +411,67 @@ All amounts in ¥, calculated to 2 decimal places:
 | Transfer fee (过户费) | 0.001% of trade value | Buy + Sell |
 | Minimum commission | ¥5 per order | If calculated < ¥5 |
 
-Example: Buy ¥100,000 of stock:
-- Commission: 100000 × 0.025% = ¥25.00
-- Transfer fee: 100000 × 0.001% = ¥1.00
-- Total cost: ¥26.00
+**All monetary calculations use `decimal.Decimal`. No `float` for money.**
 
-Example: Sell ¥100,000 of stock:
-- Commission: 100000 × 0.025% = ¥25.00
-- Stamp tax: 100000 × 0.1% = ¥100.00
-- Transfer fee: 100000 × 0.001% = ¥1.00
-- Total cost: ¥126.00
+### 4.4 Backtest Runner Flow (runner/backtest_runner.py)
 
-**Precision: All monetary calculations use Python `Decimal` type to avoid floating-point errors. No `float` for money.**
+The runner wraps vnpy's BacktestingEngine and adds SSE streaming:
 
-### 4.3 Portfolio State Machine
+```python
+from vnpy_portfoliostrategy import BacktestingEngine
+from vnpy.trader.object import Interval
+
+class BacktestRunner:
+    def run(self, agent_id, capital, start, end, sse_callback):
+        engine = BacktestingEngine()
+        engine.set_parameters(
+            vt_symbol="",           # multi-stock, not single
+            interval=Interval.DAILY,
+            start=start,
+            end=end,
+            rate=0.00025,           # commission 0.025%
+            slippage=0.001,         # 0.1% slippage
+            size=100,               # 1 lot = 100 shares
+            pricetick=0.01,
+            capital=capital,
+        )
+        # Load data from vnpy_sqlite
+        engine.load_data()
+
+        # Add our LLM strategy
+        engine.add_strategy(LLMStrategy, {
+            'agent_id': agent_id,
+            'sse_callback': sse_callback,
+        })
+
+        # Run backtest
+        engine.run_backtesting()
+
+        # Get results
+        result = engine.calculate_result()
+        stats = engine.calculate_statistics(result)
+        return result, stats
+```
+
+### 4.5 Daily State Snapshot
+
+Each day during backtest, we record a snapshot from vnpy's state + our additions:
 
 ```
-Portfolio states per day:
-  1. OPEN: new day begins, load market data
-  2. AGENT_DECIDE: LLM returns decision
-  3. RISK_CHECK: validate against RedLine rules
-  4. EXECUTE: simulate trade at next-day open price
-  5. SETTLE: calculate NAV, update positions
-  6. RECORD: save daily snapshot
-
 Portfolio data per day:
   {
     date: "2025-06-15",
-    nav: 368000.00,           # 总资产 = cash + positions_value
-    cash: 87532.00,           # 可用现金
+    nav: 368000.00,           # from vnpy engine
+    cash: 87532.00,           # from vnpy engine
     positions: {
       "600519.SH": { qty: 200, avg_cost: 1402.00, buy_date: "2025-06-10", current_price: 1432.00 },
       "000858.SZ": { qty: 300, avg_cost: 145.00, buy_date: "2025-06-12", current_price: 152.30 },
     },
-    daily_pnl: 1234.00,       # 今日盈亏
-    daily_pnl_pct: 0.34,      # 今日盈亏%
-    trades: [...],             # 今日成交
-    thinking: "...",           # Agent思考过程
-    blocked: [...],            # 被拦截的操作
+    daily_pnl: 1234.00,       # from vnpy engine
+    daily_pnl_pct: 0.34,      # from vnpy engine
+    trades: [...],             # vnpy trade records
+    thinking: "...",           # LLM thinking (our addition)
+    blocked: [...],            # RedLine-rejected trades (our addition)
   }
 ```
 
@@ -422,6 +534,8 @@ For each completed backtest, the following is stored in SQLite:
 ---
 
 ## 5. Safety — Four-Layer Protection
+
+vnpy provides `vnpy_riskmanager` for pre-trade checks (order flow control, quantity limits). We use it as the foundation and add our own RedLine rules on top.
 
 ### Layer 1: RedLine Interception
 
@@ -625,39 +739,43 @@ class LLMCallTracker:
 ```
 biyingtong/
 ├── app.py                     # Flask entry (routes + SSE)
-├── config.py                  # Config (LLM keys, port, defaults)
+├── config.py                  # Config (LLM keys, vnpy settings, port)
 ├── requirements.txt
 ├── .env                       # API keys (gitignored)
 │
-├── engine/                    # Backtest engine
+├── strategy/                  # LLM-driven vnpy strategies
 │   ├── __init__.py
-│   ├── backtest.py            # Main backtest loop + thread management
-│   ├── portfolio.py           # Virtual account (Decimal precision)
-│   ├── data_fetcher.py        # Fetch from TDX + SQLite cache
-│   ├── indicators.py          # MA/MACD/RSI/Bollinger calculations
-│   ├── commission.py          # A-share fee calculation
-│   └── metrics.py             # Sharpe/MDD/win rate/rating
-│
-├── agents/                    # Agent definitions
-│   ├── __init__.py
-│   ├── base.py                # AgentBase class + tool definitions
-│   ├── linyuan.py             # System prompt + style config
-│   ├── fuyou.py
-│   ├── buffet.py
-│   ├── soros.py
-│   └── quant_neutral.py
+│   ├── base.py                # LLMStrategy base (inherits vnpy_portfoliostrategy.StrategyTemplate)
+│   ├── linyuan.py             # 林园风格 — overrides context_builder + system_prompt
+│   ├── fuyou.py               # 浮游风格
+│   ├── buffet.py              # 巴菲特风格
+│   ├── soros.py               # 索罗斯风格
+│   └── quant_neutral.py       # 量化中性
 │
 ├── llm/                       # Multi-model adapter
 │   ├── __init__.py
 │   ├── base.py                # LLMBase abstract class
-│   ├── claude.py
-│   ├── openai_adapter.py
-│   └── deepseek.py
+│   ├── claude.py              # Anthropic SDK
+│   ├── openai_adapter.py      # OpenAI SDK
+│   └── deepseek.py            # DeepSeek (OpenAI-compatible)
 │
-├── tdx_service.py             # Existing TDX wrapper
+├── context/                   # Prompt context builders
+│   ├── __init__.py
+│   ├── market_context.py      # Build market overview section
+│   ├── position_context.py    # Build current positions section
+│   ├── technical_context.py   # Build technical indicators section
+│   └── financial_context.py   # Build PE/PB/ROE section
 │
-├── data/                      # Local cache (gitignored)
-│   └── kline_cache.db         # SQLite: kline + financials + backtest results
+├── runner/                    # Backtest runner + live agent deployment
+│   ├── __init__.py
+│   ├── backtest_runner.py     # Wraps vnpy BacktestingEngine + SSE streaming
+│   ├── live_runner.py         # Continuous agent operation (background thread)
+│   └── commission.py          # A-share exact fee calculation (Decimal)
+│
+├── tdx_service.py             # Existing TDX wrapper (live trading via tqcenter)
+│
+├── data/                      # vnpy SQLite database (gitignored)
+│   └── vnpy_data.db           # vnpy_sqlite stores K-line + financial data here
 │
 ├── client/                    # Frontend (Vite + React)
 │   ├── package.json
@@ -691,6 +809,14 @@ biyingtong/
 │
 └── static/                    # Vite build output (Flask serves this)
 ```
+
+Key difference from previous design:
+- **Removed** `engine/` (backtest/portfolio/metrics/indicators) — all handled by vnpy
+- **Added** `strategy/` — thin layer inheriting vnpy's StrategyTemplate
+- **Added** `context/` — prompt context builders
+- **Added** `runner/` — wraps vnpy engine with SSE + live deployment
+- **Kept** `llm/` — multi-model adapter (vnpy has no LLM support)
+- **Kept** `tdx_service.py` — for live trading via tqcenter (vnpy-tdx is data-only)
 
 ---
 
@@ -1088,15 +1214,17 @@ def restore_deployed_agents():
 
 ## 14. Implementation Order
 
-1. **Backend foundation**: Create `engine/`, `agents/`, `llm/` module structure + `config.py`
-2. **Data layer**: `data_fetcher.py` + SQLite cache (daily K-line verified) + `indicators.py`
-3. **Portfolio**: `portfolio.py` with Decimal precision + T+1 + commission
-4. **LLM adapters**: `claude.py` first, then openai + deepseek
-5. **Agent personas**: 5 agent files with system prompts + knowledge boundary prompt
-6. **Backtest loop**: `backtest.py` with SSE streaming
-7. **API routes**: New endpoints in `app.py` (backtest + agent CRUD)
-8. **Frontend**: Vite setup + migrate all pages
-9. **Wire up**: AgentLab + Backtest pages connected to real APIs
-10. **Agent save/evaluate**: Save backtest results, agent comparison
-11. **Live deploy**: Agent deployment + continuous operation + user confirmation
-12. **Intraday support**: Fix 1m/5m data access, add intraday backtest mode
+1. **Project setup**: Create `strategy/`, `llm/`, `context/`, `runner/` module structure + `config.py` + `requirements.txt`
+2. **vnpy data layer**: Install vnpy + vnpy_sqlite + vnpy-tdx, load daily K-line into SQLite, verify roundtrip
+3. **Financial data cache**: Build `data/financial_cache.db` from local TDX data via tqcenter SDK
+4. **LLM adapters**: `llm/base.py` + `claude.py` first, then `openai_adapter.py` + `deepseek.py`
+5. **Prompt context builders**: `context/market_context.py`, `position_context.py`, `technical_context.py`, `financial_context.py`
+6. **LLMStrategy base**: `strategy/base.py` inheriting vnpy StrategyTemplate, with T+1 enforcement + RedLine checks
+7. **Agent personas**: 5 strategy files in `strategy/` with system prompts + knowledge boundary prompt
+8. **Backtest runner**: `runner/backtest_runner.py` wrapping vnpy engine + SSE streaming + `runner/commission.py` for A-share fees
+9. **API routes**: New endpoints in `app.py` (backtest + agent CRUD + SSE)
+10. **Frontend migration**: Vite setup + migrate all pages from CDN to Vite + React
+11. **Wire up**: AgentLab + Backtest pages connected to real APIs
+12. **Agent save/evaluate**: Save backtest results to SQLite, agent comparison chart
+13. **Live deploy**: Agent deployment + background threads + user confirmation
+14. **Intraday support**: Fix 1m/5m data access, add intraday backtest mode
