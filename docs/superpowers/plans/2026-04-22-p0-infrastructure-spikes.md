@@ -76,28 +76,35 @@ gevent==24.11.1
 gevent-websocket==0.10.1
 ```
 
-- [ ] **Step 2: Append vnpy stack and pytest to requirements.txt**
+- [ ] **Step 2: Replace requirements.txt with vnpy stack + pytest**
 
 Replace `requirements.txt` with:
 ```
 flask==3.1.0
 flask-socketio==5.4.1
 flask-cors==5.0.1
-pandas==2.2.3
+pandas>=2.2
 gevent==24.11.1
 gevent-websocket==0.10.1
 
 # vnpy backtest stack (added in P0)
-vnpy>=3.9.0,<4
-vnpy_sqlite>=1.0.7
-vnpy_tdx>=1.0.6
+# Notes on pins:
+#   - vnpy 4.x is required: vnpy_portfoliostrategy>=1.2, vnpy_sqlite>=1.1, and
+#     vnpy_ctastrategy>=1.4 all depend on it.
+#   - vnpy_tdx is NOT used. The PyPI package is an empty stub. We bridge
+#     TDX historical data via tqcenter (see tdx_service.py) and construct
+#     vnpy BarData ourselves, persisted through vnpy_sqlite.
+vnpy>=4.0.0
+vnpy_sqlite>=1.1.0
 vnpy_portfoliostrategy>=1.2.0
-vnpy_ctastrategy>=1.2.1
+vnpy_ctastrategy>=1.4.0
 
 # testing (added in P0)
 pytest>=7.4.0
 pytest-xdist>=3.3.0
 ```
+
+**Deviation rationale (Task 1, revised):** Original plan pinned `vnpy>=3.9,<4` and `vnpy_tdx>=1.0.6`. Discovered during install: (a) all downstream vnpy packages require vnpy 4.x, so 3.x pin is infeasible; (b) `vnpy_tdx` on PyPI is an empty dist-info stub; real code is on GitHub but not reachable here. Resolution: drop `vnpy_tdx`, use existing `tdx_service.py` (tqcenter) as the datafeed and construct `vnpy.trader.object.BarData` directly in `scripts/setup/load_kline.py`. See the revised Task 5.
 
 - [ ] **Step 3: Install dependencies**
 
