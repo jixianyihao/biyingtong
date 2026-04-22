@@ -123,3 +123,49 @@ def test_financial_cache_loads_pe_pb_roe(tdx_ready, tmp_path, monkeypatch):
         assert pe is not None or pb is not None or roe is not None, (
             f'{code} has all null PE/PB/ROE'
         )
+
+
+def test_full_pipeline_integration(tdx_ready, vnpy_configured):
+    """After setup has run, all three pipelines are queryable together."""
+    # 1. K-line reads from vnpy_sqlite
+    from datetime import datetime
+    from vnpy_sqlite import Database
+    from vnpy_sqlite.sqlite_database import db as _peewee_db
+    from vnpy.trader.constant import Exchange, Interval
+
+    # Earlier tests in this file instantiate Database() without closing; peewee's
+    # SqliteDatabase is a module-level singleton so we must close any leaked
+    # connection before opening a fresh one here. (Harmless if already closed.)
+    if not _peewee_db.is_closed():
+        _peewee_db.close()
+
+    db = Database()
+    try:
+        bars = db.load_bar_data(
+            symbol='600519', exchange=Exchange.SSE, interval=Interval.DAILY,
+            start=datetime(2025, 4, 1), end=datetime(2026, 4, 1),
+        )
+    finally:
+        db.db.close()
+    assert len(bars) >= 200
+
+    # 2. Financial cache has data
+    import sqlite3
+    from pathlib import Path
+    cache = Path('data/financial_cache.db')
+    assert cache.exists(), 'Run Task 11 Step 2 first'
+    con = sqlite3.connect(cache)
+    try:
+        count = con.execute('SELECT COUNT(DISTINCT stock_code) FROM financial_data').fetchone()[0]
+    finally:
+        con.close()
+    assert count >= 250, f'financial_cache has only {count} stocks; expected >=250'
+
+    # 3. Trading calendar works over the same range
+    from datetime import date
+    from trading_calendar import get_trading_days
+    days = get_trading_days(date(2025, 4, 1), date(2026, 4, 1))
+    # A full year: ~244 trading days
+    assert 230 <= len(days) <= 260, (
+        f'expected 230-260 trading days in Apr-2025 -> Apr-2026, got {len(days)}'
+    )

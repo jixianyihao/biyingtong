@@ -22,3 +22,19 @@ def vnpy_configured():
     """Point vnpy at data/vnpy_data.db once per session."""
     from scripts.setup.vnpy_config import configure
     return configure()
+
+
+@pytest.fixture(autouse=True)
+def _close_peewee_db_between_tests():
+    """vnpy_sqlite's peewee SqliteDatabase is a module-level singleton. Tests
+    that instantiate ``Database()`` without closing leak the connection, which
+    makes subsequent ``Database()`` calls raise ``peewee.OperationalError:
+    Connection already opened``. Close after every test as a safety net.
+    """
+    yield
+    try:
+        from vnpy_sqlite.sqlite_database import db as _peewee_db
+    except Exception:  # vnpy_sqlite not imported / not configured yet
+        return
+    if not _peewee_db.is_closed():
+        _peewee_db.close()
