@@ -13,6 +13,7 @@ _models: ModelStore | None = None
 _calendar: CalendarStore | None = None
 _personas: PersonaStore | None = None
 _agents: AgentStore | None = None
+_prompt_versions: PromptVersionStore | None = None
 
 
 def kline() -> KlineStore:
@@ -63,6 +64,14 @@ def agents() -> AgentStore:
     return _agents
 
 
+def prompt_versions() -> PromptVersionStore:
+    global _prompt_versions
+    if _prompt_versions is None:
+        from .sqlite_prompt_versions import SQLitePromptVersionStore
+        _prompt_versions = SQLitePromptVersionStore()
+    return _prompt_versions
+
+
 def set_kline(impl: KlineStore) -> None:
     global _kline
     _kline = impl
@@ -93,11 +102,18 @@ def set_agents(impl: AgentStore) -> None:
     _agents = impl
 
 
+def set_prompt_versions(impl: PromptVersionStore) -> None:
+    global _prompt_versions
+    _prompt_versions = impl
+
+
 def reset() -> None:
-    global _kline, _financial, _models, _calendar, _personas, _agents
+    global _kline, _financial, _models, _calendar
+    global _personas, _agents, _prompt_versions
     _kline = None
     _financial = None
     _models = None
     _calendar = None
     _personas = None
     _agents = None
+    _prompt_versions = None
