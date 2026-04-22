@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from llm.base import ToolSpec
 
-from . import get_kline, place_decision
+from . import get_kline, get_snapshot, place_decision
 
 ALL_TOOLS: dict = {
     'place_decision': (place_decision.SPEC, place_decision.call),
     'get_kline': (get_kline.SPEC, get_kline.call),
+    'get_snapshot': (get_snapshot.SPEC, get_snapshot.call),
 }
 
 
