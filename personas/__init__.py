@@ -6,6 +6,7 @@ from .fuyou import PERSONA as FUYOU
 from .buffet import PERSONA as BUFFET
 from .soros import PERSONA as SOROS
 from .quant_neutral import PERSONA as QUANT_NEUTRAL
+from .intraday_t0 import PERSONA as INTRADAY_T0
 
 
 ALL_PERSONAS: dict[str, dict] = {
@@ -14,11 +15,12 @@ ALL_PERSONAS: dict[str, dict] = {
     'buffet': BUFFET,
     'soros': SOROS,
     'quant_neutral': QUANT_NEUTRAL,
+    'intraday_t0': INTRADAY_T0,
 }
 
 
 def seed() -> int:
-    """Idempotently upsert all 5 built-in personas into storage.personas().
+    """Idempotently upsert all built-in personas into storage.personas().
 
     Returns count of personas written.
     """

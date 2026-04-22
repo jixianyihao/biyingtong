@@ -28,7 +28,7 @@ def _setup_stores(tmp_path):
     storage.set_models(m_store)
 
 
-def test_seed_inserts_all_5_personas(tmp_path):
+def test_seed_inserts_all_personas(tmp_path):
     _setup_stores(tmp_path)
     from personas import seed
     seed()
@@ -36,7 +36,7 @@ def test_seed_inserts_all_5_personas(tmp_path):
     import storage
     all_seeded = storage.personas().list_all()
     assert {p.id for p in all_seeded} == {
-        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral',
+        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral', 'intraday_t0',
     }
 
 
@@ -48,7 +48,8 @@ def test_seed_is_idempotent(tmp_path):
     seed()
 
     import storage
-    assert len(storage.personas().list_all()) == 5
+    from personas import ALL_PERSONAS
+    assert len(storage.personas().list_all()) == len(ALL_PERSONAS)
 
 
 def test_seeded_persona_has_full_data(tmp_path):

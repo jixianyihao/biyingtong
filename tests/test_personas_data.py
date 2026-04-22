@@ -4,7 +4,7 @@
 def test_all_personas_registered():
     from personas import ALL_PERSONAS
     assert set(ALL_PERSONAS.keys()) == {
-        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral',
+        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral', 'intraday_t0',
     }
 
 
