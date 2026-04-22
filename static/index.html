@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>必赢通 · 量化交易终端</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/tokens.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script src="src/api.js"></script>
+</head>
+<body data-density="8">
+<div id="root"></div>
+
+<script type="text/babel" src="src/common.jsx"></script>
+<script type="text/babel" src="src/shell.jsx"></script>
+<script type="text/babel" src="src/dashboard.jsx"></script>
+<script type="text/babel" src="src/screener.jsx"></script>
+<script type="text/babel" src="src/editor.jsx"></script>
+<script type="text/babel" src="src/backtest.jsx"></script>
+<script type="text/babel" src="src/agent.jsx"></script>
+<script type="text/babel" src="src/others.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "dark",
+  "density": 8,
+  "colorMode": "red-up",
+  "accent": "amber",
+  "font": "inter"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [screen, setScreen] = useState(() => localStorage.getItem('bytScreen') || 'dashboard');
+  const [collapsed, setCollapsed] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [tweaks, setTweaks] = useState(TWEAK_DEFAULTS);
+  const [redLineOpen, setRedLineOpen] = useState(false);
+
+  useEffect(() => { localStorage.setItem('bytScreen', screen); }, [screen]);
+
+  useEffect(() => {
+    const onMsg = e => {
+      if (e.data?.type === '__activate_edit_mode') setEditMode(true);
+      if (e.data?.type === '__deactivate_edit_mode') setEditMode(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  useEffect(() => {
+    document.body.className = tweaks.theme === 'light' ? 'theme-light' : '';
+    document.body.dataset.density = tweaks.density;
+    const fontMap = {
+      inter: "'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif",
+      helvetica: "'Helvetica Neue', 'PingFang SC', sans-serif",
+      serifmix: "'Noto Serif SC', serif",
+    };
+    document.documentElement.style.setProperty('--f-ui', fontMap[tweaks.font] || fontMap.inter);
+    // Swap up/down colors
+    if (tweaks.colorMode === 'green-up') {
+      document.documentElement.style.setProperty('--up', 'oklch(0.78 0.22 148)');
+      document.documentElement.style.setProperty('--up-bg', 'oklch(0.78 0.22 148 / 0.12)');
+      document.documentElement.style.setProperty('--up-border', 'oklch(0.78 0.22 148 / 0.35)');
+      document.documentElement.style.setProperty('--down', 'oklch(0.70 0.24 25)');
+      document.documentElement.style.setProperty('--down-bg', 'oklch(0.70 0.24 25 / 0.12)');
+      document.documentElement.style.setProperty('--down-border', 'oklch(0.70 0.24 25 / 0.35)');
+    } else {
+      document.documentElement.style.setProperty('--up', 'oklch(0.70 0.24 25)');
+      document.documentElement.style.setProperty('--up-bg', 'oklch(0.70 0.24 25 / 0.12)');
+      document.documentElement.style.setProperty('--up-border', 'oklch(0.70 0.24 25 / 0.35)');
+      document.documentElement.style.setProperty('--down', 'oklch(0.78 0.22 148)');
+      document.documentElement.style.setProperty('--down-bg', 'oklch(0.78 0.22 148 / 0.12)');
+      document.documentElement.style.setProperty('--down-border', 'oklch(0.78 0.22 148 / 0.35)');
+    }
+    const accentMap = {
+      amber: 'oklch(0.82 0.18 75)',
+      cyan: 'oklch(0.78 0.15 200)',
+      magenta: 'oklch(0.72 0.22 330)',
+      lime: 'oklch(0.86 0.20 130)',
+    };
+    const acc = accentMap[tweaks.accent] || accentMap.amber;
+    document.documentElement.style.setProperty('--brand', acc);
+    document.documentElement.style.setProperty('--brand-soft', acc.replace(')', ' / 0.14)'));
+    document.documentElement.style.setProperty('--brand-border', acc.replace(')', ' / 0.4)'));
+  }, [tweaks]);
+
+  const setTweak = (k, v) => {
+    const next = { ...tweaks, [k]: v };
+    setTweaks(next);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [k]: v } }, '*');
+  };
+
+  const screens = {
+    dashboard: Dashboard,
+    screener: Screener,
+    editor: StrategyEditor,
+    backtest: Backtest,
+    agent: AgentLab,
+    live: LiveTrading,
+    risk: RiskMonitor,
+  };
+  const Current = screens[screen] || Dashboard;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }} data-screen-label={screen}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <Sidebar active={screen} onNav={setScreen} collapsed={collapsed} onToggleCollapse={() => setCollapsed(c => !c)}/>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <TopBar active={screen} onTweakOpen={() => setEditMode(e => !e)}/>
+          <RedLineBar onOpen={() => setRedLineOpen(true)}/>
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            <Current/>
+          </div>
+        </div>
+      </div>
+      <StatusBar/>
+      <RedLineConfigModal open={redLineOpen} onClose={() => setRedLineOpen(false)}/>
+
+      {editMode && <TweaksPanel tweaks={tweaks} setTweak={setTweak} onClose={() => setEditMode(false)}/>}
+    </div>
+  );
+}
+
+function TweaksPanel({ tweaks, setTweak, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed', right: 12, bottom: 34, width: 280, zIndex: 500,
+      background: 'var(--bg-1)', border: '1px solid var(--brand-border)',
+      borderRadius: 6, boxShadow: '0 10px 40px oklch(0 0 0 / 0.5)'
+    }}>
+      <div className="panel-head" style={{ background: 'var(--brand-soft)' }}>
+        <Icon name="sparkle" size={12} style={{ color: 'var(--brand)' }}/>
+        <span className="panel-title">Tweaks</span>
+        <span style={{ flex: 1 }}/>
+        <button className="btn ghost" onClick={onClose} style={{ padding: '2px 6px' }}><Icon name="close" size={11}/></button>
+      </div>
+      <div style={{ padding: 14 }}>
+        <TweakRow label="主题">
+          <TweakToggle val={tweaks.theme} onChange={v => setTweak('theme', v)} options={[['dark','深色'],['light','浅色']]}/>
+        </TweakRow>
+        <TweakRow label="涨跌色">
+          <TweakToggle val={tweaks.colorMode} onChange={v => setTweak('colorMode', v)} options={[['red-up','红涨'],['green-up','绿涨']]}/>
+        </TweakRow>
+        <TweakRow label="信息密度">
+          <input type="range" min={6} max={10} step={1} value={tweaks.density} onChange={e => setTweak('density', Number(e.target.value))}
+            style={{ width: '100%', accentColor: 'var(--brand)' }}/>
+          <div className="mono" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-ghost)' }}>
+            <span>疏</span><span>{tweaks.density}</span><span>密</span>
+          </div>
+        </TweakRow>
+        <TweakRow label="字体">
+          <TweakToggle val={tweaks.font} onChange={v => setTweak('font', v)} options={[['inter','Inter'],['helvetica','Helvetica'],['serifmix','宋体']]}/>
+        </TweakRow>
+        <TweakRow label="强调色">
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[['amber', 'oklch(0.82 0.18 75)'], ['cyan', 'oklch(0.78 0.15 200)'], ['magenta', 'oklch(0.72 0.22 330)'], ['lime', 'oklch(0.86 0.20 130)']].map(([k, c]) => (
+              <div key={k} onClick={() => setTweak('accent', k)} style={{
+                width: 28, height: 28, borderRadius: 4, background: c, cursor: 'pointer',
+                border: '2px solid ' + (tweaks.accent === k ? 'var(--text-hi)' : 'transparent')
+              }}/>
+            ))}
+          </div>
+        </TweakRow>
+      </div>
+    </div>
+  );
+}
+
+function TweakRow({ label, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function TweakToggle({ val, onChange, options }) {
+  return (
+    <div style={{ display: 'flex', gap: 2, padding: 2, background: 'var(--bg-2)', borderRadius: 4 }}>
+      {options.map(([k, l]) => (
+        <span key={k} onClick={() => onChange(k)} style={{
+          flex: 1, textAlign: 'center', padding: '4px 0', fontSize: 11, cursor: 'pointer',
+          background: val === k ? 'var(--bg-3)' : 'transparent',
+          color: val === k ? 'var(--text-hi)' : 'var(--text-faint)',
+          border: '1px solid ' + (val === k ? 'var(--panel-border)' : 'transparent'),
+          borderRadius: 3
+        }}>{l}</span>
+      ))}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

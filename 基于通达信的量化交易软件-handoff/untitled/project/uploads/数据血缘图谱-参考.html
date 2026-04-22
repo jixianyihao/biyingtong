@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据血缘图谱 — 原型设计</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Microsoft YaHei', 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a202c; height: 100vh; display: flex; flex-direction: column; }
+
+  /* Top Header */
+  .header { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .header-left { display: flex; align-items: center; gap: 20px; }
+  .logo { font-size: 16px; font-weight: 700; color: #1a365d; display: flex; align-items: center; gap: 8px; }
+  .logo-icon { width: 28px; height: 28px; background: linear-gradient(135deg, #3182ce, #2c5282); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+  .nav-tabs { display: flex; gap: 4px; }
+  .nav-tab { padding: 8px 16px; font-size: 13px; color: #718096; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+  .nav-tab:hover { background: #edf2f7; color: #2d3748; }
+  .nav-tab.active { background: #ebf4ff; color: #2b6cb0; font-weight: 600; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .header-btn { padding: 6px 12px; font-size: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #4a5568; cursor: pointer; }
+  .header-btn:hover { border-color: #cbd5e0; background: #f7fafc; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #4a5568; }
+
+  /* Main Layout */
+  .main { flex: 1; display: flex; overflow: hidden; }
+
+  /* Left Sidebar - Search & Filters */
+  .sidebar { width: 280px; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
+  .search-box { padding: 16px; border-bottom: 1px solid #edf2f7; }
+  .search-input { width: 100%; padding: 10px 12px 10px 36px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; background: #f7fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a0aec0' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 10px center no-repeat; outline: none; transition: border-color 0.2s; }
+  .search-input:focus { border-color: #3182ce; background-color: #fff; }
+  .search-input::placeholder { color: #a0aec0; }
+
+  .filter-section { padding: 12px 16px; }
+  .filter-title { font-size: 11px; font-weight: 600; color: #a0aec0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .filter-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filter-tag { padding: 4px 10px; font-size: 12px; border-radius: 12px; cursor: pointer; transition: all 0.2s; border: 1px solid #e2e8f0; color: #4a5568; background: #fff; }
+  .filter-tag:hover { border-color: #3182ce; color: #3182ce; }
+  .filter-tag.active { background: #ebf4ff; border-color: #3182ce; color: #2b6cb0; font-weight: 500; }
+
+  /* Recent / History */
+  .recent-section { flex: 1; overflow-y: auto; padding: 12px 16px; }
+  .recent-title { font-size: 11px; font-weight: 600; color: #a0aec0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .recent-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s; margin-bottom: 2px; }
+  .recent-item:hover { background: #f7fafc; }
+  .recent-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-table { background: #3182ce; }
+  .dot-task { background: #38a169; }
+  .dot-api { background: #d69e2e; }
+  .dot-app { background: #e53e3e; }
+  .recent-info { flex: 1; min-width: 0; }
+  .recent-name { font-size: 13px; color: #2d3748; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .recent-meta { font-size: 11px; color: #a0aec0; }
+
+  /* Graph Canvas Area */
+  .canvas-area { flex: 1; position: relative; background: #f7f9fc; }
+  .canvas-toolbar { position: absolute; top: 16px; left: 16px; display: flex; gap: 6px; z-index: 10; }
+  .tool-btn { width: 36px; height: 36px; border-radius: 8px; background: #fff; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; color: #4a5568; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.15s; }
+  .tool-btn:hover { background: #edf2f7; border-color: #cbd5e0; }
+  .tool-btn.active { background: #ebf4ff; border-color: #3182ce; color: #2b6cb0; }
+
+  /* Depth Control */
+  .depth-control { position: absolute; top: 16px; right: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 14px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); z-index: 10; }
+  .depth-label { font-size: 12px; color: #718096; }
+  .depth-btns { display: flex; gap: 4px; }
+  .depth-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff; font-size: 12px; font-weight: 600; color: #4a5568; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .depth-btn.active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
+
+  /* Legend */
+  .legend { position: absolute; bottom: 16px; left: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); z-index: 10; }
+  .legend-title { font-size: 11px; font-weight: 600; color: #a0aec0; margin-bottom: 8px; }
+  .legend-items { display: flex; gap: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #4a5568; }
+  .legend-circle { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* Minimap */
+  .minimap { position: absolute; bottom: 16px; right: 16px; width: 160px; height: 100px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); z-index: 10; overflow: hidden; }
+  .minimap-header { font-size: 10px; color: #a0aec0; padding: 4px 8px; border-bottom: 1px solid #edf2f7; }
+  .minimap-body { padding: 6px; position: relative; height: calc(100% - 22px); }
+  .mini-dot { position: absolute; width: 4px; height: 4px; border-radius: 50%; }
+  .mini-viewport { position: absolute; border: 1.5px solid #3182ce; border-radius: 2px; background: rgba(49,130,206,0.08); }
+
+  /* Graph SVG Canvas */
+  .graph-canvas { width: 100%; height: 100%; }
+
+  /* Node Styles */
+  .node-group { cursor: pointer; }
+  .node-circle { transition: all 0.2s; }
+  .node-group:hover .node-circle { filter: brightness(1.1); stroke-width: 3; }
+  .node-label { font-family: -apple-system, 'Microsoft YaHei', sans-serif; font-size: 11px; fill: #2d3748; font-weight: 500; }
+  .node-sublabel { font-family: -apple-system, 'Microsoft YaHei', sans-serif; font-size: 9px; fill: #a0aec0; }
+  .edge-line { stroke: #cbd5e0; stroke-width: 1.5; fill: none; }
+  .edge-line.highlighted { stroke: #3182ce; stroke-width: 2.5; }
+  .edge-arrow { fill: #cbd5e0; }
+  .edge-label { font-size: 9px; fill: #a0aec0; font-family: -apple-system, sans-serif; }
+
+  /* Selected Node Glow */
+  .node-selected .node-circle { stroke: #3182ce !important; stroke-width: 3; filter: drop-shadow(0 0 6px rgba(49,130,206,0.4)); }
+
+  /* Right Detail Panel */
+  .detail-panel { width: 340px; background: #fff; border-left: 1px solid #e2e8f0; flex-shrink: 0; display: flex; flex-direction: column; overflow-y: auto; }
+  .detail-header { padding: 20px; border-bottom: 1px solid #edf2f7; }
+  .detail-type { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #ebf4ff; color: #2b6cb0; margin-bottom: 8px; }
+  .detail-name { font-size: 18px; font-weight: 700; color: #1a202c; margin-bottom: 4px; }
+  .detail-path { font-size: 12px; color: #a0aec0; font-family: monospace; }
+
+  .detail-section { padding: 16px 20px; border-bottom: 1px solid #edf2f7; }
+  .detail-section-title { font-size: 12px; font-weight: 600; color: #2d3748; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .detail-section-title .count { font-size: 11px; color: #a0aec0; font-weight: 400; }
+
+  .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+  .detail-label { font-size: 12px; color: #718096; }
+  .detail-value { font-size: 12px; color: #2d3748; font-weight: 500; }
+
+  .stat-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { background: #f7fafc; border-radius: 8px; padding: 12px; text-align: center; }
+  .stat-number { font-size: 22px; font-weight: 700; color: #2b6cb0; }
+  .stat-label { font-size: 11px; color: #718096; margin-top: 2px; }
+
+  .quality-bar { height: 6px; background: #edf2f7; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .quality-fill { height: 100%; border-radius: 3px; }
+
+  .lineage-list-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; margin-bottom: 4px; cursor: pointer; transition: background 0.15s; }
+  .lineage-list-item:hover { background: #f7fafc; }
+  .lineage-icon { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .lineage-item-name { font-size: 12px; color: #2d3748; flex: 1; }
+  .lineage-item-type { font-size: 10px; color: #a0aec0; }
+
+  .detail-actions { padding: 16px 20px; display: flex; gap: 8px; }
+  .action-btn { flex: 1; padding: 8px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; text-align: center; transition: all 0.15s; }
+  .action-primary { background: #2b6cb0; color: #fff; border: none; }
+  .action-primary:hover { background: #2c5282; }
+  .action-secondary { background: #fff; color: #4a5568; border: 1px solid #e2e8f0; }
+  .action-secondary:hover { background: #f7fafc; }
+
+  /* AI Chat Floating Window */
+  .ai-chat { position: absolute; right: 20px; bottom: 130px; width: 380px; height: 460px; min-width: 300px; min-height: 320px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); z-index: 20; display: flex; flex-direction: column; overflow: hidden; transition: box-shadow 0.2s; }
+  .ai-chat.dragging { box-shadow: 0 12px 40px rgba(0,0,0,0.18); }
+  .ai-chat.hidden { display: none; }
+  .ai-chat-header { padding: 12px 16px; background: linear-gradient(135deg, #2b6cb0, #2c5282); color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: move; flex-shrink: 0; user-select: none; }
+  .ai-chat-header-left { display: flex; align-items: center; gap: 8px; }
+  .ai-chat-avatar { width: 26px; height: 26px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .ai-chat-title { font-size: 13px; font-weight: 600; }
+  .ai-chat-subtitle { font-size: 10px; opacity: 0.7; }
+  .ai-chat-actions { display: flex; gap: 6px; }
+  .ai-chat-action { width: 24px; height: 24px; border-radius: 4px; background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .ai-chat-action:hover { background: rgba(255,255,255,0.3); }
+
+  .ai-chat-body { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: #f9fafb; }
+  .ai-msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+  .ai-msg-user { align-self: flex-end; background: #2b6cb0; color: #fff; border-bottom-right-radius: 4px; }
+  .ai-msg-bot { align-self: flex-start; background: #fff; color: #2d3748; border: 1px solid #e2e8f0; border-bottom-left-radius: 4px; }
+  .ai-msg-bot .msg-action { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 3px 8px; background: #ebf4ff; border-radius: 4px; font-size: 11px; color: #2b6cb0; cursor: pointer; }
+  .ai-msg-bot .msg-action:hover { background: #bee3f8; }
+  .ai-msg-bot .msg-rendered { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 3px 8px; background: #f0fff4; border-radius: 4px; font-size: 11px; color: #38a169; }
+
+  .ai-chat-suggestions { padding: 8px 16px; display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px solid #edf2f7; background: #fff; flex-shrink: 0; }
+  .ai-suggest-tag { padding: 4px 10px; font-size: 11px; color: #4a5568; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .ai-suggest-tag:hover { border-color: #3182ce; color: #2b6cb0; background: #ebf4ff; }
+
+  .ai-chat-input { padding: 12px 16px; border-top: 1px solid #edf2f7; display: flex; gap: 8px; align-items: center; background: #fff; flex-shrink: 0; }
+  .ai-input-field { flex: 1; padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 20px; font-size: 13px; outline: none; background: #f7fafc; transition: border-color 0.2s; }
+  .ai-input-field:focus { border-color: #3182ce; background: #fff; }
+  .ai-input-field::placeholder { color: #a0aec0; }
+  .ai-send-btn { width: 36px; height: 36px; border-radius: 50%; background: #2b6cb0; border: none; color: #fff; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; flex-shrink: 0; }
+  .ai-send-btn:hover { background: #2c5282; }
+
+  /* Resize handle */
+  .ai-chat-resize { position: absolute; top: 0; left: 0; width: 14px; height: 14px; cursor: nw-resize; z-index: 2; }
+  .ai-chat-resize::after { content: ''; position: absolute; top: 3px; left: 3px; width: 8px; height: 8px; border-top: 2px solid #cbd5e0; border-left: 2px solid #cbd5e0; border-radius: 1px; opacity: 0; transition: opacity 0.2s; }
+  .ai-chat:hover .ai-chat-resize::after { opacity: 1; }
+
+  /* Sidebar AI dock button */
+  .sidebar-ai-dock { display: none; margin: 12px 16px; padding: 10px 14px; background: linear-gradient(135deg, #2b6cb0, #2c5282); color: #fff; border: none; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; position: relative; overflow: hidden; }
+  .sidebar-ai-dock.visible { display: flex; align-items: center; gap: 10px; }
+  .sidebar-ai-dock:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(43,108,176,0.35); }
+  .sidebar-ai-dock-icon { width: 32px; height: 32px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .sidebar-ai-dock-text { flex: 1; }
+  .sidebar-ai-dock-title { font-size: 13px; font-weight: 600; }
+  .sidebar-ai-dock-desc { font-size: 10px; opacity: 0.8; margin-top: 1px; }
+  .sidebar-ai-dock-badge { width: 10px; height: 10px; background: #fc8181; border-radius: 50%; flex-shrink: 0; animation: pulse-badge 2s ease-in-out infinite; }
+  @keyframes pulse-badge { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.3); } }
+  .sidebar-ai-dock-shine { position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); animation: shine 3s ease-in-out infinite; }
+  @keyframes shine { 0% { left: -100%; } 50%,100% { left: 100%; } }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <div class="logo-icon">D</div>
+      数据血缘平台
+    </div>
+    <div class="nav-tabs">
+      <div class="nav-tab active">血缘图谱</div>
+      <div class="nav-tab">资产目录</div>
+      <div class="nav-tab">影响分析</div>
+      <div class="nav-tab">质量监控</div>
+      <div class="nav-tab">加工任务</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="header-btn">导出</div>
+    <div class="header-btn">设置</div>
+    <div class="avatar">张</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Left Sidebar -->
+  <div class="sidebar">
+    <div class="search-box">
+      <input class="search-input" type="text" placeholder="搜索表名、任务、API...">
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-title">节点类型</div>
+      <div class="filter-tags">
+        <div class="filter-tag active">全部</div>
+        <div class="filter-tag">数据表</div>
+        <div class="filter-tag">加工任务</div>
+        <div class="filter-tag">数据API</div>
+        <div class="filter-tag">数据应用</div>
+        <div class="filter-tag">数据字典</div>
+      </div>
+    </div>
+
+    <div class="filter-section" style="border-top:1px solid #edf2f7;padding-top:12px;">
+      <div class="filter-title">数据源</div>
+      <div class="filter-tags">
+        <div class="filter-tag active">全部</div>
+        <div class="filter-tag">MySQL生产库</div>
+        <div class="filter-tag">Hive数仓</div>
+        <div class="filter-tag">ClickHouse</div>
+      </div>
+    </div>
+
+    <!-- AI Sidebar Dock Button -->
+    <button class="sidebar-ai-dock" id="aiDock" onclick="showAiChat()">
+      <div class="sidebar-ai-dock-icon">AI</div>
+      <div class="sidebar-ai-dock-text">
+        <div class="sidebar-ai-dock-title">AI 血缘助手</div>
+        <div class="sidebar-ai-dock-desc">点击打开对话窗口</div>
+      </div>
+      <div class="sidebar-ai-dock-badge"></div>
+      <div class="sidebar-ai-dock-shine"></div>
+    </button>
+
+    <div class="recent-section">
+      <div class="recent-title">最近浏览</div>
+      <div class="recent-item">
+        <div class="recent-dot dot-table"></div>
+        <div class="recent-info">
+          <div class="recent-name">dw.fact_order_detail</div>
+          <div class="recent-meta">数据表 · Hive数仓</div>
+        </div>
+      </div>
+      <div class="recent-item">
+        <div class="recent-dot dot-task"></div>
+        <div class="recent-info">
+          <div class="recent-name">pipeline_order_sync_daily</div>
+          <div class="recent-meta">加工任务 · 每日调度</div>
+        </div>
+      </div>
+      <div class="recent-item">
+        <div class="recent-dot dot-api"></div>
+        <div class="recent-info">
+          <div class="recent-name">/api/v2/order/summary</div>
+          <div class="recent-meta">数据API · 已上线</div>
+        </div>
+      </div>
+      <div class="recent-item">
+        <div class="recent-dot dot-table"></div>
+        <div class="recent-info">
+          <div class="recent-name">ods.raw_payment_log</div>
+          <div class="recent-meta">数据表 · MySQL生产库</div>
+        </div>
+      </div>
+      <div class="recent-item">
+        <div class="recent-dot dot-app"></div>
+        <div class="recent-info">
+          <div class="recent-name">运营分析大盘</div>
+          <div class="recent-meta">数据应用 · 活跃</div>
+        </div>
+      </div>
+      <div class="recent-item">
+        <div class="recent-dot dot-table"></div>
+        <div class="recent-info">
+          <div class="recent-name">dw.dim_user_profile</div>
+          <div class="recent-meta">数据表 · Hive数仓</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Graph Canvas -->
+  <div class="canvas-area">
+    <!-- Toolbar -->
+    <div class="canvas-toolbar">
+      <div class="tool-btn" title="拖拽">✋</div>
+      <div class="tool-btn active" title="选择">↖</div>
+      <div class="tool-btn" title="放大">+</div>
+      <div class="tool-btn" title="缩小">−</div>
+      <div class="tool-btn" title="适应画布">⊡</div>
+      <div class="tool-btn" title="全屏">⛶</div>
+    </div>
+
+    <!-- Depth Control -->
+    <div class="depth-control">
+      <div class="depth-label">展开层级</div>
+      <div class="depth-btns">
+        <div class="depth-btn">1</div>
+        <div class="depth-btn active">2</div>
+        <div class="depth-btn">3</div>
+        <div class="depth-btn">全</div>
+      </div>
+    </div>
+
+    <!-- Graph -->
+    <svg class="graph-canvas" viewBox="0 0 900 560">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e0"/>
+        </marker>
+        <marker id="arrow-hl" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3182ce"/>
+        </marker>
+        <filter id="glow">
+          <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#3182ce" flood-opacity="0.3"/>
+        </filter>
+      </defs>
+
+      <!-- Edges -->
+      <!-- ods.raw_order_log -> pipeline_order_clean -->
+      <path class="edge-line highlighted" d="M 155,180 C 220,180 220,145 285,145" marker-end="url(#arrow-hl)"/>
+      <!-- ods.raw_payment_log -> pipeline_order_clean -->
+      <path class="edge-line highlighted" d="M 155,290 C 220,290 220,145 285,145" marker-end="url(#arrow-hl)"/>
+      <!-- ods.raw_user_info -> pipeline_user_sync -->
+      <path class="edge-line" d="M 155,400 C 220,400 220,370 285,370" marker-end="url(#arrow)"/>
+      <!-- pipeline_order_clean -> dw.fact_order_detail -->
+      <path class="edge-line highlighted" d="M 375,145 C 430,145 430,200 490,200" marker-end="url(#arrow-hl)"/>
+      <!-- pipeline_user_sync -> dw.dim_user_profile -->
+      <path class="edge-line" d="M 375,370 C 430,370 430,330 490,330" marker-end="url(#arrow)"/>
+      <!-- dw.fact_order_detail -> dw.dim_user_profile (cross link) -->
+      <path class="edge-line" d="M 530,225 C 530,270 530,305 530,305" marker-end="url(#arrow)" style="stroke-dasharray:4,3;"/>
+      <!-- dw.fact_order_detail -> ads_order_summary -->
+      <path class="edge-line highlighted" d="M 570,200 C 620,200 620,160 670,160" marker-end="url(#arrow-hl)"/>
+      <!-- dw.fact_order_detail -> /api/v2/order -->
+      <path class="edge-line highlighted" d="M 570,200 C 620,200 620,280 670,280" marker-end="url(#arrow-hl)"/>
+      <!-- dw.dim_user_profile -> ads_order_summary -->
+      <path class="edge-line" d="M 570,330 C 620,330 620,160 670,160" marker-end="url(#arrow)"/>
+      <!-- ads_order_summary -> 运营大盘 -->
+      <path class="edge-line" d="M 755,160 C 800,160 800,220 830,220" marker-end="url(#arrow)"/>
+      <!-- /api/v2/order -> 运营大盘 -->
+      <path class="edge-line" d="M 755,280 C 800,280 800,220 830,220" marker-end="url(#arrow)"/>
+
+      <!-- Edge Labels -->
+      <text class="edge-label" x="220" y="155">清洗转换</text>
+      <text class="edge-label" x="430" y="168">写入</text>
+      <text class="edge-label" x="620" y="148">聚合</text>
+      <text class="edge-label" x="620" y="270">提供数据</text>
+
+      <!-- Layer 1: Source Tables (ODS) -->
+      <g class="node-group" transform="translate(110,180)">
+        <circle class="node-circle" r="22" fill="#3182ce" stroke="#2b6cb0" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-30">ods.raw_order_log</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-18">MySQL · 源表</text>
+        <text text-anchor="middle" dy="4" fill="#fff" font-size="12" font-weight="bold">表</text>
+      </g>
+
+      <g class="node-group" transform="translate(110,290)">
+        <circle class="node-circle" r="22" fill="#3182ce" stroke="#2b6cb0" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-30">ods.raw_payment_log</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-18">MySQL · 源表</text>
+        <text text-anchor="middle" dy="4" fill="#fff" font-size="12" font-weight="bold">表</text>
+      </g>
+
+      <g class="node-group" transform="translate(110,400)">
+        <circle class="node-circle" r="22" fill="#3182ce" stroke="#2b6cb0" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-30">ods.raw_user_info</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-18">MySQL · 源表</text>
+        <text text-anchor="middle" dy="4" fill="#fff" font-size="12" font-weight="bold">表</text>
+      </g>
+
+      <!-- Layer 2: Pipeline Tasks -->
+      <g class="node-group" transform="translate(330,145)">
+        <rect class="node-circle" x="-26" y="-26" width="52" height="52" rx="10" fill="#38a169" stroke="#2f855a" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-34">pipeline_order_clean</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-22">Spark · 每日调度</text>
+        <text text-anchor="middle" dy="5" fill="#fff" font-size="11" font-weight="bold">Pipeline</text>
+      </g>
+
+      <g class="node-group" transform="translate(330,370)">
+        <rect class="node-circle" x="-26" y="-26" width="52" height="52" rx="10" fill="#38a169" stroke="#2f855a" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-34">pipeline_user_sync</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-22">Spark · 每日调度</text>
+        <text text-anchor="middle" dy="5" fill="#fff" font-size="11" font-weight="bold">Pipeline</text>
+      </g>
+
+      <!-- Layer 3: DW Tables (selected node) -->
+      <g class="node-group node-selected" transform="translate(530,200)">
+        <circle class="node-circle" r="28" fill="#2b6cb0" stroke="#3182ce" stroke-width="3" filter="url(#glow)"/>
+        <text class="node-label" text-anchor="middle" dy="-38" font-weight="700" fill="#1a365d">dw.fact_order_detail</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-26">Hive · 事实表 · 1.2亿行</text>
+        <text text-anchor="middle" dy="5" fill="#fff" font-size="13" font-weight="bold">表</text>
+      </g>
+
+      <g class="node-group" transform="translate(530,330)">
+        <circle class="node-circle" r="22" fill="#3182ce" stroke="#2b6cb0" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-30">dw.dim_user_profile</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-18">Hive · 维度表</text>
+        <text text-anchor="middle" dy="4" fill="#fff" font-size="12" font-weight="bold">表</text>
+      </g>
+
+      <!-- Layer 4: ADS / API -->
+      <g class="node-group" transform="translate(710,160)">
+        <circle class="node-circle" r="22" fill="#3182ce" stroke="#2b6cb0" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-30">ads.order_summary</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-18">ClickHouse · 汇总表</text>
+        <text text-anchor="middle" dy="4" fill="#fff" font-size="12" font-weight="bold">表</text>
+      </g>
+
+      <g class="node-group" transform="translate(710,280)">
+        <polygon class="node-circle" points="0,-24 22,0 0,24 -22,0" fill="#d69e2e" stroke="#b7791f" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-32">/api/v2/order/summary</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-20">REST · 已上线</text>
+        <text text-anchor="middle" dy="5" fill="#fff" font-size="10" font-weight="bold">API</text>
+      </g>
+
+      <!-- Layer 5: Application -->
+      <g class="node-group" transform="translate(850,220)">
+        <rect class="node-circle" x="-22" y="-22" width="44" height="44" rx="22" fill="#e53e3e" stroke="#c53030" stroke-width="2"/>
+        <text class="node-label" text-anchor="middle" dy="-30">运营分析大盘</text>
+        <text class="node-sublabel" text-anchor="middle" dy="-18">Grafana · 活跃</text>
+        <text text-anchor="middle" dy="5" fill="#fff" font-size="10" font-weight="bold">应用</text>
+      </g>
+    </svg>
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-title">图例</div>
+      <div class="legend-items">
+        <div class="legend-item"><div class="legend-circle" style="background:#3182ce"></div>数据表</div>
+        <div class="legend-item"><div class="legend-circle" style="background:#38a169;border-radius:2px"></div>加工任务</div>
+        <div class="legend-item"><div class="legend-circle" style="background:#d69e2e;transform:rotate(45deg);border-radius:1px"></div>数据API</div>
+        <div class="legend-item"><div class="legend-circle" style="background:#e53e3e"></div>数据应用</div>
+      </div>
+    </div>
+
+    <!-- AI Chat Floating Window -->
+    <div class="ai-chat" id="aiChat">
+      <div class="ai-chat-resize" id="aiResize"></div>
+      <div class="ai-chat-header" id="aiHeader">
+        <div class="ai-chat-header-left">
+          <div class="ai-chat-avatar">AI</div>
+          <div>
+            <div class="ai-chat-title">AI 血缘助手</div>
+            <div class="ai-chat-subtitle">基于 Neo4j 图谱智能问答</div>
+          </div>
+        </div>
+        <div class="ai-chat-actions">
+          <div class="ai-chat-action" id="aiMinimize" title="收起到侧边栏">—</div>
+          <div class="ai-chat-action" id="aiMaximize" title="最大化">□</div>
+          <div class="ai-chat-action" id="aiClose" title="收起到侧边栏">✕</div>
+        </div>
+      </div>
+
+      <div class="ai-chat-body">
+        <div class="ai-msg ai-msg-bot">
+          你好！我是血缘图谱 AI 助手，可以帮你探索数据血缘关系。试试问我：
+          <br>- 查询某张表的上下游
+          <br>- 分析数据链路影响范围
+          <br>- 定位异常数据源头
+        </div>
+
+        <div class="ai-msg ai-msg-user">
+          查询 fact_order_detail 的完整血缘链路
+        </div>
+
+        <div class="ai-msg ai-msg-bot">
+          已查询到 <strong>dw.fact_order_detail</strong> 的完整血缘链路：
+          <br><br>
+          <strong>上游（2层）：</strong><br>
+          ods.raw_order_log → pipeline_order_clean → dw.fact_order_detail<br>
+          ods.raw_payment_log → pipeline_order_clean → dw.fact_order_detail
+          <br><br>
+          <strong>下游（2层）：</strong><br>
+          dw.fact_order_detail → ads.order_summary → 运营分析大盘<br>
+          dw.fact_order_detail → /api/v2/order/summary → 运营分析大盘
+          <br>
+          <div class="msg-rendered">&#10003; 已渲染到图谱 · 共10个节点 · 9条边</div>
+        </div>
+
+        <div class="ai-msg ai-msg-user">
+          上游源表的数据质量怎么样？有没有异常？
+        </div>
+
+        <div class="ai-msg ai-msg-bot">
+          上游源表质量检测结果：
+          <br><br>
+          <strong>ods.raw_order_log</strong> — 完整性 99.1%，准确性 97.8% &#9989;<br>
+          <strong>ods.raw_payment_log</strong> — 完整性 94.3%，准确性 92.1% &#9888;&#65039;<br>
+          <br>
+          &#9888;&#65039; raw_payment_log 近7天完整性下降 3.2%，建议关注。
+          <br>
+          <div class="msg-action">&#128269; 高亮异常节点</div>
+          <div class="msg-action">&#128202; 查看质量趋势</div>
+        </div>
+      </div>
+
+      <div class="ai-chat-suggestions">
+        <div class="ai-suggest-tag">展开下游3层</div>
+        <div class="ai-suggest-tag">影响分析</div>
+        <div class="ai-suggest-tag">显示字段映射</div>
+        <div class="ai-suggest-tag">导出链路报告</div>
+      </div>
+
+      <div class="ai-chat-input">
+        <input class="ai-input-field" type="text" placeholder="输入问题，如：查询 user 表的血缘...">
+        <button class="ai-send-btn">&#10148;</button>
+      </div>
+    </div>
+
+    <!-- Minimap -->
+    <div class="minimap">
+      <div class="minimap-header">缩略图</div>
+      <div class="minimap-body">
+        <div class="mini-dot" style="left:12%;top:25%;background:#3182ce"></div>
+        <div class="mini-dot" style="left:12%;top:45%;background:#3182ce"></div>
+        <div class="mini-dot" style="left:12%;top:65%;background:#3182ce"></div>
+        <div class="mini-dot" style="left:35%;top:20%;background:#38a169"></div>
+        <div class="mini-dot" style="left:35%;top:60%;background:#38a169"></div>
+        <div class="mini-dot" style="left:58%;top:30%;background:#3182ce"></div>
+        <div class="mini-dot" style="left:58%;top:55%;background:#3182ce"></div>
+        <div class="mini-dot" style="left:78%;top:22%;background:#3182ce"></div>
+        <div class="mini-dot" style="left:78%;top:45%;background:#d69e2e"></div>
+        <div class="mini-dot" style="left:92%;top:35%;background:#e53e3e"></div>
+        <div class="mini-viewport" style="left:20%;top:10%;width:50%;height:60%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Detail Panel -->
+  <div class="detail-panel">
+    <div class="detail-header">
+      <div class="detail-type">数据表</div>
+      <div class="detail-name">dw.fact_order_detail</div>
+      <div class="detail-path">hive://dw_prod/dw/fact_order_detail</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="detail-section">
+      <div class="detail-section-title">血缘概览</div>
+      <div class="stat-cards">
+        <div class="stat-card">
+          <div class="stat-number">2</div>
+          <div class="stat-label">上游表</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">1</div>
+          <div class="stat-label">上游任务</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">2</div>
+          <div class="stat-label">下游表/API</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">1</div>
+          <div class="stat-label">下游应用</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Basic Info -->
+    <div class="detail-section">
+      <div class="detail-section-title">基本信息</div>
+      <div class="detail-row">
+        <span class="detail-label">所属库</span>
+        <span class="detail-value">dw_prod</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">存储引擎</span>
+        <span class="detail-value">Hive (ORC)</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">数据量</span>
+        <span class="detail-value">1.2 亿行</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">最后更新</span>
+        <span class="detail-value">2026-04-07 03:15</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">负责人</span>
+        <span class="detail-value">张明</span>
+      </div>
+    </div>
+
+    <!-- Quality -->
+    <div class="detail-section">
+      <div class="detail-section-title">数据质量</div>
+      <div style="margin-bottom:8px;">
+        <div class="detail-row">
+          <span class="detail-label">完整性</span>
+          <span class="detail-value" style="color:#38a169;">98.5%</span>
+        </div>
+        <div class="quality-bar"><div class="quality-fill" style="width:98.5%;background:#38a169;"></div></div>
+      </div>
+      <div style="margin-bottom:8px;">
+        <div class="detail-row">
+          <span class="detail-label">准确性</span>
+          <span class="detail-value" style="color:#38a169;">96.2%</span>
+        </div>
+        <div class="quality-bar"><div class="quality-fill" style="width:96.2%;background:#38a169;"></div></div>
+      </div>
+      <div>
+        <div class="detail-row">
+          <span class="detail-label">及时性</span>
+          <span class="detail-value" style="color:#38a169;">正常</span>
+        </div>
+        <div class="quality-bar"><div class="quality-fill" style="width:100%;background:#38a169;"></div></div>
+      </div>
+    </div>
+
+    <!-- Upstream List -->
+    <div class="detail-section">
+      <div class="detail-section-title">上游血缘 <span class="count">3 个节点</span></div>
+      <div class="lineage-list-item">
+        <div class="lineage-icon" style="background:#38a169;"></div>
+        <span class="lineage-item-name">pipeline_order_clean</span>
+        <span class="lineage-item-type">任务</span>
+      </div>
+      <div class="lineage-list-item">
+        <div class="lineage-icon" style="background:#3182ce;"></div>
+        <span class="lineage-item-name">ods.raw_order_log</span>
+        <span class="lineage-item-type">表</span>
+      </div>
+      <div class="lineage-list-item">
+        <div class="lineage-icon" style="background:#3182ce;"></div>
+        <span class="lineage-item-name">ods.raw_payment_log</span>
+        <span class="lineage-item-type">表</span>
+      </div>
+    </div>
+
+    <!-- Downstream List -->
+    <div class="detail-section">
+      <div class="detail-section-title">下游血缘 <span class="count">3 个节点</span></div>
+      <div class="lineage-list-item">
+        <div class="lineage-icon" style="background:#3182ce;"></div>
+        <span class="lineage-item-name">ads.order_summary</span>
+        <span class="lineage-item-type">表</span>
+      </div>
+      <div class="lineage-list-item">
+        <div class="lineage-icon" style="background:#d69e2e;"></div>
+        <span class="lineage-item-name">/api/v2/order/summary</span>
+        <span class="lineage-item-type">API</span>
+      </div>
+      <div class="lineage-list-item">
+        <div class="lineage-icon" style="background:#e53e3e;"></div>
+        <span class="lineage-item-name">运营分析大盘</span>
+        <span class="lineage-item-type">应用</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="detail-actions">
+      <div class="action-btn action-primary">影响分析</div>
+      <div class="action-btn action-secondary">查看详情</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const chat = document.getElementById('aiChat');
+  const header = document.getElementById('aiHeader');
+  const resizeHandle = document.getElementById('aiResize');
+  const dock = document.getElementById('aiDock');
+  const minimizeBtn = document.getElementById('aiMinimize');
+  const maximizeBtn = document.getElementById('aiMaximize');
+  const closeBtn = document.getElementById('aiClose');
+  const canvas = document.querySelector('.canvas-area');
+
+  let isMaximized = false;
+  let prevStyle = {};
+
+  // --- Drag ---
+  let isDragging = false, dragOffX = 0, dragOffY = 0;
+  header.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.ai-chat-actions')) return;
+    isDragging = true;
+    chat.classList.add('dragging');
+    const rect = chat.getBoundingClientRect();
+    const parentRect = canvas.getBoundingClientRect();
+    dragOffX = e.clientX - rect.left + parentRect.left;
+    dragOffY = e.clientY - rect.top + parentRect.top;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (isDragging) {
+      const parentRect = canvas.getBoundingClientRect();
+      let x = e.clientX - dragOffX + parentRect.left;
+      let y = e.clientY - dragOffY + parentRect.top;
+      x = Math.max(0, Math.min(x, parentRect.width - chat.offsetWidth));
+      y = Math.max(0, Math.min(y, parentRect.height - chat.offsetHeight));
+      chat.style.left = x + 'px';
+      chat.style.top = y + 'px';
+      chat.style.right = 'auto';
+      chat.style.bottom = 'auto';
+    }
+    if (isResizing) {
+      const parentRect = canvas.getBoundingClientRect();
+      const chatRect = chat.getBoundingClientRect();
+      let newW = chatRect.right - e.clientX;
+      let newH = chatRect.bottom - e.clientY;
+      newW = Math.max(300, Math.min(newW, parentRect.width - 40));
+      newH = Math.max(320, Math.min(newH, parentRect.height - 40));
+      chat.style.width = newW + 'px';
+      chat.style.height = newH + 'px';
+      chat.style.left = (chatRect.right - parentRect.left - newW) + 'px';
+      chat.style.top = (chatRect.bottom - parentRect.top - newH) + 'px';
+      chat.style.right = 'auto';
+      chat.style.bottom = 'auto';
+    }
+  });
+  document.addEventListener('mouseup', function() {
+    isDragging = false;
+    isResizing = false;
+    chat.classList.remove('dragging');
+  });
+
+  // --- Resize ---
+  let isResizing = false;
+  resizeHandle.addEventListener('mousedown', function(e) {
+    isResizing = true;
+    chat.classList.add('dragging');
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  // --- Minimize (dock to sidebar) ---
+  function hideAiChat() {
+    chat.classList.add('hidden');
+    dock.classList.add('visible');
+  }
+  minimizeBtn.addEventListener('click', hideAiChat);
+  closeBtn.addEventListener('click', hideAiChat);
+
+  // --- Show from sidebar ---
+  window.showAiChat = function() {
+    chat.classList.remove('hidden');
+    dock.classList.remove('visible');
+    if (isMaximized) return;
+    chat.style.right = '20px';
+    chat.style.bottom = '130px';
+    chat.style.left = 'auto';
+    chat.style.top = 'auto';
+    chat.style.width = '380px';
+    chat.style.height = '460px';
+  };
+
+  // --- Maximize / Restore ---
+  maximizeBtn.addEventListener('click', function() {
+    if (!isMaximized) {
+      prevStyle = {
+        width: chat.style.width, height: chat.style.height,
+        top: chat.style.top, left: chat.style.left,
+        right: chat.style.right, bottom: chat.style.bottom,
+        borderRadius: chat.style.borderRadius
+      };
+      chat.style.top = '0'; chat.style.left = '0';
+      chat.style.right = '0'; chat.style.bottom = '0';
+      chat.style.width = '100%'; chat.style.height = '100%';
+      chat.style.borderRadius = '0';
+      maximizeBtn.textContent = '◱';
+      maximizeBtn.title = '还原';
+      isMaximized = true;
+    } else {
+      Object.assign(chat.style, prevStyle);
+      if (!prevStyle.left || prevStyle.left === 'auto') {
+        chat.style.right = '20px'; chat.style.bottom = '130px';
+        chat.style.left = 'auto'; chat.style.top = 'auto';
+      }
+      chat.style.borderRadius = '12px';
+      chat.style.width = prevStyle.width || '380px';
+      chat.style.height = prevStyle.height || '460px';
+      maximizeBtn.textContent = '□';
+      maximizeBtn.title = '最大化';
+      isMaximized = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
