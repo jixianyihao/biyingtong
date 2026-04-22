@@ -1,12 +1,4 @@
-"""Storage factory — returns singletons of the configured backend.
-
-Usage:
-    from storage import kline, financial, models, calendar
-    bars = kline().get_recent('600519.SH', '1d', 30)
-
-For tests, call storage.reset() in a fixture, then set_kline(FakeKlineStore())
-to inject a mock.
-"""
+"""Storage factory — returns singletons of the configured backend."""
 from __future__ import annotations
 
 from .base import (
@@ -20,6 +12,7 @@ _financial: FinancialStore | None = None
 _models: ModelStore | None = None
 _calendar: CalendarStore | None = None
 _personas: PersonaStore | None = None
+_agents: AgentStore | None = None
 
 
 def kline() -> KlineStore:
@@ -62,6 +55,14 @@ def personas() -> PersonaStore:
     return _personas
 
 
+def agents() -> AgentStore:
+    global _agents
+    if _agents is None:
+        from .sqlite_agents import SQLiteAgentStore
+        _agents = SQLiteAgentStore()
+    return _agents
+
+
 def set_kline(impl: KlineStore) -> None:
     global _kline
     _kline = impl
@@ -87,11 +88,16 @@ def set_personas(impl: PersonaStore) -> None:
     _personas = impl
 
 
+def set_agents(impl: AgentStore) -> None:
+    global _agents
+    _agents = impl
+
+
 def reset() -> None:
-    """Clear all singletons. Call this at the start of tests that mutate storage."""
-    global _kline, _financial, _models, _calendar, _personas
+    global _kline, _financial, _models, _calendar, _personas, _agents
     _kline = None
     _financial = None
     _models = None
     _calendar = None
     _personas = None
+    _agents = None
