@@ -769,15 +769,334 @@ Every element from the prototype maps to real data:
 
 ---
 
-## 10. Implementation Order
+## 10. Intraday Strategy Support
+
+### 10.1 Data Requirement
+
+Intraday agents need 1-minute and 5-minute K-line data. TDX supports these periods: `1m`, `5m`, `10m`, `15m`, `30m`, `1h`.
+
+**Verified**: Daily K-line (`1d`) → SQLite roundtrip works perfectly.  
+**Limitation**: Intraday K-line (`1m`/`5m`) returned empty in initial testing. This may require:
+- TDX client to be running and connected to a market data server
+- Pre-download of intraday data via `refresh_kline()` (requires TDX GUI interaction)
+- Or: manual data import from user's existing cache
+
+**Resolution**: During development, start with daily K-line backtesting first (proven to work). Intraday support is added as a second phase:
+1. Phase 1: Daily backtest with `1d` K-line → works immediately
+2. Phase 2: Investigate and fix intraday data fetch → add `1m`/`5m` support
+3. The backtest engine is designed to support any period — just change the `period` parameter
+
+### 10.2 Intraday Backtest Differences
+
+When using 1m/5m data, the backtest loop changes:
+
+| Aspect | Daily Backtest | Intraday Backtest |
+|--------|---------------|-------------------|
+| Data bars | 244 days × 1 bar = 244 bars | 1 day × 48 bars (5m) or 240 bars (1m) |
+| Decision frequency | Once per day | Every 5min or every 1min bar |
+| LLM calls | 244 per agent per year | 48-240 per agent per day |
+| Cost | ~244 calls | ~10,000-60,000 calls per year |
+| Context window | 30-day summary | Intraday price action + daily context |
+
+Intraday backtest is much more expensive (LLM call volume 10-100x higher). Use sparingly and only for agents configured for intraday trading.
+
+### 10.3 Intraday Agent Example
+
+```python
+# Agent configured for intraday
+agent = {
+    'id': 'fuyou_5m',
+    'name': '浮游 · 5分钟级别',
+    'period': '5m',
+    'decision_interval': '5m',  # make decision every 5-minute bar
+    'system_prompt': '''
+        你是短线游资操盘手，基于5分钟K线做日内交易。
+        你每天有48个决策点（9:30-11:30, 13:00-15:00，每5分钟一次）。
+        规则：
+        1. 日内建仓，收盘前平仓（不隔夜）
+        2. 突破分时均线时进场
+        3. 严格止损：-1% 立即平仓
+        4. 日内最多交易3次
+    ''',
+}
+```
+
+---
+
+## 11. LLM Knowledge Leakage Prevention
+
+### 11.1 The Problem
+
+LLMs are trained on data up to their training cutoff date. When backtesting 2025-04-22 to 2026-04-22, the LLM already "knows" which stocks went up or down during this period. This inflates backtest results and makes them unreliable.
+
+### 11.2 Mitigation: Prompt Declaration (Phase 1)
+
+Add explicit knowledge boundary to every LLM call:
+
+```
+[IMPORTANT - KNOWLEDGE BOUNDARY]
+当前日期是 {date}。你只能基于截至此日期的信息做决策。
+你不知道{date}之后发生的事情——包括但不限于：
+- 任何股票在{date}之后的涨跌
+- 任何宏观经济事件、政策变化
+- 任何公司业绩公告
+如果推理中出现了{date}之后的信息，你的决策将被视为无效。
+请严格基于当前日期已知信息进行分析。
+```
+
+This is not foolproof but is the simplest approach. We will test effectiveness and consider stronger measures later.
+
+### 11.3 Risk Disclosure
+
+Every backtest result page displays:
+
+> ⚠️ 回测结果声明：本回测使用 LLM 大模型进行决策模拟。LLM 的训练数据可能包含回测期间之后的真实市场信息，导致回测结果可能优于实际表现。回测收益仅供参考，不构成投资建议。实盘表现可能与回测存在显著差异。
+
+### 11.4 Future Measures (Phase 2, if needed)
+
+- Use older model snapshots with training cutoff before backtest period
+- Evaluate backtest results against a random baseline to detect suspicious alpha
+- Cross-validation: run backtest on random time windows and compare consistency
+
+---
+
+## 12. Agent Lifecycle: Backtest → Save → Deploy → Continuous Operation
+
+### 12.1 Full Agent Lifecycle
+
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
+│  1. CREATE  │────>│  2. BACKTEST  │────>│  3. EVALUATE │────>│ 4. DEPLOY LIVE   │
+│  Define     │     │  Run 1 year  │     │  User reviews│     │  Continuous run  │
+│  persona    │     │  simulation  │     │  metrics     │     │  on TDX mock     │
+└─────────────┘     └──────────────┘     └──────────────┘     └──────────────────┘
+                           │                     │                      │
+                           ▼                     ▼                      ▼
+                    SSE stream             Decision:              Flask background
+                    real-time progress     - Save agent?          thread runs forever
+                                           - Delete?              Agent trades via TDX
+                                           - Re-run?              User confirms trades
+```
+
+### 12.2 Save Agent
+
+After backtest completes, user can:
+- **Save**: Agent definition + backtest results stored permanently in SQLite
+- **Re-run**: Re-run backtest with different parameters or time period
+- **Discard**: Delete agent and results
+
+Saved agents appear in AgentLab with their backtest metrics. Multiple backtest runs per agent are kept for comparison.
+
+```python
+# SQLite schema for saved agents
+CREATE TABLE agents (
+    id TEXT PRIMARY KEY,           -- 'linyuan', 'custom_1713763200'
+    name TEXT NOT NULL,
+    model TEXT NOT NULL,           -- 'claude-sonnet-4-5-20250514'
+    system_prompt TEXT NOT NULL,
+    style_desc TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status TEXT DEFAULT 'created', -- 'created', 'backtesting', 'backtested', 'deployed'
+);
+
+CREATE TABLE backtest_results (
+    id TEXT PRIMARY KEY,           -- 'bt_20260422_linyuan'
+    agent_id TEXT REFERENCES agents(id),
+    start_date DATE,
+    end_date DATE,
+    initial_capital DECIMAL(15,2),
+    final_nav DECIMAL(15,2),
+    metrics JSON,                  -- all metrics as JSON
+    nav_history JSON,              -- daily NAV series
+    trades JSON,                   -- all trades
+    thinking_log JSON,             -- all thinking entries
+    blocked_trades JSON,           -- rejected trades
+    token_usage JSON,              -- LLM call stats
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 12.3 Deploy to Live (Simulated) Trading
+
+When user clicks "部署实盘" (Deploy):
+
+1. Agent must have at least 1 completed backtest
+2. User confirms: agent name, initial capital, model
+3. Backend creates a **persistent background thread** for this agent
+4. The agent runs on its configured schedule (daily/weekly/etc.)
+5. Each cycle:
+   - Fetch real-time data from TDX
+   - Call LLM with agent persona + live context
+   - Parse decision
+   - Check RedLine rules
+   - **Semi-automatic**: show decision to user for confirmation (via WebSocket notification)
+   - User approves → execute via `tq.order_stock()`
+   - User rejects → log rejection
+
+### 12.4 Continuous Agent Operation
+
+The Flask server runs agent tasks in background threads:
+
+```python
+import threading
+
+class AgentRunner:
+    """Manages a single deployed agent's continuous operation."""
+    
+    def __init__(self, agent_id, config):
+        self.agent_id = agent_id
+        self.config = config
+        self.running = True
+        self.thread = threading.Thread(target=self._loop, daemon=True)
+        self.thread.start()
+    
+    def _loop(self):
+        while self.running:
+            # Wait for next decision time based on schedule
+            schedule = self.config.get('schedule', 'daily_close')
+            
+            if schedule == 'daily_close':
+                # Wait until 15:05 (5 min after close)
+                self._wait_until('15:05')
+            elif schedule == 'every_30min':
+                # Wait for next 30-min mark during trading hours
+                self._wait_next_30min()
+            
+            if not self.running:
+                break
+            
+            # Run decision cycle
+            try:
+                self._run_decision_cycle()
+            except Exception as e:
+                log_error(agent_id, e)
+                # Don't crash — retry next cycle
+    
+    def _run_decision_cycle(self):
+        # 1. Fetch live data from TDX
+        market_data = fetch_live_data()
+        positions = get_current_positions()
+        
+        # 2. Build context
+        context = build_context(market_data, positions)
+        
+        # 3. Call LLM
+        response = call_llm(self.config['model'], context)
+        
+        # 4. Parse decision
+        decision = parse_decision(response)
+        
+        # 5. Check risk limits
+        if not check_risk_limits(decision):
+            log_blocked(self.agent_id, decision, 'risk_limit')
+            return
+        
+        # 6. Notify user for confirmation (semi-automatic)
+        notify_user(self.agent_id, decision)
+        # User response comes via WebSocket/REST API
+    
+    def stop(self):
+        self.running = False
+
+# Global registry of running agents
+_running_agents: dict[str, AgentRunner] = {}
+
+@app.route('/api/agents/<agent_id>/deploy', methods=['POST'])
+def deploy_agent(agent_id):
+    runner = AgentRunner(agent_id, config)
+    _running_agents[agent_id] = runner
+    return jsonify({'status': 'deployed', 'agent_id': agent_id})
+
+@app.route('/api/agents/<agent_id>/stop', methods=['POST'])
+def stop_agent(agent_id):
+    if agent_id in _running_agents:
+        _running_agents[agent_id].stop()
+        del _running_agents[agent_id]
+    return jsonify({'status': 'stopped'})
+
+@app.route('/api/agents/running')
+def running_agents():
+    return jsonify({
+        agent_id: {
+            'status': 'running',
+            'last_decision': runner.last_decision_time,
+            'next_decision': runner.next_decision_time,
+        }
+        for agent_id, runner in _running_agents.items()
+    })
+```
+
+### 12.5 User Confirmation for Live Trades
+
+When a deployed agent makes a trade decision:
+
+1. Backend sends WebSocket event to frontend:
+   ```json
+   {
+     "type": "trade_proposal",
+     "agent_id": "linyuan",
+     "agent_name": "林园风格",
+     "decision": {
+       "action": "buy",
+       "code": "600519.SH",
+       "name": "贵州茅台",
+       "qty": 100,
+       "price": 1432.00,
+       "reason": "PE 23x处于合理区间，回调至支撑位"
+     }
+   }
+   ```
+
+2. Frontend shows notification/popup:
+   - Agent name + decision details
+   - "确认执行" / "拒绝" buttons
+   - 60-second auto-timeout → default to reject
+
+3. User response → backend executes or skips
+
+### 12.6 Agent Status Persistence
+
+When Flask server restarts, deployed agents resume automatically:
+
+```python
+# On startup, check which agents were deployed
+def restore_deployed_agents():
+    deployed = db.query("SELECT * FROM agents WHERE status = 'deployed'")
+    for agent in deployed:
+        runner = AgentRunner(agent.id, agent.config)
+        _running_agents[agent.id] = runner
+```
+
+---
+
+## 13. TDX Data Verification Summary
+
+| Data Type | TDX API | SQLite Cache | Status |
+|-----------|---------|-------------|--------|
+| Daily K-line (`1d`) | `get_market_data(period='1d')` | Verified ✓ works | **Ready** |
+| Weekly/Monthly | `get_market_data(period='1w'/'1mon')` | Should work (same API) | To verify |
+| Intraday K-line (`1m`/`5m`) | `get_market_data(period='1m'/'5m')` | Returns empty in test | **Needs investigation** |
+| Stock info (PE/PB/ROE) | `get_stock_info()` | Works ✓ | **Ready** |
+| Real-time snapshot | `get_market_snapshot()` | Works ✓ (live only) | **Ready** |
+| Index data | `get_market_snapshot('000001.SH')` | Works ✓ | **Ready** |
+| Trading calendar | `get_trading_calendar()` | Not tested | To verify |
+
+**Phase 1**: Start with daily backtesting (proven data pipeline).
+**Phase 2**: Add intraday support after resolving data access issue.
+
+---
+
+## 14. Implementation Order
 
 1. **Backend foundation**: Create `engine/`, `agents/`, `llm/` module structure + `config.py`
-2. **Data layer**: `data_fetcher.py` + SQLite cache + `indicators.py`
+2. **Data layer**: `data_fetcher.py` + SQLite cache (daily K-line verified) + `indicators.py`
 3. **Portfolio**: `portfolio.py` with Decimal precision + T+1 + commission
 4. **LLM adapters**: `claude.py` first, then openai + deepseek
-5. **Agent personas**: 5 agent files with system prompts
+5. **Agent personas**: 5 agent files with system prompts + knowledge boundary prompt
 6. **Backtest loop**: `backtest.py` with SSE streaming
-7. **API routes**: New endpoints in `app.py`
+7. **API routes**: New endpoints in `app.py` (backtest + agent CRUD)
 8. **Frontend**: Vite setup + migrate all pages
 9. **Wire up**: AgentLab + Backtest pages connected to real APIs
-10. **Test**: Full end-to-end: create agent → backtest 1 year → view results
+10. **Agent save/evaluate**: Save backtest results, agent comparison
+11. **Live deploy**: Agent deployment + continuous operation + user confirmation
+12. **Intraday support**: Fix 1m/5m data access, add intraday backtest mode
