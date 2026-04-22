@@ -10,13 +10,16 @@ to inject a mock.
 from __future__ import annotations
 
 from .base import (
-    CalendarStore, FinancialStore, KlineStore, ModelInfo, ModelStore,
+    Agent, AgentStore, CalendarStore, FinancialStore,
+    KlineStore, ModelInfo, ModelStore, Persona, PersonaStore,
+    PromptVersion, PromptVersionStore,
 )
 
 _kline: KlineStore | None = None
 _financial: FinancialStore | None = None
 _models: ModelStore | None = None
 _calendar: CalendarStore | None = None
+_personas: PersonaStore | None = None
 
 
 def kline() -> KlineStore:
@@ -51,6 +54,14 @@ def calendar() -> CalendarStore:
     return _calendar
 
 
+def personas() -> PersonaStore:
+    global _personas
+    if _personas is None:
+        from .sqlite_personas import SQLitePersonaStore
+        _personas = SQLitePersonaStore()
+    return _personas
+
+
 def set_kline(impl: KlineStore) -> None:
     global _kline
     _kline = impl
@@ -71,10 +82,16 @@ def set_calendar(impl: CalendarStore) -> None:
     _calendar = impl
 
 
+def set_personas(impl: PersonaStore) -> None:
+    global _personas
+    _personas = impl
+
+
 def reset() -> None:
     """Clear all singletons. Call this at the start of tests that mutate storage."""
-    global _kline, _financial, _models, _calendar
+    global _kline, _financial, _models, _calendar, _personas
     _kline = None
     _financial = None
     _models = None
     _calendar = None
+    _personas = None
