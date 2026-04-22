@@ -919,28 +919,23 @@ git commit -m "feat(p0): financial cache loader (PE/PB/ROE via tqcenter)"
 **Files:**
 - Modify: `tests/test_data_pipeline.py`
 
-- [ ] **Step 1: Write a helper to get the HS300 list from vnpy-tdx**
+- [ ] **Step 1: Fetch the HS300 constituent list via `tq.get_stock_list('23')`**
 
-Append this standalone script execution to the workflow; **do not** add a test for it (the HS300 constituent list changes over time and pinning would be brittle).
+tqcenter's `get_stock_list(market)` uses numeric market codes. `'23'` = 沪深300 (other useful codes: `'5'`=所有A股, `'23'`=沪深300, `'24'`=中证500, `'50'`=沪深A股, `'51'`=创业板). See memory `tdx_quant_docs.md` for the full market code table.
 
-Run this one-time in a Python shell:
+Run this one-time:
 ```python
 from tdx_service import tdx
 tdx.initialize()
-# tq has helpers to fetch index constituents; exact name varies by SDK version.
-# Try the canonical one first:
 from tqcenter import tq
-constituents = tq.get_stock_list(market='5')  # HS300 market code varies
-# If that doesn't yield the right set, read from tdx's local HS300.txt:
-# hs300 = open(r'C:\new_tdx_mock\T0002\blocknew\HS300.blk').read().splitlines()
-# Save to a file we can reuse:
+constituents = tq.get_stock_list('23')   # 沪深300
 import json
 from pathlib import Path
 Path('data/hs300_symbols.json').write_text(json.dumps(constituents))
-print(f'saved {len(constituents)} HS300 codes')
+print(f'saved {len(constituents)} HS300 codes; sample: {constituents[:3]}')
 ```
 
-Expected: `data/hs300_symbols.json` contains a list of ≥ 280 codes (HS300 can have slightly fewer or more depending on recent rebalance).
+Expected: `data/hs300_symbols.json` contains a list of ~300 codes in the `600519.SH` / `000001.SZ` format. If the list is empty or wildly wrong, the TDX client may not have HS300 data cached — open 通达信 → 沪深300 to force-cache it, then re-run.
 
 - [ ] **Step 2: Run real HS300 loaders**
 
