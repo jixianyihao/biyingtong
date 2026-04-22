@@ -77,3 +77,76 @@ def test_protocols_are_runtime_checkable():
         def distinct_dates(self, start, end): return []
 
     assert isinstance(Compliant(), KlineStore)
+
+
+def test_persona_dataclass():
+    from storage.base import Persona
+    p = Persona(
+        id='x', name='Test', style_desc='desc',
+        system_prompt='prompt', default_pool=['600519.SH'],
+        pool_filter=None, default_schedule='daily',
+        default_rules={'position_max_pct': 30.0},
+        allowed_tools=['get_kline'], is_builtin=True,
+    )
+    assert p.id == 'x'
+    assert p.created_at is None
+
+
+def test_agent_dataclass():
+    from storage.base import Agent
+    a = Agent(
+        id='a1', persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='林园 · Claude Opus 4.7', rules_override={},
+        initial_capital=1_000_000, status='created',
+        subprocess_pid=None, health_score=100, trust_rating='A',
+        current_prompt_version_id=None,
+    )
+    assert a.persona_id == 'linyuan'
+
+
+def test_prompt_version_dataclass():
+    from storage.base import PromptVersion
+    v = PromptVersion(
+        id=1, agent_id='a1', version_number=1,
+        system_prompt='You are X', created_at='2026-04-22T00:00:00',
+    )
+    assert v.note is None
+
+
+def test_persona_store_protocol_runtime_checkable():
+    from storage.base import Persona, PersonaStore
+
+    class Compliant:
+        def init_schema(self): pass
+        def upsert(self, persona): pass
+        def get(self, persona_id): return None
+        def list_all(self): return []
+
+    assert isinstance(Compliant(), PersonaStore)
+
+
+def test_agent_store_protocol_runtime_checkable():
+    from storage.base import AgentStore
+
+    class Compliant:
+        def init_schema(self): pass
+        def create_from_persona(self, persona_id, model_id, display_name,
+                                 rules_override=None, initial_capital=1_000_000):
+            return None  # type: ignore
+        def get(self, agent_id): return None
+        def list_all(self): return []
+        def update_status(self, agent_id, status): pass
+
+    assert isinstance(Compliant(), AgentStore)
+
+
+def test_prompt_version_store_protocol_runtime_checkable():
+    from storage.base import PromptVersionStore
+
+    class Compliant:
+        def init_schema(self): pass
+        def insert(self, agent_id, system_prompt, note=None): return None  # type: ignore
+        def get_latest(self, agent_id): return None
+        def list_for_agent(self, agent_id): return []
+
+    assert isinstance(Compliant(), PromptVersionStore)

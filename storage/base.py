@@ -82,3 +82,99 @@ class CalendarStore(Protocol):
     def get_trading_days(self, start: date, end: date) -> list[date]:
         """Ascending list of trading days in [start, end]."""
         ...
+
+
+# --- Added in P2a ---
+
+@dataclass
+class Persona:
+    """Reusable investment-philosophy definition. See Spec § 4.3 for the 5 built-ins."""
+    id: str
+    name: str
+    style_desc: str
+    system_prompt: str
+    default_pool: list[str]
+    pool_filter: dict | None
+    default_schedule: str
+    default_rules: dict
+    allowed_tools: list[str]
+    is_builtin: bool
+    created_at: str | None = None
+
+
+@dataclass
+class Agent:
+    """An agent instance = persona × model × rules_override.
+
+    Multiple instances can share a persona, differing only by model_id or
+    rules_override, enabling head-to-head comparison (Spec § 4.2).
+    """
+    id: str
+    persona_id: str
+    model_id: str
+    display_name: str
+    rules_override: dict
+    initial_capital: float
+    status: str
+    subprocess_pid: int | None
+    health_score: int
+    trust_rating: str
+    current_prompt_version_id: int | None
+    created_at: str | None = None
+
+
+@dataclass
+class PromptVersion:
+    """Immutable snapshot of an agent's system_prompt at a point in time."""
+    id: int
+    agent_id: str
+    version_number: int
+    system_prompt: str
+    created_at: str | None
+    note: str | None = None
+
+
+@runtime_checkable
+class PersonaStore(Protocol):
+    """Reads/writes the personas table."""
+    def init_schema(self) -> None: ...
+    def upsert(self, persona: Persona) -> None:
+        """Insert or replace by id. Idempotent."""
+        ...
+    def get(self, persona_id: str) -> Persona | None: ...
+    def list_all(self) -> list[Persona]: ...
+
+
+@runtime_checkable
+class AgentStore(Protocol):
+    """Reads/writes the agents table + coordinates initial prompt version creation."""
+    def init_schema(self) -> None: ...
+    def create_from_persona(
+        self,
+        persona_id: str,
+        model_id: str,
+        display_name: str,
+        rules_override: dict | None = None,
+        initial_capital: float = 1_000_000,
+    ) -> Agent:
+        """Atomically: insert new Agent row + PromptVersion v1 snapshotting
+        the persona's current system_prompt. Returns the fresh Agent."""
+        ...
+    def get(self, agent_id: str) -> Agent | None: ...
+    def list_all(self) -> list[Agent]: ...
+    def update_status(self, agent_id: str, status: str) -> None: ...
+
+
+@runtime_checkable
+class PromptVersionStore(Protocol):
+    """Reads/writes the prompt_versions table."""
+    def init_schema(self) -> None: ...
+    def insert(
+        self, agent_id: str, system_prompt: str, note: str | None = None,
+    ) -> PromptVersion:
+        """Insert a new version; version_number = max(existing) + 1. Returns the row."""
+        ...
+    def get_latest(self, agent_id: str) -> PromptVersion | None: ...
+    def list_for_agent(self, agent_id: str) -> list[PromptVersion]:
+        """Ascending by version_number."""
+        ...
