@@ -15,3 +15,31 @@ ALL_PERSONAS: dict[str, dict] = {
     'soros': SOROS,
     'quant_neutral': QUANT_NEUTRAL,
 }
+
+
+def seed() -> int:
+    """Idempotently upsert all 5 built-in personas into storage.personas().
+
+    Returns count of personas written.
+    """
+    from storage import personas as _personas_factory
+    from storage.base import Persona
+
+    store = _personas_factory()
+    store.init_schema()
+
+    for data in ALL_PERSONAS.values():
+        persona = Persona(
+            id=data['id'],
+            name=data['name'],
+            style_desc=data['style_desc'],
+            system_prompt=data['system_prompt'],
+            default_pool=data['default_pool'],
+            pool_filter=data['pool_filter'],
+            default_schedule=data['default_schedule'],
+            default_rules=data['default_rules'],
+            allowed_tools=data['allowed_tools'],
+            is_builtin=data['is_builtin'],
+        )
+        store.upsert(persona)
+    return len(ALL_PERSONAS)
