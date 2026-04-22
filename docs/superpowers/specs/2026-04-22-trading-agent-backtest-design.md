@@ -193,19 +193,132 @@ Agent trigger (scheduled or event):
 
 ## 3. Agent Design
 
-### 3.1 Agent Style — Guidance, Not Hard Restrictions
+### 3.1 Agent Architecture — Persona + Stock Pool + Schedule + Rules
 
-Each agent has an investment philosophy described in its system prompt. The LLM is *guided* by this philosophy but NOT forced into specific stocks. For example, the "林园" agent prefers 白酒/医药/消费 but CAN buy tech stocks if it believes it's a good opportunity.
+Each agent is defined by 4 dimensions:
 
-The guidance comes from the system prompt only. No code-level restrictions on stock selection.
+| Dimension | Description | Example |
+|-----------|------------|---------|
+| **Persona** | System prompt describing investment philosophy (guidance, not hard restriction) | 林园: 价值投资，找印钞机企业 |
+| **Stock Pool** | 30-50 stocks the agent monitors, selected by sector/index/filter | 林园: 白酒+医药+消费龙头 |
+| **Rebalance Schedule** | How often the agent makes decisions | 林园: 每周一；浮游: 每天；量化中性: 每天 |
+| **Risk Rules** | Configurable validation rules (position limits, stop-loss, etc.) | 仓位上限30%, 止损线-4%, 最大回撤-15% |
 
-### 3.2 Five Pre-defined Agents
+**Stock Pool Management:**
+- Each agent has its own stock pool of 30-50 stocks
+- Pool is defined at agent creation time, stored in SQLite
+- Pool can be refreshed periodically (e.g., monthly re-screen based on criteria)
+- During backtest: pool is fixed to the period's actual constituents
+- During live: pool can be dynamically updated
+
+**Rebalance Schedule:**
+- `daily`: agent decides every trading day (after close for daily, during session for intraday)
+- `weekly`: agent decides every Monday (or configured weekday)
+- `monthly`: agent decides on first trading day of each month
+- `intraday_5m`: agent decides every 5-minute bar during trading hours
+- Only the rebalance days trigger LLM calls — non-rebalance days are automatic holds
+
+### 3.2 Agent ↔ vnpy Interaction Model
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Agent (LLM-Driven)                         │
+│                                                                 │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
+│  │ Persona +    │    │ Prompt       │    │ Decision     │      │
+│  │ Stock Pool   │───>│ Context      │───>│ Parser       │      │
+│  │ + Schedule   │    │ Builder      │    │ (XML→struct) │      │
+│  └──────────────┘    └──────────────┘    └──────┬───────┘      │
+│                                                   │              │
+│                                    ┌──────────────┴──────┐      │
+│                                    │  Validation Engine   │      │
+│                                    │  (configurable rules)│      │
+│                                    └──────────┬──────────┘      │
+│                                               │                  │
+└───────────────────────────────────────────────┼──────────────────┘
+                                                │
+                    ┌───────────────────────────┼───────────────────┐
+                    │                           │                    │
+              Backtest Mode               Live Mode                 │
+                    │                           │                    │
+                    ▼                           ▼                    │
+          ┌─────────────────┐        ┌─────────────────┐           │
+          │ vnpy Engine     │        │ tdx_service.py  │           │
+          │                 │        │ (tqcenter SDK)  │           │
+          │ • K-line replay │        │ • Real-time     │           │
+          │ • Order match   │        │   quotes        │           │
+          │ • NAV tracking  │        │ • Order exec    │           │
+          │ • Statistics    │        │ • Positions     │           │
+          └─────────────────┘        └─────────────────┘           │
+                                                                   │
+                    Data Layer (shared)                             │
+          ┌─────────────────┐        ┌─────────────────┐           │
+          │ vnpy_sqlite     │        │ financial_cache │           │
+          │ (K-line cache)  │        │ (PE/PB/ROE)     │           │
+          └─────────────────┘        └─────────────────┘           │
+```
+
+**Key principle**: The agent code is the same for both backtest and live. Only the execution layer differs:
+- Backtest: `on_bars()` called by vnpy engine replaying historical data
+- Live: `on_tick()` / `on_timer()` called by scheduler in agent subprocess
+
+### 3.3 Agent Decision Cycle (Detailed)
+
+For each rebalance event, the agent executes this cycle:
+
+```
+Step 1: FETCH DATA
+  ├── Read stock pool from agent config
+  ├── For each stock in pool: fetch K-line + financials + technicals
+  ├── Read current portfolio state (positions + cash)
+  └── Read market index data
+
+Step 2: BUILD CONTEXT
+  ├── Assemble prompt: [system prompt] + [knowledge boundary] + [market data]
+  ├── Format positions table
+  ├── Format stock pool summary (price, PE, PB, ROE, technicals)
+  └── Include recent thinking history (last 5 decisions for continuity)
+
+Step 3: CALL LLM
+  ├── Send prompt to configured model (Claude/GPT/DeepSeek)
+  ├── Receive XML response: <thinking>...</thinking><action>...</action>
+  └── Track token usage and cost
+
+Step 4: PARSE DECISION
+  ├── Extract action (buy/sell/hold), stock code, quantity, reason
+  └── On parse failure: default to hold, log warning
+
+Step 5: VALIDATE
+  ├── Run all configured validation rules
+  ├── RedLine checks: position limit, stop-loss, concentration, cash ratio
+  ├── Quality checks: ST filter, limit-up filter, T+1 check
+  ├── If any rule fails: block trade, log reason, notify (live mode)
+  └── Output: { action, validated: true/false, reason, blocked_by? }
+
+Step 6: EXECUTE
+  ├── Backtest: call vnpy engine's buy()/sell() API
+  ├── Live: send to tdx_service.place_order() (with user confirmation)
+  └── Record trade in audit log
+
+Step 7: RECORD
+  ├── Save thinking + decision + validation result
+  ├── Update portfolio snapshot
+  └── Emit SSE event (backtest) or WebSocket notification (live)
+```
+
+### 3.4 Five Pre-defined Agents
 
 #### Agent 1: 林园风格 (Lin Yuan Style)
 - **Model**: Claude
 - **Philosophy**: 价值投资 — 寻找"印钞机"式企业，重仓龙头，长期持有
-- **Preferences**: 白酒、医药、消费行业；高ROE(>15%)、高毛利率(>30%)、低PE(低于行业均值20%)
-- **Trading pattern**: Low frequency, large positions, long holding periods
+- **Stock Pool** (40 stocks): 白酒(5) + 医药(15) + 消费龙头(10) + 高ROE筛选(10)
+  - 白酒: 茅台、五粮液、泸州老窖、汾酒、洋河
+  - 医药: 片仔癀、恒瑞医药、云南白药、长春高新、爱尔眼科、迈瑞医疗、药明康德、智飞生物、泰格医药、通策医疗、华兰生物、东阿阿胶、同仁堂、白云山、以岭药业
+  - 消费: 海天味业、伊利股份、双汇发展、格力电器、美的集团、青岛啤酒、重庆啤酒、安井食品、中炬高新、千禾味业
+  - 高ROE补充: 海螺水泥、福耀玻璃、宇通客车、万华化学、长江电力、中国平安、招商银行、海康威视、大华股份、宁德时代
+- **Rebalance Schedule**: `weekly` — 每周一收盘后决策
+- **Decision Logic Priority**: ROE → 毛利率 → PE安全边际 → 行业景气度
+- **Validation Rules**: 单票≤30%, 现金≥10%, 禁止ST, 禁止追涨停, 最大回撤-15%
 - **System Prompt Core**:
   ```
   你是林园，一位坚守价值投资理念的基金经理。
@@ -221,8 +334,15 @@ The guidance comes from the system prompt only. No code-level restrictions on st
 #### Agent 2: 浮游风格 (Fu You Style)
 - **Model**: OpenAI GPT
 - **Philosophy**: 短线游资 — 捕捉题材热点，快进快出，止损果断
-- **Preferences**: 热门题材、涨停板、成交量异动、板块轮动
-- **Trading pattern**: High frequency, smaller positions, short holding (1-5 days), strict stop-loss
+- **Stock Pool** (50 stocks): 全市场筛选，按以下标准动态更新：
+  - 近5日换手率 > 5% 的活跃股(15)
+  - 近10日出现过涨停的股票(15)
+  - 当前热门板块龙头(10)
+  - 自选补充池(10)
+  - 池子每月重新筛选
+- **Rebalance Schedule**: `daily` — 每个交易日收盘后决策
+- **Decision Logic Priority**: 量价异动 → 板块轮动 → 资金流向 → 题材热度
+- **Validation Rules**: 单票≤20%, 止损-4%, 同时≤5只, 现金≥20%, 最大回撤-10%
 - **System Prompt Core**:
   ```
   你是一位短线游资操盘手。
@@ -238,8 +358,14 @@ The guidance comes from the system prompt only. No code-level restrictions on st
 #### Agent 3: 巴菲特风格 (Buffett Style)
 - **Model**: Claude
 - **Philosophy**: 护城河 + 安全边际 + 优秀管理层
-- **Preferences**: 银行、公用事业、消费龙头；高ROE(>15%)、低PB、稳定分红
-- **Trading pattern**: Very low frequency, concentrated positions, monthly review
+- **Stock Pool** (30 stocks): 银行(8) + 公用事业(7) + 消费龙头(10) + 高分红(5)
+  - 银行: 招商银行、宁波银行、兴业银行、平安银行、工商银行、建设银行、农业银行、常熟银行
+  - 公用事业: 长江电力、华能水电、中国核电、国投电力、川投能源、大秦铁路、宁沪高速
+  - 消费龙头: 贵州茅台、五粮液、海天味业、伊利股份、双汇发展、格力电器、美的集团、青岛啤酒、中顺洁柔、安琪酵母
+  - 高分红: 中国神华、宝钢股份、上汽集团、万科A、中国石化
+- **Rebalance Schedule**: `monthly` — 每月首个交易日决策
+- **Decision Logic Priority**: 护城河宽度 → ROE连续性 → 管理层质量 → 估值折价
+- **Validation Rules**: 单票≤25%, 现金≥15%, 禁止ST, 最大回撤-12%
 - **System Prompt Core**:
   ```
   你是沃伦·巴菲特风格的价值投资者。
@@ -255,8 +381,14 @@ The guidance comes from the system prompt only. No code-level restrictions on st
 #### Agent 4: 索罗斯反身性 (Soros Reflexivity)
 - **Model**: DeepSeek
 - **Philosophy**: 宏观对冲 — 识别市场偏见，利用反身性获利
-- **Preferences**: 宏观趋势、ETF、黄金、做空机会、情绪极端
-- **Trading pattern**: Event-driven, concentrated bets, can hold large cash position
+- **Stock Pool** (35 stocks): ETF(10) + 周期股(10) + 金融(8) + 黄金/资源(7)
+  - ETF: 沪深300ETF、上证50ETF、中证500ETF、创业板ETF、恒生ETF、纳指ETF、黄金ETF、白银ETF、军工ETF、芯片ETF
+  - 周期股: 紫金矿业、中国铝业、江西铜业、洛阳钼业、北方稀土、宝钢股份、海螺水泥、万华化学、荣盛石化、中国神华
+  - 金融: 中国平安、招商银行、中信证券、海通证券、中国太保、新华保险、广发证券、东方财富
+  - 黄金/资源: 山东黄金、中金黄金、赤峰黄金、银泰黄金、盛达资源、天齐锂业、赣锋锂业
+- **Rebalance Schedule**: `weekly` — 每周一收盘后决策（可根据宏观事件触发额外调仓）
+- **Decision Logic Priority**: 宏观趋势 → 市场情绪极端度 → 趋势确认 → 仓位管理
+- **Validation Rules**: 单票≤25%, 现金≥30%(不确定时≥50%), 最大回撤-18%
 - **System Prompt Core**:
   ```
   你是乔治·索罗斯风格的宏观对冲基金经理。
@@ -272,8 +404,16 @@ The guidance comes from the system prompt only. No code-level restrictions on st
 #### Agent 5: 量化中性 (Quant Neutral)
 - **Model**: DeepSeek
 - **Philosophy**: 多因子选股 — 市值中性、行业中性、追求绝对收益
-- **Preferences**: 因子模型(动量/反转/质量/价值)、沪深300成分股、每日调仓
-- **Trading pattern**: Very high frequency, many small positions, systematic
+- **Stock Pool** (50 stocks): 沪深300成分股，按因子动态筛选：
+  - 动量因子 Top 15（近20日涨幅排名）
+  - 反转因子 Top 10（近5日跌幅排名）
+  - 质量因子 Top 10（ROE × 毛利率排名）
+  - 价值因子 Top 10（PE倒数排名）
+  - 成长因子 Top 5（营收增长率排名）
+  - 池子每周重新筛选
+- **Rebalance Schedule**: `daily` — 每个交易日收盘后决策
+- **Decision Logic Priority**: 因子信号综合得分 → 行业中性调整 → 仓位控制
+- **Validation Rules**: 单票≤8%, 同时≤15只, 行业≤25%, 最大回撤-5%, 单日亏损-0.5%
 - **System Prompt Core**:
   ```
   你是一位量化中性策略基金经理。
@@ -533,25 +673,111 @@ For each completed backtest, the following is stored in SQLite:
 
 ---
 
-## 5. Safety — Four-Layer Protection
+## 5. Validation — Configurable Rule Engine
 
-vnpy provides `vnpy_riskmanager` for pre-trade checks (order flow control, quantity limits). We use it as the foundation and add our own RedLine rules on top.
+### 5.1 Two-Phase Validation
 
-### Layer 1: RedLine Interception
+**Phase 1: Pre-trade Validation (before execution)**
+Every trade decision passes through a configurable rule engine before execution:
 
-Before any trade executes, check all RedLine rules:
+**Phase 2: Post-backtest Quality Gate (before deploy)**
+After backtest completes, the agent must pass quality metrics before it can be deployed to live trading.
 
-| Rule | Check | Action if Violated |
-|------|-------|-------------------|
-| 日亏损上限 (dailyLoss) | If today's loss > X% of NAV | Block ALL trades for rest of day |
-| 单票仓位上限 (positionMax) | If this trade makes single stock > X% | Reject trade |
-| 单股集中度 (stockMax) | If total position in one stock > X% | Reject buy |
-| 最低现金比例 (cashMin) | If cash < X% after trade | Reject buy |
-| 单笔金额上限 (orderMax) | If trade value > ¥X | Reject trade |
-| 禁止追涨停 (banLimitUp) | If stock is at limit-up price | Reject buy |
-| 禁止ST (banST) | If stock name contains ST/\*ST | Reject trade |
+### 5.2 Pre-trade Rules (Configurable per Agent)
 
-All violations logged to `blocked_trades` and shown in thinking log.
+Each rule has a `enabled` flag and configurable threshold. Rules are stored in the agent config:
+
+```python
+validation_rules = {
+    # Position limits
+    "position_max_pct": {"enabled": True, "value": 30.0},    # 单票仓位上限 %
+    "max_holdings": {"enabled": True, "value": 5},            # 最大持仓数
+    "cash_min_pct": {"enabled": True, "value": 10.0},         # 最低现金比例 %
+
+    # Loss limits
+    "daily_loss_limit_pct": {"enabled": True, "value": 3.0},  # 日亏损上限 %
+    "stop_loss_pct": {"enabled": True, "value": -4.0},        # 单票止损线 %
+    "max_drawdown_pct": {"enabled": True, "value": -15.0},    # 最大回撤 %
+
+    # Trade limits
+    "order_max_value": {"enabled": True, "value": 50000},     # 单笔金额上限 ¥
+    "industry_max_pct": {"enabled": False, "value": 25.0},    # 行业集中度上限 %
+
+    # Filters
+    "ban_st": {"enabled": True},                              # 禁止ST
+    "ban_limit_up": {"enabled": True},                        # 禁止追涨停
+    "ban_limit_down": {"enabled": True},                      # 禁止抄跌停
+    "ban_ipo_30d": {"enabled": True},                         # 禁止次新股(上市<30天)
+
+    # A-share specific
+    "t_plus_1": {"enabled": True},                            # T+1检查
+    "board_lot": {"enabled": True, "value": 100},             # 整手交易(100股)
+}
+```
+
+Each agent has its own ruleset. Default rulesets are pre-configured for the 5 built-in agents. Custom agents inherit defaults with user overrides.
+
+### 5.3 Rule Evaluation Flow
+
+```python
+def validate_trade(decision, portfolio, market_data, rules) -> ValidationResult:
+    result = ValidationResult(valid=True, blocked_by=[])
+
+    for rule_name, rule_config in rules.items():
+        if not rule_config.get("enabled", False):
+            continue
+
+        check = RULE_CHECKS[rule_name]
+        passed, reason = check(decision, portfolio, market_data, rule_config)
+
+        if not passed:
+            result.valid = False
+            result.blocked_by.append({
+                "rule": rule_name,
+                "reason": reason,
+                "config": rule_config,
+            })
+
+    return result
+```
+
+### 5.4 Post-backtest Quality Gate
+
+Before an agent can be deployed to live trading, it must pass quality metrics:
+
+```python
+quality_gate = {
+    "min_sharpe": 0.3,           # 最低夏普比率
+    "max_drawdown_pct": -25.0,   # 最大回撤不超过25%
+    "min_trade_count": 5,        # 至少5笔交易（排除只持有不动的策略）
+    "min_win_rate": 30.0,        # 最低胜率30%
+    "max_daily_loss_pct": -5.0,  # 单日最大亏损不超过5%
+}
+```
+
+These are default thresholds. Users can customize them. Quality gate results are shown on the backtest result page with pass/fail indicators.
+
+### 5.5 Audit Log
+
+Every event is logged with timestamp and details:
+
+```python
+{
+    "timestamp": "2026-04-22T14:32:18",
+    "type": "trade_executed",       # or: trade_blocked, llm_called, validation, error
+    "agent_id": "linyuan",
+    "day": 87,
+    "details": {
+        "action": "buy",
+        "code": "600519.SH",
+        "qty": 100,
+        "price": 1432.00,
+        "reason": "PE 23x处于合理区间",
+    }
+}
+```
+
+Audit logs are stored in SQLite and viewable in the RiskMonitor page.
 
 ### Layer 2: Single Trade Limit
 
@@ -986,45 +1212,60 @@ Every backtest result page displays:
 
 ---
 
-## 12. Agent Lifecycle: Backtest → Save → Deploy → Continuous Operation
+## 12. Agent Lifecycle: Backtest → Validate → Save → Deploy → Continuous Operation
 
 ### 12.1 Full Agent Lifecycle
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
-│  1. CREATE  │────>│  2. BACKTEST  │────>│  3. EVALUATE │────>│ 4. DEPLOY LIVE   │
-│  Define     │     │  Run 1 year  │     │  User reviews│     │  Continuous run  │
-│  persona    │     │  simulation  │     │  metrics     │     │  on TDX mock     │
+│  1. CREATE  │────>│  2. BACKTEST  │────>│  3. VALIDATE │────>│ 4. DEPLOY LIVE   │
+│  Define     │     │  Run 1 year  │     │  Quality Gate│     │  Subprocess +    │
+│  persona +  │     │  via vnpy    │     │  metrics ≥   │     │  Message Queue   │
+│  pool +     │     │  SSE stream  │     │  thresholds  │     │  Semi-automatic  │
+│  schedule   │     │              │     │              │     │  via tdx_service │
 └─────────────┘     └──────────────┘     └──────────────┘     └──────────────────┘
                            │                     │                      │
                            ▼                     ▼                      ▼
-                    SSE stream             Decision:              Flask background
-                    real-time progress     - Save agent?          thread runs forever
-                                           - Delete?              Agent trades via TDX
-                                           - Re-run?              User confirms trades
+                    SSE stream             Pass → Save            Agent subprocess
+                    real-time progress     Fail → Re-tune         sends decisions
+                                           or discard             to Flask via MQ
+                                                                  Flask notifies user
+                                                                  User confirms → TDX
 ```
 
-### 12.2 Save Agent
+### 12.2 Agent Config Schema
 
-After backtest completes, user can:
-- **Save**: Agent definition + backtest results stored permanently in SQLite
-- **Re-run**: Re-run backtest with different parameters or time period
-- **Discard**: Delete agent and results
+Each agent is fully defined by its config, stored in SQLite:
 
-Saved agents appear in AgentLab with their backtest metrics. Multiple backtest runs per agent are kept for comparison.
-
-```python
-# SQLite schema for saved agents
+```sql
 CREATE TABLE agents (
     id TEXT PRIMARY KEY,           -- 'linyuan', 'custom_1713763200'
     name TEXT NOT NULL,
     model TEXT NOT NULL,           -- 'claude-sonnet-4-5-20250514'
     system_prompt TEXT NOT NULL,
     style_desc TEXT,
+    stock_pool JSON,               -- list of stock codes (30-50)
+    stock_pool_filter JSON,        -- filter criteria for dynamic pool updates
+    rebalance_schedule TEXT,       -- 'daily', 'weekly', 'monthly', 'intraday_5m'
+    validation_rules JSON,         -- configurable rule set (see Section 5)
+    quality_gate JSON,             -- post-backtest quality thresholds
+    initial_capital DECIMAL(15,2) DEFAULT 100000,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    status TEXT DEFAULT 'created', -- 'created', 'backtesting', 'backtested', 'deployed'
+    status TEXT DEFAULT 'created', -- 'created', 'backtesting', 'backtested', 'deployed', 'stopped'
+    subprocess_pid INTEGER,        -- PID of running agent process (null if not deployed)
 );
+```
 
+### 12.3 Save Agent + Backtest Results
+
+After backtest + validation, user can:
+- **Save**: Agent definition + backtest results stored permanently
+- **Re-run**: Re-run backtest with different parameters or time period
+- **Discard**: Delete agent and results
+
+Multiple backtest runs per agent are kept for comparison.
+
+```sql
 CREATE TABLE backtest_results (
     id TEXT PRIMARY KEY,           -- 'bt_20260422_linyuan'
     agent_id TEXT REFERENCES agents(id),
@@ -1032,165 +1273,408 @@ CREATE TABLE backtest_results (
     end_date DATE,
     initial_capital DECIMAL(15,2),
     final_nav DECIMAL(15,2),
-    metrics JSON,                  -- all metrics as JSON
+    metrics JSON,                  -- Sharpe, drawdown, win rate, etc.
+    quality_gate_result JSON,      -- pass/fail per rule
     nav_history JSON,              -- daily NAV series
     trades JSON,                   -- all trades
     thinking_log JSON,             -- all thinking entries
-    blocked_trades JSON,           -- rejected trades
-    token_usage JSON,              -- LLM call stats
+    blocked_trades JSON,           -- rejected trades + reasons
+    token_usage JSON,              -- LLM call stats + cost
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-### 12.3 Deploy to Live (Simulated) Trading
+### 12.4 Deploy Architecture: Independent Subprocess + Message Queue
 
-When user clicks "部署实盘" (Deploy):
+Each deployed agent runs as an **independent Python subprocess**. The Flask server communicates with agent processes via a message queue (using Python's `multiprocessing.Queue` or Redis).
 
-1. Agent must have at least 1 completed backtest
-2. User confirms: agent name, initial capital, model
-3. Backend creates a **persistent background thread** for this agent
-4. The agent runs on its configured schedule (daily/weekly/etc.)
-5. Each cycle:
-   - Fetch real-time data from TDX
-   - Call LLM with agent persona + live context
-   - Parse decision
-   - Check RedLine rules
-   - **Semi-automatic**: show decision to user for confirmation (via WebSocket notification)
-   - User approves → execute via `tq.order_stock()`
-   - User rejects → log rejection
+```
+┌─────────────────────────────────────────────────────┐
+│                  Flask Server                        │
+│                                                      │
+│  ┌──────────┐  ┌───────────┐  ┌──────────────────┐ │
+│  │ REST API │  │ WebSocket │  │ Message Router   │ │
+│  │ Routes   │  │ Handler   │  │ (central hub)    │ │
+│  └────┬─────┘  └─────┬─────┘  └────────┬─────────┘ │
+│       │              │                  │            │
+│       └──────────────┴──────────────────┘            │
+│                        │                             │
+│              ┌─────────┴──────────┐                  │
+│              │  Message Queue     │                  │
+│              │  (multiprocessing) │                  │
+│              └─────┬──────┬───────┘                  │
+└────────────────────┼──────┼──────────────────────────┘
+                     │      │
+          ┌──────────┘      └──────────┐
+          ▼                            ▼
+  ┌───────────────┐          ┌───────────────┐
+  │ Agent Process │          │ Agent Process │
+  │   (linyuan)   │          │   (fuyou)     │
+  │               │          │               │
+  │  Scheduler    │          │  Scheduler    │
+  │  → weekly     │          │  → daily      │
+  │               │          │               │
+  │  LLM Caller   │          │  LLM Caller   │
+  │  Validator    │          │  Validator    │
+  │               │          │               │
+  │  Sends:       │          │  Sends:       │
+  │  - heartbeat  │          │  - heartbeat  │
+  │  - decision   │          │  - decision   │
+  │  - error      │          │  - error      │
+  └───────────────┘          └───────────────┘
+```
 
-### 12.4 Continuous Agent Operation
+**Why subprocess + MQ instead of Flask threads:**
 
-The Flask server runs agent tasks in background threads:
+| Concern | Flask threads | Subprocess + MQ |
+|---------|--------------|-----------------|
+| Isolation | Agent crash kills Flask | Agent crash isolated, Flask unaffected |
+| Restart | Flask restart kills all agents | Agent can restart independently |
+| CPU/memory | Shares Flask's GIL | Separate process, no GIL contention |
+| Debugging | Mixed logs | Separate logs per agent |
+| Scaling | Limited by Flask process | Can move to separate machines |
+
+### 12.5 Agent Subprocess Implementation
 
 ```python
-import threading
+# runner/agent_process.py — runs as independent process
 
-class AgentRunner:
-    """Manages a single deployed agent's continuous operation."""
-    
-    def __init__(self, agent_id, config):
+import multiprocessing as mp
+import schedule
+import time
+from datetime import datetime
+
+class AgentProcess:
+    """Runs in its own Python process, managed by Flask."""
+
+    def __init__(self, agent_id: str, config: dict, msg_queue: mp.Queue):
         self.agent_id = agent_id
         self.config = config
+        self.msg_queue = msg_queue
         self.running = True
-        self.thread = threading.Thread(target=self._loop, daemon=True)
-        self.thread.start()
-    
-    def _loop(self):
+
+    def run(self):
+        """Main loop — runs forever until stopped."""
+        self._send("started", {"schedule": self.config["rebalance_schedule"]})
+
         while self.running:
-            # Wait for next decision time based on schedule
-            schedule = self.config.get('schedule', 'daily_close')
-            
-            if schedule == 'daily_close':
-                # Wait until 15:05 (5 min after close)
-                self._wait_until('15:05')
-            elif schedule == 'every_30min':
-                # Wait for next 30-min mark during trading hours
-                self._wait_next_30min()
-            
-            if not self.running:
-                break
-            
-            # Run decision cycle
             try:
-                self._run_decision_cycle()
+                # Wait for next rebalance time
+                if self._should_rebalance():
+                    self._run_decision_cycle()
+                time.sleep(30)  # check every 30 seconds
+            except KeyboardInterrupt:
+                break
             except Exception as e:
-                log_error(agent_id, e)
-                # Don't crash — retry next cycle
-    
+                self._send("error", {"error": str(e)})
+                time.sleep(60)  # back off on error
+
+        self._send("stopped", {})
+
+    def _should_rebalance(self) -> bool:
+        """Check if current time matches agent's rebalance schedule."""
+        now = datetime.now()
+        sched = self.config["rebalance_schedule"]
+
+        if sched == "daily":
+            # Trigger at 15:05 on trading days
+            return now.hour == 15 and now.minute == 5
+        elif sched == "weekly":
+            # Trigger at 15:05 on Mondays
+            return now.weekday() == 0 and now.hour == 15 and now.minute == 5
+        elif sched == "monthly":
+            # Trigger at 15:05 on 1st trading day
+            return now.day <= 3 and now.hour == 15 and now.minute == 5
+        elif sched == "intraday_5m":
+            # Trigger every 5 minutes during trading hours
+            return (9 <= now.hour <= 11 or 13 <= now.hour <= 15) and now.minute % 5 == 0
+        return False
+
     def _run_decision_cycle(self):
-        # 1. Fetch live data from TDX
-        market_data = fetch_live_data()
-        positions = get_current_positions()
-        
-        # 2. Build context
-        context = build_context(market_data, positions)
-        
+        """Execute one full decision cycle."""
+        # 1. Fetch live data from TDX (via tdx_service)
+        market_data = self._fetch_market_data()
+        positions = self._fetch_positions()
+
+        # 2. Build prompt context
+        context = self._build_context(market_data, positions)
+
         # 3. Call LLM
-        response = call_llm(self.config['model'], context)
-        
+        response, tokens = self._call_llm(context)
+
         # 4. Parse decision
-        decision = parse_decision(response)
-        
-        # 5. Check risk limits
-        if not check_risk_limits(decision):
-            log_blocked(self.agent_id, decision, 'risk_limit')
+        decision = self._parse_decision(response)
+
+        # 5. Validate against rules
+        validation = self._validate(decision)
+
+        if not validation.valid:
+            self._send("trade_blocked", {
+                "decision": decision,
+                "blocked_by": validation.blocked_by,
+            })
             return
-        
-        # 6. Notify user for confirmation (semi-automatic)
-        notify_user(self.agent_id, decision)
-        # User response comes via WebSocket/REST API
-    
+
+        # 6. Send to Flask for user confirmation
+        self._send("trade_proposal", {
+            "decision": decision,
+            "thinking": decision.get("thinking", ""),
+            "tokens": tokens,
+        })
+
+        # 7. Wait for user response (with timeout)
+        # Flask puts response into a response queue specific to this agent
+        user_response = self._wait_user_response(timeout=60)
+        if user_response == "approved":
+            self._execute_trade(decision)
+            self._send("trade_executed", {"decision": decision})
+        else:
+            self._send("trade_rejected", {
+                "decision": decision,
+                "reason": user_response or "timeout",
+            })
+
+    def _send(self, msg_type: str, data: dict):
+        """Send message to Flask via queue."""
+        self.msg_queue.put({
+            "agent_id": self.agent_id,
+            "type": msg_type,
+            "timestamp": datetime.now().isoformat(),
+            "data": data,
+        })
+
     def stop(self):
         self.running = False
 
-# Global registry of running agents
-_running_agents: dict[str, AgentRunner] = {}
-
-@app.route('/api/agents/<agent_id>/deploy', methods=['POST'])
-def deploy_agent(agent_id):
-    runner = AgentRunner(agent_id, config)
-    _running_agents[agent_id] = runner
-    return jsonify({'status': 'deployed', 'agent_id': agent_id})
-
-@app.route('/api/agents/<agent_id>/stop', methods=['POST'])
-def stop_agent(agent_id):
-    if agent_id in _running_agents:
-        _running_agents[agent_id].stop()
-        del _running_agents[agent_id]
-    return jsonify({'status': 'stopped'})
-
-@app.route('/api/agents/running')
-def running_agents():
-    return jsonify({
-        agent_id: {
-            'status': 'running',
-            'last_decision': runner.last_decision_time,
-            'next_decision': runner.next_decision_time,
-        }
-        for agent_id, runner in _running_agents.items()
-    })
+# Entry point for subprocess
+def start_agent_process(agent_id, config, msg_queue):
+    agent = AgentProcess(agent_id, config, msg_queue)
+    agent.run()
 ```
 
-### 12.5 User Confirmation for Live Trades
+### 12.6 Flask Message Router
+
+```python
+# runner/message_router.py — runs in Flask process
+
+import multiprocessing as mp
+import threading
+
+class MessageRouter:
+    """Routes messages between agent subprocesses and Flask endpoints."""
+
+    def __init__(self):
+        self.msg_queue = mp.Queue()
+        self.agent_processes: dict[str, mp.Process] = {}
+        self.response_queues: dict[str, mp.Queue] = {}  # per-agent response queues
+        self._listener_thread = None
+
+    def deploy_agent(self, agent_id: str, config: dict):
+        """Start an agent subprocess."""
+        response_q = mp.Queue()
+        self.response_queues[agent_id] = response_q
+
+        proc = mp.Process(
+            target=start_agent_process,
+            args=(agent_id, config, self.msg_queue),
+            daemon=True,
+        )
+        proc.start()
+        self.agent_processes[agent_id] = proc
+
+    def stop_agent(self, agent_id: str):
+        """Stop an agent subprocess."""
+        if agent_id in self.agent_processes:
+            self.response_queues[agent_id].put({"type": "stop"})
+            self.agent_processes[agent_id].join(timeout=10)
+            if self.agent_processes[agent_id].is_alive():
+                self.agent_processes[agent_id].terminate()
+            del self.agent_processes[agent_id]
+
+    def approve_trade(self, agent_id: str):
+        """User approved a trade proposal."""
+        if agent_id in self.response_queues:
+            self.response_queues[agent_id].put({"type": "approved"})
+
+    def reject_trade(self, agent_id: str, reason: str = ""):
+        """User rejected a trade proposal."""
+        if agent_id in self.response_queues:
+            self.response_queues[agent_id].put({"type": "rejected", "reason": reason})
+
+    def start_listener(self):
+        """Background thread that reads from message queue and dispatches."""
+        def _listen():
+            while True:
+                msg = self.msg_queue.get()
+                # Dispatch based on message type
+                if msg["type"] == "trade_proposal":
+                    # Push to frontend via WebSocket
+                    socketio.emit("trade_proposal", msg)
+                elif msg["type"] == "trade_executed":
+                    socketio.emit("trade_result", msg)
+                elif msg["type"] == "trade_blocked":
+                    socketio.emit("trade_blocked", msg)
+                elif msg["type"] == "error":
+                    log_error(msg["agent_id"], msg["data"])
+                # Store all messages in audit log
+                save_audit_log(msg)
+
+        self._listener_thread = threading.Thread(target=_listen, daemon=True)
+        self._listener_thread.start()
+
+    def get_status(self) -> dict:
+        """Status of all running agents."""
+        return {
+            agent_id: {
+                "pid": proc.pid,
+                "alive": proc.is_alive(),
+            }
+            for agent_id, proc in self.agent_processes.items()
+        }
+```
+
+### 12.7 User Confirmation Flow
 
 When a deployed agent makes a trade decision:
 
-1. Backend sends WebSocket event to frontend:
+1. Agent subprocess sends `trade_proposal` via message queue
+2. MessageRouter dispatches to Flask WebSocket → frontend
+3. Frontend shows notification:
    ```json
    {
      "type": "trade_proposal",
      "agent_id": "linyuan",
-     "agent_name": "林园风格",
-     "decision": {
-       "action": "buy",
-       "code": "600519.SH",
-       "name": "贵州茅台",
-       "qty": 100,
-       "price": 1432.00,
-       "reason": "PE 23x处于合理区间，回调至支撑位"
+     "data": {
+       "decision": {
+         "action": "buy",
+         "code": "600519.SH",
+         "name": "贵州茅台",
+         "qty": 100,
+         "price": 1432.00,
+         "reason": "PE 23x处于合理区间，回调至支撑位"
+       },
+       "thinking": "茅台PE 23x处于合理区间...",
+       "tokens": 1247
      }
    }
    ```
+4. User clicks "确认执行" → `POST /api/agents/{id}/approve` → router puts response → agent executes via tdx_service
+5. User clicks "拒绝" or 60s timeout → `POST /api/agents/{id}/reject` → agent logs rejection
+6. Agent sends `trade_executed` or `trade_rejected` back via queue → frontend updates
 
-2. Frontend shows notification/popup:
-   - Agent name + decision details
-   - "确认执行" / "拒绝" buttons
-   - 60-second auto-timeout → default to reject
+### 12.8 Persistence + Crash Recovery
 
-3. User response → backend executes or skips
+**Requirement**: Agents MUST resume after any interruption — planned restart, Flask crash, agent subprocess crash, or OS restart.
 
-### 12.6 Agent Status Persistence
+**Three-layer recovery:**
 
-When Flask server restarts, deployed agents resume automatically:
+**Layer 1: State Persistence (SQLite)**
+Every agent action is immediately persisted:
+
+```sql
+-- Agent state table — always in sync with reality
+CREATE TABLE agent_state (
+    agent_id TEXT PRIMARY KEY REFERENCES agents(id),
+    status TEXT NOT NULL,            -- 'running', 'stopped', 'crashed'
+    last_heartbeat DATETIME,         -- updated every 60s by agent subprocess
+    last_decision_time DATETIME,     -- last successful decision cycle
+    last_trade_time DATETIME,        -- last executed trade
+    pending_trade JSON,              -- trade awaiting user confirmation (null if none)
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Every trade and decision is recorded before execution
+-- Even if process dies mid-trade, the audit trail is intact
+```
+
+**Layer 2: Flask Restart Recovery**
+On Flask startup, `restore_deployed_agents()` runs automatically:
 
 ```python
-# On startup, check which agents were deployed
 def restore_deployed_agents():
+    """Restart all deployed agents after Flask restart."""
     deployed = db.query("SELECT * FROM agents WHERE status = 'deployed'")
     for agent in deployed:
-        runner = AgentRunner(agent.id, agent.config)
-        _running_agents[agent.id] = runner
+        state = db.query("SELECT * FROM agent_state WHERE agent_id = ?", agent.id)
+        config = load_agent_config(agent.id)
+
+        # Check if agent had a pending trade (user hadn't confirmed yet)
+        if state and state.pending_trade:
+            # Re-emit the pending trade to user via WebSocket
+            socketio.emit("trade_proposal", {
+                "agent_id": agent.id,
+                "data": state.pending_trade,
+                "note": "此交易在服务重启前等待确认，请重新确认"
+            })
+
+        # Restart agent subprocess
+        message_router.deploy_agent(agent.id, config)
+```
+
+**Layer 3: Agent Subprocess Auto-Restart**
+MessageRouter monitors agent subprocess health and auto-restarts crashed agents:
+
+```python
+class MessageRouter:
+    def _health_monitor(self):
+        """Runs every 60 seconds. Checks all agent subprocesses."""
+        while True:
+            for agent_id, proc in list(self.agent_processes.items()):
+                if not proc.is_alive():
+                    # Agent crashed — auto-restart
+                    log_error(agent_id, f"Process died (exit code {proc.exitcode}), restarting")
+                    state = db.query("SELECT * FROM agent_state WHERE agent_id = ?", agent_id)
+                    config = load_agent_config(agent_id)
+                    self.deploy_agent(agent_id, config)
+
+                    # Update state
+                    db.execute("UPDATE agent_state SET status = 'restarted' WHERE agent_id = ?", agent_id)
+                    socketio.emit("agent_recovered", {
+                        "agent_id": agent_id,
+                        "message": "Agent进程意外中断，已自动恢复"
+                    })
+
+            time.sleep(60)
+```
+
+**Layer 4: Graceful Shutdown**
+On Flask shutdown (SIGTERM/SIGINT):
+
+```python
+def graceful_shutdown():
+    """Stop all agents cleanly, preserving state."""
+    for agent_id in list(message_router.agent_processes.keys()):
+        # Agent subprocess saves its state before exiting
+        message_router.stop_agent(agent_id)
+        db.execute("UPDATE agent_state SET status = 'stopped' WHERE agent_id = ?", agent_id)
+```
+
+**Recovery scenarios:**
+
+| Scenario | What happens | Recovery |
+|----------|-------------|----------|
+| Flask restart (planned) | Graceful shutdown saves state, startup restores all agents | Auto |
+| Flask crash (unplanned) | Agent subprocesses die (daemon), SQLite state intact | Startup restores |
+| Agent subprocess crash | Health monitor detects, auto-restarts agent | Auto within 60s |
+| User rejects during crash | Pending trade persisted in SQLite, re-emitted on restart | Auto |
+| Mid-trade crash | Audit log shows last state, no double-execution (trade idempotency) | Manual check |
+| Full OS restart | All processes gone, SQLite on disk, Flask service auto-starts agents | Auto on boot |
+
+### 12.9 Agent Process Monitoring
+
+```python
+# Health check: each agent sends heartbeat every 60 seconds
+# If no heartbeat for 3 minutes → mark as "unresponsive"
+# Frontend shows agent status: running / unresponsive / stopped / error
+
+@app.route('/api/agents/running')
+def running_agents():
+    return jsonify(message_router.get_status())
+
+@app.route('/api/agents/<agent_id>/logs')
+def agent_logs(agent_id):
+    """Return recent audit log entries for this agent."""
+    return jsonify(get_agent_audit_log(agent_id, limit=100))
 ```
 
 ---
