@@ -92,10 +92,16 @@ def test_trading_calendar_fallback_when_tdx_api_missing(vnpy_configured, monkeyp
 
 def test_financial_cache_loads_pe_pb_roe(tdx_ready, tmp_path, monkeypatch):
     """load_financial writes PE/PB/ROE for a handful of stocks into the cache DB."""
-    # Redirect the cache to tmp_path so we don't mutate real data/financial_cache.db
-    from scripts.setup import load_financial as lf
-    monkeypatch.setattr(lf, 'CACHE_PATH', tmp_path / 'financial_cache.db')
+    # Redirect the cache to tmp_path so we don't mutate real data/financial_cache.db.
+    # Task 7: load_financial now uses storage.financial() rather than a module-level
+    # CACHE_PATH; inject an isolated SQLiteFinancialStore instead.
+    import storage
+    from storage.sqlite_financial import SQLiteFinancialStore
+    store = SQLiteFinancialStore(tmp_path=tmp_path)
+    store.init_schema()
+    storage.set_financial(store)
 
+    from scripts.setup import load_financial as lf
     symbols = ['600519', '000858', '600036', '300750', '002415']
     written = lf.load_financial(symbols)
     assert written >= 4, f'expected ≥4/5 stocks with financial data, got {written}'
