@@ -178,3 +178,59 @@ class PromptVersionStore(Protocol):
     def list_for_agent(self, agent_id: str) -> list[PromptVersion]:
         """Ascending by version_number."""
         ...
+
+
+# --- Added in P2b ---
+
+
+@dataclass
+class StockStatusRow:
+    """Per-stock tradability flags refreshed daily from TDX snapshot."""
+    code: str
+    name: str | None
+    is_st: bool
+    is_suspended: bool
+    is_delisted: bool
+    listing_date: str | None = None
+    updated_at: str | None = None
+
+
+@runtime_checkable
+class RedLineStore(Protocol):
+    """Single-row global RedLine config."""
+    def init_schema(self) -> None: ...
+    def get(self) -> dict:
+        """Return current RedLine. Must return DEFAULT_REDLINES if table empty."""
+        ...
+    def set(self, values: dict) -> None:
+        """Atomically replace the single row. Records a 'redline_changed'
+        audit entry is the engine's responsibility, not this store's."""
+        ...
+
+
+@runtime_checkable
+class StockStatusStore(Protocol):
+    """Per-stock tradability flags (ST / suspended / delisted)."""
+    def init_schema(self) -> None: ...
+    def upsert(self, row: StockStatusRow) -> None: ...
+    def bulk_upsert(self, rows: list[StockStatusRow]) -> int:
+        """Returns count written."""
+        ...
+    def get(self, code: str) -> StockStatusRow | None: ...
+    def is_st(self, code: str) -> bool:
+        """Missing row -> False (trade allowed until proven otherwise)."""
+        ...
+    def is_suspended(self, code: str) -> bool: ...
+
+
+@runtime_checkable
+class AuditStore(Protocol):
+    """Append-only audit log; never truncated in MVP."""
+    def init_schema(self) -> None: ...
+    def log(self, entry) -> int:
+        """Insert an AuditEntry. Returns the new row id."""
+        ...
+    def query_by_agent(self, agent_id: str, limit: int = 100) -> list[dict]:
+        """Most recent first."""
+        ...
+    def query_by_kind(self, kind: str, limit: int = 100) -> list[dict]: ...

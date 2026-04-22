@@ -150,3 +150,22 @@ def test_prompt_version_store_protocol_runtime_checkable():
         def list_for_agent(self, agent_id): return []
 
     assert isinstance(Compliant(), PromptVersionStore)
+
+
+def test_redline_store_protocol_exists():
+    from storage.base import RedLineStore
+    assert hasattr(RedLineStore, 'init_schema')
+    assert hasattr(RedLineStore, 'get')
+    assert hasattr(RedLineStore, 'set')
+
+
+def test_stock_status_store_protocol_exists():
+    from storage.base import StockStatusStore
+    for m in ('init_schema', 'upsert', 'get', 'is_st', 'is_suspended', 'bulk_upsert'):
+        assert hasattr(StockStatusStore, m), f'missing {m}'
+
+
+def test_audit_store_protocol_exists():
+    from storage.base import AuditStore
+    for m in ('init_schema', 'log', 'query_by_agent', 'query_by_kind'):
+        assert hasattr(AuditStore, m), f'missing {m}'
