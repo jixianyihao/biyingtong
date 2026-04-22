@@ -65,35 +65,29 @@ def test_kline_batch_hs300_top50(tdx_ready, vnpy_configured):
 
 
 def test_trading_calendar_returns_valid_dates(tdx_ready):
-    """trading_calendar.get_trading_days returns correct count for a known range."""
+    """After migration: uses storage.calendar() (Task 3)."""
     from datetime import date
+    from storage import calendar as storage_calendar
 
-    from trading_calendar import get_trading_days
-
-    days = get_trading_days(date(2025, 4, 1), date(2025, 4, 30))
-    # April 2025: 30 days. Weekends: 8. May Day holiday 1 day (Apr 30 can be work).
-    # Expected 20–22 trading days. Also: no weekends in result.
+    days = storage_calendar().get_trading_days(date(2025, 4, 1), date(2025, 4, 30))
     assert 18 <= len(days) <= 23, f'expected 18–23 trading days in Apr 2025, got {len(days)}'
     for d in days:
-        assert d.weekday() < 5, f'{d} is a weekend; calendar must exclude weekends'
-    # Ordered ascending
+        assert d.weekday() < 5, f'{d} is a weekend'
     assert days == sorted(days)
 
 
 def test_trading_calendar_fallback_when_tdx_api_missing(vnpy_configured, monkeypatch):
-    """If tq.get_trading_calendar is missing, fallback uses vnpy_sqlite K-line dates."""
-    import trading_calendar as tc
-
-    # Force the fallback path: monkeypatch the primary-path attempt to raise.
-    monkeypatch.setattr(tc, '_try_tdx_calendar', lambda s, e: None)
-
+    """Force fallback path."""
     from datetime import date
-    days = tc.get_trading_days(date(2025, 4, 1), date(2025, 4, 30))
-    # We loaded 茅台 + 50 top in earlier tasks, so K-line-dates fallback has data.
-    assert len(days) >= 15, (
-        f'fallback should return ≥15 trading days; got {len(days)}. '
-        'If this fails, re-run Tasks 5–6 to populate vnpy_sqlite.'
-    )
+    from storage.sqlite_calendar import SQLiteCalendarStore
+    import storage
+
+    store = SQLiteCalendarStore()
+    monkeypatch.setattr(store, '_try_primary', lambda *a, **kw: None)
+    storage.set_calendar(store)
+
+    days = store.get_trading_days(date(2025, 4, 1), date(2025, 4, 30))
+    assert len(days) >= 15
 
 
 def test_financial_cache_loads_pe_pb_roe(tdx_ready, tmp_path, monkeypatch):
@@ -163,8 +157,8 @@ def test_full_pipeline_integration(tdx_ready, vnpy_configured):
 
     # 3. Trading calendar works over the same range
     from datetime import date
-    from trading_calendar import get_trading_days
-    days = get_trading_days(date(2025, 4, 1), date(2026, 4, 1))
+    from storage import calendar as storage_calendar
+    days = storage_calendar().get_trading_days(date(2025, 4, 1), date(2026, 4, 1))
     # A full year: ~244 trading days
     assert 230 <= len(days) <= 260, (
         f'expected 230-260 trading days in Apr-2025 -> Apr-2026, got {len(days)}'
