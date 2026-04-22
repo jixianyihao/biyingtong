@@ -3,3 +3,13 @@ __pycache__/
 .playwright-mcp/
 *.png
 .claude/
+
+# Runtime databases (added in P0)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# pytest (added in P0)
+.pytest_cache/
