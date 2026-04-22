@@ -38,3 +38,12 @@ def _close_peewee_db_between_tests():
         return
     if not _peewee_db.is_closed():
         _peewee_db.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_storage_between_tests():
+    """Ensure every test starts with clean storage singletons."""
+    import storage
+    storage.reset()
+    yield
+    storage.reset()
