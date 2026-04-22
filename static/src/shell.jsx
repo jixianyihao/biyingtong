@@ -113,6 +113,7 @@ function Sidebar({ active, onNav, collapsed, onToggleCollapse }) {
 
 function TopBar({ active, onTweakOpen }) {
   const [tdxOpen, setTdxOpen] = useState(false);
+  const [account, setAccount] = useState(null);
   const titles = {
     dashboard: ['我的盈亏工作台', 'My P&L Dashboard'],
     screener: ['选股器', 'Factor Screener'],
@@ -123,6 +124,19 @@ function TopBar({ active, onTweakOpen }) {
     risk: ['安全管控', 'Safety & Guardrails'],
   };
   const [t1, t2] = titles[active] || titles.dashboard;
+
+  useEffect(() => {
+    function load() {
+      BYT.getAsset().then(r => { if (r && !r.error) setAccount(r); }).catch(() => {});
+    }
+    load();
+    var iv = setInterval(load, 15000);
+    return function() { clearInterval(iv); };
+  }, []);
+
+  var totalAsset = account ? (parseFloat(account.Asset || account.TotalAsset || account.total_asset || 0)) : null;
+  var todayPnl = account ? (parseFloat(account.ProfitLoss || account.TodayIncome || account.today_income || account.TodayProfit || 0)) : null;
+  var pnlPct = totalAsset > 0 && todayPnl !== null ? (todayPnl / totalAsset * 100) : null;
 
   return (
     <header style={{
@@ -164,15 +178,23 @@ function TopBar({ active, onTweakOpen }) {
 
       {/* account + P/L */}
       <div className="mono" style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 11.5 }}>
-        <div>
-          <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>总资产 </span>
-          <span style={{ color: 'var(--text-hi)', fontWeight: 600 }}>¥2,847,213.55</span>
-        </div>
-        <div>
-          <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>今日盈亏 </span>
-          <span className="up" style={{ fontWeight: 600 }}>+¥23,441.20</span>
-          <span className="up" style={{ marginLeft: 4, fontSize: 10.5 }}>+0.83%</span>
-        </div>
+        {totalAsset !== null ? (
+          <>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>总资产 </span>
+              <span style={{ color: 'var(--text-hi)', fontWeight: 600 }}>¥{totalAsset.toLocaleString()}</span>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>今日盈亏 </span>
+              <span className={todayPnl >= 0 ? 'up' : 'down'} style={{ fontWeight: 600 }}>{todayPnl >= 0 ? '+' : ''}¥{Math.abs(todayPnl).toLocaleString()}</span>
+              {pnlPct !== null && <span className={pnlPct >= 0 ? 'up' : 'down'} style={{ marginLeft: 4, fontSize: 10.5 }}>{pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%</span>}
+            </div>
+          </>
+        ) : (
+          <div>
+            <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>账户未连接</span>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 6 }}>
