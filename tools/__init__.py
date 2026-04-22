@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from llm.base import ToolSpec
 
-from . import get_financials, get_kline, get_snapshot, get_technical, place_decision
+from . import (
+    get_financials, get_index, get_kline, get_news, get_portfolio,
+    get_snapshot, get_technical, place_decision,
+)
 
 ALL_TOOLS: dict = {
     'place_decision': (place_decision.SPEC, place_decision.call),
@@ -11,6 +14,9 @@ ALL_TOOLS: dict = {
     'get_snapshot': (get_snapshot.SPEC, get_snapshot.call),
     'get_financials': (get_financials.SPEC, get_financials.call),
     'get_technical': (get_technical.SPEC, get_technical.call),
+    'get_index': (get_index.SPEC, get_index.call),
+    'get_portfolio': (get_portfolio.SPEC, get_portfolio.call),
+    'get_news': (get_news.SPEC, get_news.call),
 }
 
 
