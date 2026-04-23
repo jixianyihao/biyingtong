@@ -37,9 +37,10 @@ def build_messages(
         lines.append('市场快照：')
         for k, v in market_context.items():
             lines.append(f'  - {k}: {v}')
-    if market_snapshot and market_snapshot.get('stocks'):
+    has_snapshot = bool(market_snapshot and market_snapshot.get('stocks'))
+    if has_snapshot:
         lines.append('')
-        lines.append('研究数据:')
+        lines.append('研究数据（本日完整快照——K线/财务/技术指标已齐全）:')
         for code, data in market_snapshot['stocks'].items():
             lines.append(f'  {code}:')
             ks = data.get('kline_summary')
@@ -58,10 +59,19 @@ def build_messages(
                 tech_str = ', '.join(f'{k}={v}' for k, v in tech.items())
                 lines.append(f'    技术: {tech_str}')
     lines.append('')
-    lines.append(
-        '使用工具调研后调用 place_decision 给出当日决策（'
-        'buy / sell / hold 三选一，含理由与完整思考）。'
-    )
+    if has_snapshot:
+        lines.append(
+            '上述研究数据已经涵盖常规决策所需的K线/财务/技术指标。'
+            '请**直接**基于这份数据调用 place_decision（'
+            'buy / sell / hold 三选一，含理由与完整思考）。'
+            '除非数据明显缺失某个关键维度，不要重复调用 get_kline/'
+            'get_financials/get_technical——snapshot 已经是今天的最新数据。'
+        )
+    else:
+        lines.append(
+            '使用工具调研后调用 place_decision 给出当日决策（'
+            'buy / sell / hold 三选一，含理由与完整思考）。'
+        )
     user_msg = '\n'.join(lines)
     return [
         Message(role='system', content=system_prompt),

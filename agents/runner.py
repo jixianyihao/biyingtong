@@ -11,7 +11,7 @@ from validation.engine import ValidationEngine
 from .prompt_builder import build_messages, prompt_hash
 
 
-_MAX_TOOL_ITERATIONS = 8
+_MAX_TOOL_ITERATIONS = 4  # snapshot pre-loads research; LLM should decide within a few turns
 
 
 def _portfolio_hash(portfolio: dict) -> str:
