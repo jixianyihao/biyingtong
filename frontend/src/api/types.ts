@@ -32,6 +32,7 @@ export type Agent = {
   status: string;
   health_score: number;
   trust_rating: string;
+  current_prompt_version_id: number | null;
   created_at: string | null;
 };
 

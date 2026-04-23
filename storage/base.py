@@ -265,6 +265,17 @@ class BacktestResultStore(Protocol):
         """Idempotent by id."""
         ...
 
+    def list_sessions(self, limit: int = 50) -> list:
+        """Return recent sessions with aggregate counts.
+
+        Each entry: {
+          session_id, start_date, end_date, agent_ids (list),
+          notes, created_at, agent_count, baseline_count
+        }
+        Most recent first.
+        """
+        ...
+
 
 @runtime_checkable
 class LLMDecisionCacheStore(Protocol):

@@ -313,10 +313,7 @@ function AgentDetail({
         <StatCell
           label="Prompt 版本"
           value={(() => {
-            // Backend returns current_prompt_version_id on /api/agents/:id even
-            // though the shared Agent type does not yet expose it — cast locally.
-            const pv = (agent as unknown as { current_prompt_version_id?: string | null })
-              .current_prompt_version_id;
+            const pv = agent.current_prompt_version_id;
             return pv ? `v${String(pv).slice(0, 6)}` : '—';
           })()}
           accent="brand"

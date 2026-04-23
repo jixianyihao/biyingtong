@@ -58,45 +58,9 @@ def list_backtest_sessions():
         ...
       ]
     """
-    import json as _json
-    import sqlite3
+    limit = int(request.args.get('limit', '50'))
     import storage
-    from flask import request as req
-
-    limit = int(req.args.get('limit', '50'))
-    # Use the configured store's db path so tests with tmp_path work.
-    db_path = storage.backtests()._db_path
-    con = sqlite3.connect(db_path)
-    try:
-        try:
-            rows = con.execute(
-                '''SELECT s.id, s.start_date, s.end_date, s.agent_ids,
-                          s.notes, s.created_at,
-                          (SELECT COUNT(*) FROM backtest_results
-                               WHERE session_id=s.id) AS agent_ct,
-                          (SELECT COUNT(*) FROM baseline_results
-                               WHERE session_id=s.id) AS baseline_ct
-                   FROM backtest_sessions s
-                   ORDER BY s.created_at DESC LIMIT ?''',
-                (limit,),
-            ).fetchall()
-        except sqlite3.OperationalError:
-            rows = []
-    finally:
-        con.close()
-    return jsonify([
-        {
-            'session_id': r[0],
-            'start_date': r[1],
-            'end_date': r[2],
-            'agent_ids': _json.loads(r[3]) if r[3] else [],
-            'notes': r[4],
-            'created_at': r[5],
-            'agent_count': r[6],
-            'baseline_count': r[7],
-        }
-        for r in rows
-    ])
+    return jsonify(storage.backtests().list_sessions(limit))
 
 
 @api_bp.route('/backtests/<result_id>')

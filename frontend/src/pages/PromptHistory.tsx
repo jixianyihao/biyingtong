@@ -191,11 +191,8 @@ export function PromptHistory() {
   const persona = personasQ.data?.find((p) => p.id === agent?.persona_id);
   const model = modelsQ.data?.find((m) => m.id === agent?.model_id);
 
-  // Match the current prompt_version_id (may not be exposed on Agent type)
-  const currentPromptVersionId = agent
-    ? (agent as unknown as { current_prompt_version_id?: number | string | null })
-        .current_prompt_version_id
-    : null;
+  // Match the current prompt_version_id
+  const currentPromptVersionId = agent ? agent.current_prompt_version_id : null;
 
   const isLoading = agentQ.isLoading || versionsQ.isLoading;
   const error = agentQ.error || versionsQ.error;

@@ -142,3 +142,43 @@ class SQLiteBacktestResultStore(BacktestResultStore):
         finally:
             con.close()
         return [_row_to_result(r) for r in rows]
+
+    def list_sessions(self, limit: int = 50) -> list:
+        import json as _json
+        con = sqlite3.connect(self._db_path)
+        try:
+            con.executescript(SCHEMA_BACKTEST_SESSIONS)
+            con.executescript(SCHEMA_BACKTEST_RESULTS)
+            # Also ensure baseline_results exists so the subquery doesn't crash
+            # on first call. The baselines schema lives in a sibling module.
+            try:
+                from data_schema.baseline_state import SCHEMA_BASELINE_RESULTS
+                con.executescript(SCHEMA_BASELINE_RESULTS)
+            except Exception:  # noqa: BLE001
+                pass
+            rows = con.execute(
+                '''SELECT s.id, s.start_date, s.end_date, s.agent_ids, s.notes,
+                          s.created_at,
+                          (SELECT COUNT(*) FROM backtest_results WHERE session_id=s.id) AS agent_ct,
+                          (SELECT COUNT(*) FROM baseline_results WHERE session_id=s.id) AS baseline_ct
+                   FROM backtest_sessions s
+                   ORDER BY s.created_at DESC LIMIT ?''',
+                (limit,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        finally:
+            con.close()
+        return [
+            {
+                'session_id': r[0],
+                'start_date': r[1],
+                'end_date': r[2],
+                'agent_ids': _json.loads(r[3]) if r[3] else [],
+                'notes': r[4],
+                'created_at': r[5],
+                'agent_count': r[6],
+                'baseline_count': r[7],
+            }
+            for r in rows
+        ]
