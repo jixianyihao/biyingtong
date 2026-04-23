@@ -9,7 +9,7 @@
 - 前端 `recharts` 4-curve NAV 图 + Trades 表 + Thinking 抽屉 + QualityGate 面板 + StrategyRating 面板。所有新组件都是 BacktestLab 的子视图，通过已有 session 数据拉新端点。
 - 不动 SSE（P3-D 再做）。Thinking 是跑完读，不是流式看。
 
-**Tech Stack:** Python 3.10 / Flask / SQLite (JSON columns) / React 19 / TypeScript / TanStack Query / recharts 3.x
+**Tech Stack:** Python 3.10 / Flask / SQLite (JSON columns) / React 19 / TypeScript / TanStack Query / lightweight-charts 4.x (TradingView)
 
 ---
 
@@ -27,7 +27,7 @@
 - `tests/test_backtest_observability.py` — 新测试文件
 
 **Frontend:**
-- `frontend/package.json` — 加 `recharts ^3.2`
+- `frontend/package.json` — 加 `lightweight-charts ^4.2`
 - `frontend/src/api/types.ts` — 加 `NavPoint` / `TradeRow` / `ThinkingEntry` 类型
 - `frontend/src/api/hooks.ts` — 加 `useBacktestNav` / `useBacktestTrades` / `useBacktestThinking` / `useBacktestRating`
 - `frontend/src/components/NavChart.tsx` — 新组件
@@ -1234,20 +1234,20 @@ If (B): skip directly to Task 7 and add copy to `NavChart.tsx`: "对照组曲线
 
 ---
 
-### Task 7: 前端安装 recharts + 加类型 + 加 hooks
+### Task 7: 前端安装 lightweight-charts + 加类型 + 加 hooks
 
 **Files:**
 - Modify: `frontend/package.json`
 - Modify: `frontend/src/api/types.ts`
 - Modify: `frontend/src/api/hooks.ts`
 
-- [ ] **Step 1: 安装 recharts**
+- [ ] **Step 1: 安装 lightweight-charts**
 
 ```bash
-cd frontend && npm install recharts@^3.2
+cd frontend && npm install lightweight-charts@^4.2
 ```
 
-Expected: `package.json` 和 `package-lock.json` 更新，`dependencies.recharts` 出现。
+Expected: `package.json` 和 `package-lock.json` 更新，`dependencies.lightweight-charts` 出现。
 
 - [ ] **Step 2: 加类型定义**
 
@@ -1399,51 +1399,124 @@ git commit -m "feat(p3a): frontend types + hooks for nav/trades/thinking/rating"
 
 - [ ] **Step 1: 实现 NavChart**
 
-Create `frontend/src/components/NavChart.tsx`:
+Create `frontend/src/components/NavChart.tsx`. lightweight-charts 是命令式 API，用 `useEffect` 管理 chart 生命周期 + `useRef` 持有 DOM 容器：
 
 ```typescript
+import { useEffect, useRef } from 'react';
 import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  createChart,
+  ColorType,
+  LineStyle,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import type { NavResponse } from '../api/types';
 
-type MergedPoint = {
-  date: string;
-  agent?: number;
-  [baselineKey: string]: number | string | undefined;
-};
+// Agent line = brand gold; baselines walk these accent colors
+const COLORS = ['#c9a227', '#808080', '#3b82f6', '#a855f7', '#22c55e'];
 
-function mergeCurves(data: NavResponse): MergedPoint[] {
-  const byDate = new Map<string, MergedPoint>();
-  for (const p of data.agent) {
-    byDate.set(p.date, { date: p.date, agent: p.equity });
-  }
-  for (const b of data.baselines) {
-    for (const p of b.curve) {
-      const row = byDate.get(p.date) ?? { date: p.date };
-      row[b.name] = p.equity;
-      byDate.set(p.date, row);
-    }
-  }
-  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+function toTimestamp(dateStr: string): UTCTimestamp {
+  // Shanghai close is 15:00 CST (UTC+8); lightweight-charts treats time as UTC
+  // seconds. Using midnight UTC is fine — lib only uses date for x-axis labels.
+  return Math.floor(new Date(dateStr + 'T00:00:00Z').getTime() / 1000) as UTCTimestamp;
 }
 
-const COLORS = [
-  'var(--brand)',        // agent — gold
-  'var(--text-dim)',     // baseline 1
-  'var(--accent, #3b82f6)', // baseline 2
-  'var(--accent-2, #a855f7)', // baseline 3
-];
-
 export function NavChart({ data }: { data: NavResponse | undefined }) {
-  if (!data) return <div className="text-text-faint text-sm">加载中…</div>;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Line'>[]>([]);
+
+  // Create chart once; destroy on unmount
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 320,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#8a8a8a',
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: 'rgba(120,120,120,0.15)', style: LineStyle.Dotted },
+        horzLines: { color: 'rgba(120,120,120,0.15)', style: LineStyle.Dotted },
+      },
+      timeScale: {
+        borderColor: 'rgba(120,120,120,0.3)',
+        timeVisible: false,
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(120,120,120,0.3)',
+      },
+      crosshair: {
+        mode: 1, // magnet
+      },
+    });
+    chartRef.current = chart;
+
+    // Resize on container size change
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        chart.applyOptions({ width: e.contentRect.width });
+      }
+    });
+    ro.observe(containerRef.current);
+
+    return () => {
+      ro.disconnect();
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = [];
+    };
+  }, []);
+
+  // Rebuild series whenever data changes
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !data) return;
+
+    // Remove existing series
+    for (const s of seriesRef.current) {
+      chart.removeSeries(s);
+    }
+    seriesRef.current = [];
+
+    const agentSeries = chart.addLineSeries({
+      color: COLORS[0],
+      lineWidth: 2,
+      title: 'Agent',
+    });
+    agentSeries.setData(
+      data.agent.map((p) => ({
+        time: toTimestamp(p.date),
+        value: p.equity,
+      })),
+    );
+    seriesRef.current.push(agentSeries);
+
+    data.baselines.forEach((b, i) => {
+      const s = chart.addLineSeries({
+        color: COLORS[(i + 1) % COLORS.length],
+        lineWidth: 1,
+        title: b.name,
+      });
+      s.setData(
+        b.curve.map((p) => ({
+          time: toTimestamp(p.date),
+          value: p.equity,
+        })),
+      );
+      seriesRef.current.push(s);
+    });
+
+    chart.timeScale().fitContent();
+  }, [data]);
+
+  if (!data) {
+    return <div className="text-text-faint text-sm">加载中…</div>;
+  }
   if (data.agent.length === 0) {
     return (
       <div className="text-text-faint text-sm italic">
@@ -1452,62 +1525,52 @@ export function NavChart({ data }: { data: NavResponse | undefined }) {
     );
   }
 
-  const merged = mergeCurves(data);
-  const baselineNames = data.baselines.map((b) => b.name);
+  const hasBaselines = data.baselines.length > 0;
 
   return (
-    <div style={{ width: '100%', height: 320 }}>
-      <ResponsiveContainer>
-        <LineChart data={merged}>
-          <CartesianGrid stroke="var(--panel-border-soft)" strokeDasharray="3 3" />
-          <XAxis
-            dataKey="date"
-            tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
-            stroke="var(--panel-border-soft)"
+    <div>
+      <div ref={containerRef} style={{ width: '100%', height: 320 }} />
+      <div className="flex flex-wrap gap-3 mt-2 text-[11px]">
+        <LegendSwatch color={COLORS[0]} label="Agent" />
+        {data.baselines.map((b, i) => (
+          <LegendSwatch
+            key={b.name}
+            color={COLORS[(i + 1) % COLORS.length]}
+            label={b.name}
           />
-          <YAxis
-            tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
-            stroke="var(--panel-border-soft)"
-            tickFormatter={(v) => `¥${(v / 10_000).toFixed(1)}万`}
-            domain={['dataMin', 'dataMax']}
-          />
-          <Tooltip
-            contentStyle={{
-              background: 'var(--bg-2)',
-              border: '1px solid var(--panel-border-soft)',
-              fontSize: 11,
-            }}
-            labelStyle={{ color: 'var(--text-hi)' }}
-            formatter={(v: number) =>
-              `¥${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-            }
-          />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Line
-            type="monotone"
-            dataKey="agent"
-            stroke={COLORS[0]}
-            dot={false}
-            strokeWidth={2}
-            name="Agent"
-          />
-          {baselineNames.map((name, i) => (
-            <Line
-              key={name}
-              type="monotone"
-              dataKey={name}
-              stroke={COLORS[(i + 1) % COLORS.length]}
-              dot={false}
-              strokeWidth={1.5}
-              name={name}
-            />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
+        ))}
+        {!hasBaselines && (
+          <span className="text-text-faint italic">
+            （本次无 baseline 对照曲线）
+          </span>
+        )}
+      </div>
     </div>
   );
 }
+
+function LegendSwatch({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        style={{
+          width: 14,
+          height: 3,
+          background: color,
+          borderRadius: 1,
+          display: 'inline-block',
+        }}
+      />
+      <span className="text-text-dim">{label}</span>
+    </span>
+  );
+}
 ```
+
+**Notes for reviewer:**
+- lightweight-charts is imperative: chart instance lives in a ref, not React state. Two separate useEffects — mount/unmount vs data-sync — are the documented pattern.
+- Legend is hand-rolled because lightweight-charts v4 has no built-in Legend component. Colors come from a fixed palette, NOT CSS vars, because the lib wants hex strings (no var() support in canvas rendering).
+- `toTimestamp` uses UTC midnight — safe for date-only daily data. Intraday (future P3) will need CST timezone conversion.
 
 - [ ] **Step 2: 构建确认通过**
 
