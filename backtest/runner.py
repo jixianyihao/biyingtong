@@ -136,11 +136,20 @@ class BacktestRunner:
         elif model_id:
             # Non-empty model_id but not in registry → log warning
             from validation.base import AuditEntry
-            storage.audit().log(AuditEntry(
-                kind='warning', agent_id=agent_id,
-                persona_id=persona_id, model_id=model_id,
-                details={'kind': 'unknown_model', 'model_id': model_id},
-            ))
+            # Dedup: skip if we already warned about this exact (agent, model)
+            prior = storage.audit().query_by_agent(agent_id, limit=200)
+            already_warned = any(
+                r.get('kind') == 'warning'
+                and r.get('details', {}).get('kind') == 'unknown_model'
+                and r.get('details', {}).get('model_id') == model_id
+                for r in prior
+            )
+            if not already_warned:
+                storage.audit().log(AuditEntry(
+                    kind='warning', agent_id=agent_id,
+                    persona_id=persona_id, model_id=model_id,
+                    details={'kind': 'unknown_model', 'model_id': model_id},
+                ))
 
         overall, zones = aggregate(daily_records, cutoff=cutoff,
                                    initial_capital=cap)

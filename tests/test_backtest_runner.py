@@ -194,6 +194,57 @@ def test_unknown_model_audits_warning(wired_full, monkeypatch):
     assert any(w['details'].get('kind') == 'unknown_model' for w in warns)
 
 
+def test_unknown_model_audit_is_deduplicated(wired_full, monkeypatch):
+    """Running twice with the same unknown model_id should leave ONE warning, not two."""
+    import backtest.runner as mod
+    import storage
+    from datetime import date, timedelta
+    from llm.mock import MockLLM
+    from backtest.runner import BacktestRunner
+
+    agent = wired_full.agents().create_from_persona(
+        persona_id='linyuan', model_id='ghost-model-xyz',
+        display_name='UnknownDup',
+    )
+
+    days = [date(2025, 3, 1) + timedelta(days=i) for i in range(3)]
+    prices = [(d, 100.0) for d in days]
+    monkeypatch.setattr(mod, '_load_daily_closes', lambda c, s, e: prices)
+    monkeypatch.setattr(mod, '_trading_days', lambda s, e: days)
+
+    hold = {'tool_calls': [{'id': 'c', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'nothing to trade today right now',
+                                      'thinking': 't'}}],
+            'stop_reason': 'tool_use'}
+
+    # First run — should emit 1 warning
+    llm1 = MockLLM([hold] * 3)
+    BacktestRunner(llm=llm1).run(
+        session_id='dup-1', agent_id=agent.id,
+        start_date='2025-03-01', end_date='2025-03-03',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+    )
+    warns_after_first = [r for r in storage.audit().query_by_agent(agent.id)
+                          if r['kind'] == 'warning'
+                          and r.get('details', {}).get('kind') == 'unknown_model']
+    assert len(warns_after_first) == 1
+
+    # Second run with SAME agent — should NOT emit a second warning
+    llm2 = MockLLM([hold] * 3)
+    BacktestRunner(llm=llm2).run(
+        session_id='dup-2', agent_id=agent.id,
+        start_date='2025-03-01', end_date='2025-03-03',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+    )
+    warns_after_second = [r for r in storage.audit().query_by_agent(agent.id)
+                           if r['kind'] == 'warning'
+                           and r.get('details', {}).get('kind') == 'unknown_model']
+    assert len(warns_after_second) == 1, (
+        f'expected 1 dedup-ed warning, got {len(warns_after_second)}'
+    )
+
+
 def test_divergence_flag_is_computed(wired_full, monkeypatch):
     """BacktestRunner fills divergence_flag from zone_stats."""
     import backtest.runner as mod
