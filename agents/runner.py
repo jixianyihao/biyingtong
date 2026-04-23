@@ -123,16 +123,36 @@ class AgentRunner:
                         decisions_executed.append(result.decision_out)
                     terminated = True
                     break
-                # Non-terminator tool: ack (MVP keeps loop simple; P2e will
-                # wire real tool execution).
-                tool_result_blocks.append({
-                    'type': 'tool_result',
-                    'tool_use_id': call.id,
-                    'content': json.dumps({
-                        'ack': True,
-                        'note': 'MVP stub — real tool execution not yet wired',
-                    }),
-                })
+                # Execute the real tool via tools registry
+                entry = allowed.get(call.name)
+                if entry is None:
+                    tool_result_blocks.append({
+                        'type': 'tool_result',
+                        'tool_use_id': call.id,
+                        'content': json.dumps({
+                            'error': f'tool {call.name!r} not allowed for this agent',
+                        }),
+                        'is_error': True,
+                    })
+                    continue
+                _spec, tool_fn = entry
+                try:
+                    result = tool_fn(call.input or {})
+                    tool_result_blocks.append({
+                        'type': 'tool_result',
+                        'tool_use_id': call.id,
+                        'content': json.dumps(result, ensure_ascii=False,
+                                              default=str),
+                    })
+                except Exception as e:  # noqa: BLE001
+                    tool_result_blocks.append({
+                        'type': 'tool_result',
+                        'tool_use_id': call.id,
+                        'content': json.dumps({
+                            'error': f'{type(e).__name__}: {e}',
+                        }),
+                        'is_error': True,
+                    })
             if terminated:
                 break
             if tool_result_blocks:

@@ -8,15 +8,26 @@ from . import (
     get_snapshot, get_technical, place_decision,
 )
 
+def _bind(mod):
+    """Return a thunk that looks up mod.call at invocation time.
+
+    This keeps the tool function reference dynamic so tests can
+    monkeypatch `<module>.call` and have AgentRunner pick up the patch.
+    """
+    def _invoke(input):
+        return mod.call(input)
+    return _invoke
+
+
 ALL_TOOLS: dict = {
-    'place_decision': (place_decision.SPEC, place_decision.call),
-    'get_kline': (get_kline.SPEC, get_kline.call),
-    'get_snapshot': (get_snapshot.SPEC, get_snapshot.call),
-    'get_financials': (get_financials.SPEC, get_financials.call),
-    'get_technical': (get_technical.SPEC, get_technical.call),
-    'get_index': (get_index.SPEC, get_index.call),
-    'get_portfolio': (get_portfolio.SPEC, get_portfolio.call),
-    'get_news': (get_news.SPEC, get_news.call),
+    'place_decision': (place_decision.SPEC, _bind(place_decision)),
+    'get_kline': (get_kline.SPEC, _bind(get_kline)),
+    'get_snapshot': (get_snapshot.SPEC, _bind(get_snapshot)),
+    'get_financials': (get_financials.SPEC, _bind(get_financials)),
+    'get_technical': (get_technical.SPEC, _bind(get_technical)),
+    'get_index': (get_index.SPEC, _bind(get_index)),
+    'get_portfolio': (get_portfolio.SPEC, _bind(get_portfolio)),
+    'get_news': (get_news.SPEC, _bind(get_news)),
 }
 
 
