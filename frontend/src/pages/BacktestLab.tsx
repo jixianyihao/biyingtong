@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   useCreateAgent,
-  useJobStatus,
+  useJobStatusStream,
   useModels,
   usePersonas,
   useSession,
@@ -342,7 +342,7 @@ function JobPanel({
 
       {(!job || job.state === 'queued' || job.state === 'running') && !error && (
         <div className="text-text-faint text-sm italic">
-          正在轮询状态（每 1.5 秒）…
+          正在实时推送状态（SSE）…
         </div>
       )}
     </div>
@@ -770,14 +770,16 @@ export function BacktestLab() {
   const createAgent = useCreateAgent();
   const startBacktest = useStartBacktest();
 
-  const job = useJobStatus(sessionId ?? undefined);
-  const sessionEnabled = job.data?.state === 'complete';
+  const jobStream = useJobStatusStream(sessionId ?? undefined);
+  const sessionEnabled = jobStream.status?.state === 'complete';
   const session = useSession(sessionId ?? undefined, sessionEnabled);
 
   const busy =
     createAgent.isPending ||
     startBacktest.isPending ||
-    (!!sessionId && (job.data?.state === 'queued' || job.data?.state === 'running'));
+    (!!sessionId &&
+      (jobStream.status?.state === 'queued' ||
+        jobStream.status?.state === 'running'));
 
   async function onSubmit() {
     setUiError(null);
@@ -831,7 +833,7 @@ export function BacktestLab() {
     }
   }
 
-  const pageError = uiError;
+  const pageError = uiError ?? jobStream.error;
 
   return (
     <div className="p-6">
@@ -853,7 +855,7 @@ export function BacktestLab() {
         />
         <JobPanel
           sessionId={sessionId}
-          job={job.data}
+          job={jobStream.status ?? undefined}
           session={session.data}
           error={pageError}
           startedAt={startedAt}

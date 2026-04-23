@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
+import type { JobStatus } from './types';
 
 export const usePersonas = () =>
   useQuery({ queryKey: ['personas'], queryFn: api.personas });
@@ -40,6 +42,57 @@ export const useJobStatus = (sid: string | undefined, enabled = true) =>
       return state === 'complete' || state === 'failed' ? false : 1500;
     },
   });
+
+/** SSE-based job status subscription. Falls back to null until first event. */
+export const useJobStatusStream = (
+  sessionId: string | undefined,
+  enabled = true,
+) => {
+  const [status, setStatus] = useState<JobStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    if (!sessionId || !enabled) {
+      setStatus(null);
+      setError(null);
+      return;
+    }
+    setStatus(null);
+    setError(null);
+    const es = new EventSource(`/api/backtests/jobs/${sessionId}/stream`);
+    esRef.current = es;
+    es.onmessage = (ev) => {
+      try {
+        setStatus(JSON.parse(ev.data) as JobStatus);
+      } catch {
+        /* ignore bad payload */
+      }
+    };
+    es.addEventListener('done', () => {
+      es.close();
+    });
+    es.addEventListener('notfound', () => {
+      setError('job not found');
+      es.close();
+    });
+    es.addEventListener('timeout', () => {
+      setError('stream timeout');
+      es.close();
+    });
+    es.onerror = () => {
+      // EventSource auto-reconnects; only surface error if we haven't
+      // received any status yet (likely endpoint down)
+      setError((prev) => prev ?? 'stream error');
+    };
+    return () => {
+      es.close();
+      esRef.current = null;
+    };
+  }, [sessionId, enabled]);
+
+  return { status, error };
+};
 
 export const useSession = (sid: string | undefined, enabled = true) =>
   useQuery({
