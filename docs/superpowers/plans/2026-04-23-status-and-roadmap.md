@@ -199,7 +199,7 @@
 
 ---
 
-### 🟡 P3-B：Agent + Persona CRUD（~1.5 天）
+### ✅ P3-B：Agent + Persona CRUD — Done 2026-04-23
 
 **问题：** 创建后无法编辑/删除。用户被锁死在 6 个内置 persona + 一次性 agent 配置。
 
@@ -216,7 +216,14 @@
   - Persona 创建表单（基于现有 Persona 结构）
   - PromptHistory 加"回滚到此版本"按钮
 
-**完成判据：** 用户能完整管理 agent 和 persona 生命周期，包括 prompt 回滚。
+**完成判据：** 用户能完整管理 agent 和 persona 生命周期，包括 prompt 回滚。✅
+
+**交付（commits f842cb0..a9b7c13 on feature/p3b-crud，13 commits）：**
+- Backend: Protocol 扩展（AgentStore/PersonaStore/PromptVersionStore）+ 6 endpoints（PUT/DELETE agents、POST/PUT/DELETE personas、POST prompts/rollback）+ system_prompt 变更时对所有引用 agent 自动 bump prompt_version
+- Frontend: AgentEditModal + AgentDeleteDialog + PersonaFormModal(create+edit) + PromptHistory 回滚按钮 + Agent.tsx 集成（edit/delete agent + Persona 管理 section）
+- 内置 persona 保护：PUT/DELETE 返 403；被 agent 引用时 DELETE 返 409
+- 测试: 21 P3-B 新增（5 Protocol + 10 Agent store + 2 Persona delete + 3 rollback + 10 agent API + 11 persona API）+ 0 回归（`pytest -q` = 492 passed；frontend build 清洁）
+- 详细 plan: `2026-04-23-p3b-crud.md`
 
 ---
 
@@ -304,6 +311,7 @@ P3-F 等用户明确同意 + 独立排期。
 - `2026-04-22-p2d-baselines-rating.md` ✅ Done
 - `2026-04-22-p2e-speedup.md` ✅ Done
 - `2026-04-23-p3a-backtest-observability.md` ✅ Done 2026-04-23
+- `2026-04-23-p3b-crud.md` ✅ Done 2026-04-23
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
