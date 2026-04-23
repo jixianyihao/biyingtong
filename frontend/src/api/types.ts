@@ -107,3 +107,23 @@ export type AuditRow = {
   prompt_version: number | null;
   details: Record<string, unknown>;
 };
+
+export type SessionSummary = {
+  session_id: string;
+  start_date: string;
+  end_date: string;
+  agent_ids: string[];
+  agent_count: number;
+  baseline_count: number;
+  created_at: string;
+  notes: string | null;
+};
+
+export type PromptVersion = {
+  id: number;
+  agent_id: string;
+  version_number: number;
+  system_prompt: string;
+  created_at: string | null;
+  note: string | null;
+};

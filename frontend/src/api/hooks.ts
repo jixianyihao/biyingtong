@@ -72,3 +72,13 @@ export const useAuditQuery = (
     enabled: !!(params.agent_id || params.kind),
     refetchInterval: opts.refetchInterval ?? false,
   });
+
+export const useSessions = (limit = 50) =>
+  useQuery({ queryKey: ['sessions', limit], queryFn: () => api.listSessions(limit) });
+
+export const useAgentPromptVersions = (id: string | undefined) =>
+  useQuery({
+    queryKey: ['agent-prompts', id],
+    queryFn: () => api.agentPromptVersions(id!),
+    enabled: !!id,
+  });

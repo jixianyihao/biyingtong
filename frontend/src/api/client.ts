@@ -5,7 +5,9 @@ import type {
   JobStatus,
   ModelInfo,
   Persona,
+  PromptVersion,
   SessionComposite,
+  SessionSummary,
 } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -48,6 +50,8 @@ export const api = {
     request<{ agent_id: string; health_score: number; trust_rating: string }>(
       `/api/agents/${id}/health`
     ),
+  agentPromptVersions: (id: string) =>
+    request<PromptVersion[]>(`/api/agents/${id}/prompt_versions`),
   createAgent: (body: CreateAgentBody) =>
     request<Agent>('/api/agents', { method: 'POST', body: JSON.stringify(body) }),
   backtestsForAgent: (agentId: string, limit = 50) =>
@@ -61,6 +65,8 @@ export const api = {
     }),
   jobStatus: (sid: string) => request<JobStatus>(`/api/backtests/jobs/${sid}`),
   listJobs: () => request<JobStatus[]>('/api/backtests/jobs'),
+  listSessions: (limit = 50) =>
+    request<SessionSummary[]>(`/api/backtests/sessions?limit=${limit}`),
   redlines: () => request<Record<string, unknown>>('/api/redlines'),
   updateRedlines: (body: Record<string, unknown>) =>
     request<Record<string, unknown>>('/api/redlines', {
