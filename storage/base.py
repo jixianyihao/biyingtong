@@ -234,3 +234,42 @@ class AuditStore(Protocol):
         """Most recent first."""
         ...
     def query_by_kind(self, kind: str, limit: int = 100) -> list[dict]: ...
+
+
+# --- Added in P2c ---
+
+
+@runtime_checkable
+class BacktestResultStore(Protocol):
+    """backtest_sessions + backtest_results tables."""
+    def init_schema(self) -> None: ...
+    def insert(self, result) -> None:
+        """Persist a BacktestResult. Idempotent by id."""
+        ...
+    def get(self, result_id: str):
+        """Returns a BacktestResult or None."""
+        ...
+    def list_for_agent(self, agent_id: str, limit: int = 50) -> list:
+        """Most recent first."""
+        ...
+    def list_for_session(self, session_id: str) -> list:
+        """All results under one session, agent_id ASC."""
+        ...
+    def create_session(self, session_id: str, start_date: str,
+                       end_date: str, agent_ids: list[str],
+                       notes: str | None = None) -> None:
+        """Idempotent by id."""
+        ...
+
+
+@runtime_checkable
+class LLMDecisionCacheStore(Protocol):
+    """Per-(agent, date, state) decision replay cache."""
+    def init_schema(self) -> None: ...
+    def has(self, cache_key: str) -> bool: ...
+    def get(self, cache_key: str):
+        """Returns CachedDecision or None."""
+        ...
+    def put(self, entry) -> None:
+        """Upsert a CachedDecision."""
+        ...

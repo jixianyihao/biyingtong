@@ -169,3 +169,16 @@ def test_audit_store_protocol_exists():
     from storage.base import AuditStore
     for m in ('init_schema', 'log', 'query_by_agent', 'query_by_kind'):
         assert hasattr(AuditStore, m), f'missing {m}'
+
+
+def test_backtest_result_store_protocol_exists():
+    from storage.base import BacktestResultStore
+    for m in ('init_schema', 'insert', 'get', 'list_for_agent',
+              'list_for_session', 'create_session'):
+        assert hasattr(BacktestResultStore, m), f'missing {m}'
+
+
+def test_llm_decision_cache_store_protocol_exists():
+    from storage.base import LLMDecisionCacheStore
+    for m in ('init_schema', 'get', 'put', 'has'):
+        assert hasattr(LLMDecisionCacheStore, m), f'missing {m}'
