@@ -100,7 +100,9 @@ class AgentRunner:
                     # fall back to mark_prices so position_max_pct can fire
                     # when the LLM explicitly includes a price in its decision.
                     decision.setdefault('shares', decision.get('qty', 0))
-                    decision.setdefault('price', 0.0)
+                    decision.setdefault('price',
+                                        mark_prices.get(decision.get('code'),
+                                                        0.0))
                     result = self._engine.validate(
                         agent_id=agent_id,
                         decision=decision,

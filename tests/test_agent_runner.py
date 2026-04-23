@@ -83,7 +83,7 @@ def test_first_run_calls_llm_and_caches(wired, seeded_agent):
         date='2024-03-15',
         portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
         market_context={},
-        mark_prices={'600519.SH': 1600.0},
+        mark_prices={'600519.SH': 100.0},
     )
     assert len(llm.calls) == 1
     assert len(out) == 1
@@ -98,7 +98,7 @@ def test_rerun_uses_cache_no_new_llm_call(wired, seeded_agent):
     common_args = dict(
         agent_id=seeded_agent.id, date='2024-03-15',
         portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
-        market_context={}, mark_prices={'600519.SH': 1600.0},
+        market_context={}, mark_prices={'600519.SH': 100.0},
     )
     runner.run_day(**common_args)
     assert len(llm.calls) == 1
