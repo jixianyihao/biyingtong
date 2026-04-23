@@ -1,0 +1,19 @@
+[package]
+name = "biyingtong-desktop"
+version = "5.0.0"
+description = "必赢通桌面版 - 量化交易终端"
+authors = ["jixianyihao"]
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

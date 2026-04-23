@@ -21,3 +21,9 @@ screenshot*.png
 # Frontend build artifacts
 frontend/node_modules/
 frontend/dist/
+
+# Tauri build artifacts
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+frontend/.vite/
+!frontend/src-tauri/icons/*.png
