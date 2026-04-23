@@ -136,6 +136,7 @@ def test_agent_store_protocol_runtime_checkable():
         def get(self, agent_id): return None
         def list_all(self): return []
         def update_status(self, agent_id, status): pass
+        def update_health(self, agent_id, health, rating): pass
 
     assert isinstance(Compliant(), AgentStore)
 

@@ -151,3 +151,33 @@ def test_storage_factory_returns_sqlite_agent_store(tmp_path):
     storage.reset()
     from storage.sqlite_agents import SQLiteAgentStore
     assert isinstance(storage.agents(), SQLiteAgentStore)
+
+
+def test_update_health_persists(tmp_path):
+    import storage
+    storage.reset()
+    from storage.sqlite_personas import SQLitePersonaStore
+    from storage.sqlite_agents import SQLiteAgentStore
+    from storage.sqlite_prompt_versions import SQLitePromptVersionStore
+    from storage.sqlite_models import SQLiteModelStore
+    from personas import seed as seed_personas
+
+    for cls, setter in [
+        (SQLitePersonaStore, 'set_personas'),
+        (SQLiteAgentStore, 'set_agents'),
+        (SQLitePromptVersionStore, 'set_prompt_versions'),
+        (SQLiteModelStore, 'set_models'),
+    ]:
+        inst = cls(tmp_path=tmp_path); inst.init_schema()
+        getattr(storage, setter)(inst)
+    storage.models().seed()
+    seed_personas()
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='HealthTest',
+    )
+    storage.agents().update_health(agent.id, health=75, rating='B')
+    reloaded = storage.agents().get(agent.id)
+    assert reloaded.health_score == 75
+    assert reloaded.trust_rating == 'B'

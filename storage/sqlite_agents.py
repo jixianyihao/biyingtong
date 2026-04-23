@@ -148,3 +148,17 @@ class SQLiteAgentStore(AgentStore):
             con.commit()
         finally:
             con.close()
+
+    def update_health(self, agent_id: str, health: int,
+                      rating: str) -> None:
+        con = sqlite3.connect(self._db_path)
+        try:
+            con.execute(
+                '''UPDATE agents
+                   SET health_score = ?, trust_rating = ?
+                   WHERE id = ?''',
+                (int(health), rating, agent_id),
+            )
+            con.commit()
+        finally:
+            con.close()
