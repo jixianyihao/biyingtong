@@ -81,3 +81,149 @@ def test_backtest_result_observability_defaults_empty():
     assert r.daily_records == []
     assert r.trades == []
     assert r.thinking == []
+
+
+def test_book_records_fills_on_buy_and_sell():
+    from datetime import date
+    from backtest.book import Book
+    from backtest.commission import FeeModel
+
+    book = Book(cash=200_000.0, fee_model=FeeModel())
+    d1 = date(2025, 1, 2)
+    d2 = date(2025, 1, 3)
+    fill1 = book.execute_buy('600519.SH', shares=100, price=1000.0, d=d1)
+    fill2 = book.execute_sell('600519.SH', shares=50, price=1100.0, d=d2)
+
+    assert fill1 is not None
+    assert fill2 is not None
+    assert len(book.fills) == 2
+    f1, f2 = book.fills
+    assert f1.side == 'buy'
+    assert f1.shares == 100
+    assert f1.date == d1
+    assert f2.side == 'sell'
+    assert f2.shares == 50
+    assert f2.date == d2
+
+
+@pytest.fixture
+def observability_storage(tmp_path):
+    """Wire every store required for an end-to-end BacktestRunner call.
+
+    Adapted from tests/test_backtest_runner.py::wired_full. Diverges from the
+    task spec fixture because:
+      * the project's public persona seeder is ``personas.seed()`` (not
+        ``seed_builtin_personas``);
+      * kline seeding is unnecessary — the runner loads closes via
+        ``_load_daily_closes`` and trading days via ``_trading_days``, both of
+        which the tests monkeypatch directly.
+    """
+    import storage
+    from storage.sqlite_redline import SQLiteRedLineStore
+    from storage.sqlite_stock_status import SQLiteStockStatusStore
+    from storage.sqlite_audit import SQLiteAuditStore
+    from storage.sqlite_llm_cache import SQLiteLLMDecisionCache
+    from storage.sqlite_personas import SQLitePersonaStore
+    from storage.sqlite_agents import SQLiteAgentStore
+    from storage.sqlite_prompt_versions import SQLitePromptVersionStore
+    from storage.sqlite_models import SQLiteModelStore
+    from storage.sqlite_backtests import SQLiteBacktestResultStore
+    from storage.sqlite_calendar import SQLiteCalendarStore
+    from validation.base import DEFAULT_REDLINES
+
+    storage.reset()
+    for cls, setter in [
+        (SQLiteRedLineStore,        'set_redline'),
+        (SQLiteStockStatusStore,    'set_stock_status'),
+        (SQLiteAuditStore,          'set_audit'),
+        (SQLiteLLMDecisionCache,    'set_llm_cache'),
+        (SQLitePersonaStore,        'set_personas'),
+        (SQLiteAgentStore,          'set_agents'),
+        (SQLitePromptVersionStore,  'set_prompt_versions'),
+        (SQLiteModelStore,          'set_models'),
+        (SQLiteBacktestResultStore, 'set_backtests'),
+        (SQLiteCalendarStore,       'set_calendar'),
+    ]:
+        inst = cls(tmp_path=tmp_path)
+        inst.init_schema()
+        getattr(storage, setter)(inst)
+    storage.models().seed()
+
+    from validation import rules as _rules
+    _rules.reset()
+    from validation.handlers.position_max_pct import Handler as H1
+    from validation.handlers.ban_st import Handler as H2
+    from validation.handlers.max_holdings import Handler as H3
+    from validation.handlers.daily_loss_limit_pct import Handler as H4
+    _rules.register(H1())
+    _rules.register(H2())
+    _rules.register(H3())
+    _rules.register(H4())
+
+    storage.redline().set({**DEFAULT_REDLINES, 'position_max_pct': 15.0})
+    from personas import seed as seed_personas
+    seed_personas()
+
+    yield tmp_path
+    storage.reset()
+
+
+def test_backtest_runner_populates_trades_and_daily_records(
+    observability_storage, monkeypatch,
+):
+    """End-to-end: MockLLM buys then sells; result carries trades + daily_records."""
+    from datetime import date, timedelta
+    import storage
+    from backtest.runner import BacktestRunner
+    import backtest.runner as runner_mod
+    from llm.mock import MockLLM
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-p3a', initial_capital=1_000_000.0,
+    )
+
+    # 7 trading days at a low, near-flat price so buys fit under position_max_pct
+    # (15%) and lot-rounding (100 shares) is satisfied.
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(7)]
+    bars = [(d, 100.0 + i * 0.2) for i, d in enumerate(days)]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    # MockLLM script (each element is one LLMResponse spec — see tests/test_backtest_runner.py)
+    buy = {'tool_calls': [{'id': 'b1', 'name': 'place_decision',
+                           'input': {'action': 'buy', 'code': '600519.SH',
+                                     'qty': 100,
+                                     'reason': 'buy day — quality name at a fair entry',
+                                     'thinking': 'buying now'}}],
+           'stop_reason': 'tool_use'}
+    # T+1: sell cannot happen same day as buy. Hold day 2, sell day 3.
+    sell = {'tool_calls': [{'id': 's1', 'name': 'place_decision',
+                            'input': {'action': 'sell', 'code': '600519.SH',
+                                      'qty': 100,
+                                      'reason': 'locking gains, thesis played out',
+                                      'thinking': 'selling now'}}],
+            'stop_reason': 'tool_use'}
+    hold = {'tool_calls': [{'id': 'h', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'waiting for a clearer setup today',
+                                      'thinking': 'holding'}}],
+            'stop_reason': 'tool_use'}
+    # 7 days: buy, hold, sell, hold, hold, hold, hold
+    llm = MockLLM([buy, hold, sell, hold, hold, hold, hold])
+
+    r = BacktestRunner(llm=llm).run(
+        session_id='s-p3a', agent_id=agent.id,
+        start_date='2025-01-02', end_date='2025-01-08',
+        universe=['600519.SH'],
+    )
+    assert len(r.daily_records) >= 3
+    for rec in r.daily_records:
+        assert 'equity' in rec
+        assert 'date' in rec
+        assert 'cash' in rec  # NEW in Task 2
+    assert len(r.trades) >= 2
+    t = r.trades[0]
+    assert set(t) >= {'date', 'code', 'action', 'shares', 'price', 'fee'}

@@ -35,6 +35,7 @@ class Book:
     fee_model: FeeModel
     _tranches: dict = field(default_factory=dict)  # code -> list[Tranche]
     total_fees: float = 0.0
+    fills: list = field(default_factory=list)  # list[Fill] — observability log
 
     def execute_buy(self, code: str, *, shares: int, price: float,
                     d: date) -> Fill | None:
@@ -50,8 +51,10 @@ class Book:
         self._tranches.setdefault(code, []).append(
             Tranche(shares=shares, price=price, buy_date=d)
         )
-        return Fill(code=code, side='buy', shares=shares, price=price,
+        fill = Fill(code=code, side='buy', shares=shares, price=price,
                     fee=fee, date=d)
+        self.fills.append(fill)
+        return fill
 
     def execute_sell(self, code: str, *, shares: int, price: float,
                      d: date) -> Fill | None:
@@ -82,8 +85,10 @@ class Book:
         proceeds = notional - fee
         self.cash += proceeds
         self.total_fees += fee
-        return Fill(code=code, side='sell', shares=to_sell, price=price,
+        fill = Fill(code=code, side='sell', shares=to_sell, price=price,
                     fee=fee, date=d)
+        self.fills.append(fill)
+        return fill
 
     def positions_view(self) -> dict:
         """Aggregated per-code: shares + cost-weighted avg_price.

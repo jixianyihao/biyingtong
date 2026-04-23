@@ -134,6 +134,7 @@ class BacktestRunner:
 
             daily_records.append({
                 'date': d, 'pnl_pct': pnl_pct, 'equity': equity,
+                'cash': book.cash,
                 'trade_count': trade_count_today, 'won': wins_today,
             })
 
@@ -176,6 +177,30 @@ class BacktestRunner:
         }
         gate = evaluate_quality_gate(gate_input)
 
+        # --- P3-A: collect observability data ---
+        trades_serial = [
+            {
+                'date': f.date.isoformat(),
+                'code': f.code,
+                'action': f.side,
+                'shares': f.shares,
+                'price': f.price,
+                'fee': f.fee,
+            }
+            for f in book.fills
+        ]
+        daily_records_serial = [
+            {
+                'date': rec['date'].isoformat(),
+                'equity': rec['equity'],
+                'cash': rec['cash'],
+                'pnl_pct': rec['pnl_pct'],
+                'trade_count': rec['trade_count'],
+                'won': rec['won'],
+            }
+            for rec in daily_records
+        ]
+
         result = BacktestResult(
             id=str(uuid.uuid4()),
             session_id=session_id, agent_id=agent_id,
@@ -185,6 +210,9 @@ class BacktestRunner:
             quality_gate_label=gate.label,
             quality_gate_criteria=gate.criteria,
             final_equity=prev_equity,
+            daily_records=daily_records_serial,
+            trades=trades_serial,
+            thinking=[],  # populated in Task 3
         )
         storage.backtests().insert(result)
         return result
