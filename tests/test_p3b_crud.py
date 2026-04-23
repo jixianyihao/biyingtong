@@ -131,3 +131,23 @@ def test_agent_set_current_prompt_version_missing_agent_is_silent(observability_
     import storage
     # Must not raise
     storage.agents().set_current_prompt_version('nope', 1)
+
+
+def test_persona_delete_removes_row(observability_storage):
+    import storage
+    from storage.base import Persona
+    storage.personas().upsert(Persona(
+        id='custom_test', name='Custom Test',
+        style_desc='test', system_prompt='you are test',
+        default_pool=[], pool_filter=None,
+        default_schedule='daily', default_rules={},
+        allowed_tools=[], is_builtin=False,
+    ))
+    assert storage.personas().get('custom_test') is not None
+    assert storage.personas().delete('custom_test') is True
+    assert storage.personas().get('custom_test') is None
+
+
+def test_persona_delete_nonexistent_returns_false(observability_storage):
+    import storage
+    assert storage.personas().delete('nonexistent') is False

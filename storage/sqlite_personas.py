@@ -91,6 +91,20 @@ class SQLitePersonaStore(PersonaStore):
             con.close()
         return self._row_to_persona(row) if row else None
 
+    def delete(self, persona_id: str) -> bool:
+        """Delete by id. Does NOT check for dependent agents — caller's job.
+        Returns True iff a row was removed."""
+        con = sqlite3.connect(self._db_path)
+        try:
+            con.execute(SCHEMA_PERSONAS)
+            cur = con.execute(
+                'DELETE FROM personas WHERE id = ?', (persona_id,),
+            )
+            con.commit()
+            return cur.rowcount > 0
+        finally:
+            con.close()
+
     def list_all(self) -> list[Persona]:
         con = sqlite3.connect(self._db_path)
         try:
