@@ -25,3 +25,109 @@ def test_persona_store_protocol_has_delete_method():
 def test_prompt_version_store_protocol_has_rollback_method():
     from storage.base import PromptVersionStore
     assert 'rollback' in dir(PromptVersionStore)
+
+
+def test_agent_update_display_name(observability_storage):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='original', initial_capital=1_000_000.0,
+    )
+    storage.agents().update(agent.id, display_name='renamed')
+    fetched = storage.agents().get(agent.id)
+    assert fetched.display_name == 'renamed'
+    # rules_override not passed → unchanged
+    assert fetched.rules_override == {}
+
+
+def test_agent_update_rules_override(observability_storage):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    storage.agents().update(agent.id, rules_override={'max_holdings': 3})
+    fetched = storage.agents().get(agent.id)
+    assert fetched.rules_override == {'max_holdings': 3}
+    assert fetched.display_name == 't'
+
+
+def test_agent_update_both_fields(observability_storage):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    storage.agents().update(
+        agent.id, display_name='new', rules_override={'k': 1})
+    fetched = storage.agents().get(agent.id)
+    assert fetched.display_name == 'new'
+    assert fetched.rules_override == {'k': 1}
+
+
+def test_agent_update_nonexistent_is_noop(observability_storage):
+    import storage
+    storage.agents().update('nonexistent', display_name='x')
+    assert storage.agents().get('nonexistent') is None
+
+
+def test_agent_update_empty_kwargs_is_noop(observability_storage):
+    """No kwargs passed → no SQL executed → no-op."""
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    storage.agents().update(agent.id)
+    fetched = storage.agents().get(agent.id)
+    assert fetched.display_name == 't'
+
+
+def test_agent_delete_removes_row(observability_storage):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    assert storage.agents().delete(agent.id) is True
+    assert storage.agents().get(agent.id) is None
+
+
+def test_agent_delete_also_removes_prompt_versions(observability_storage):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    storage.prompt_versions().insert(
+        agent_id=agent.id, system_prompt='new prompt', note='test',
+    )
+    assert len(storage.prompt_versions().list_for_agent(agent.id)) == 2
+
+    storage.agents().delete(agent.id)
+    assert storage.prompt_versions().list_for_agent(agent.id) == []
+
+
+def test_agent_delete_nonexistent_returns_false(observability_storage):
+    import storage
+    assert storage.agents().delete('nonexistent') is False
+
+
+def test_agent_set_current_prompt_version(observability_storage):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    pv = storage.prompt_versions().insert(
+        agent_id=agent.id, system_prompt='v2', note='test',
+    )
+    storage.agents().set_current_prompt_version(agent.id, pv.id)
+    fetched = storage.agents().get(agent.id)
+    assert fetched.current_prompt_version_id == pv.id
+
+
+def test_agent_set_current_prompt_version_missing_agent_is_silent(observability_storage):
+    import storage
+    # Must not raise
+    storage.agents().set_current_prompt_version('nope', 1)

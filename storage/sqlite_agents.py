@@ -162,3 +162,65 @@ class SQLiteAgentStore(AgentStore):
             con.commit()
         finally:
             con.close()
+
+    def update(self, agent_id: str, *,
+               display_name: str | None = None,
+               rules_override: dict | None = None) -> None:
+        """Partial update — None means skip that field. Noop if no kwargs
+        or if agent_id doesn't exist (sqlite UPDATE with no match is silent)."""
+        if display_name is None and rules_override is None:
+            return
+
+        sets: list[str] = []
+        vals: list = []
+        if display_name is not None:
+            sets.append('display_name = ?')
+            vals.append(display_name)
+        if rules_override is not None:
+            sets.append('rules_override = ?')
+            vals.append(json.dumps(rules_override, ensure_ascii=False))
+        vals.append(agent_id)
+
+        con = sqlite3.connect(self._db_path)
+        try:
+            con.execute(SCHEMA_AGENTS)
+            con.execute(
+                f'UPDATE agents SET {", ".join(sets)} WHERE id = ?',
+                tuple(vals),
+            )
+            con.commit()
+        finally:
+            con.close()
+
+    def delete(self, agent_id: str) -> bool:
+        """Hard delete agent + its prompt_versions. backtest_results are
+        preserved (they reference agent_id by value, not FK)."""
+        con = sqlite3.connect(self._db_path)
+        try:
+            con.execute(SCHEMA_AGENTS)
+            cur = con.execute(
+                'DELETE FROM agents WHERE id = ?', (agent_id,),
+            )
+            removed = cur.rowcount > 0
+            if removed:
+                con.execute(
+                    'DELETE FROM prompt_versions WHERE agent_id = ?',
+                    (agent_id,),
+                )
+            con.commit()
+        finally:
+            con.close()
+        return removed
+
+    def set_current_prompt_version(self, agent_id: str, version_id: int) -> None:
+        """Point agents.current_prompt_version_id at version_id.
+        Silent if agent_id doesn't exist (UPDATE with no match)."""
+        con = sqlite3.connect(self._db_path)
+        try:
+            con.execute(
+                'UPDATE agents SET current_prompt_version_id = ? WHERE id = ?',
+                (int(version_id), agent_id),
+            )
+            con.commit()
+        finally:
+            con.close()
