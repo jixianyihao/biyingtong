@@ -2,6 +2,7 @@ import type {
   Agent,
   AuditRow,
   BacktestResult,
+  CreatePersonaBody,
   JobStatus,
   ModelInfo,
   NavResponse,
@@ -12,6 +13,8 @@ import type {
   StrategyRating,
   ThinkingResponse,
   TradesResponse,
+  UpdateAgentBody,
+  UpdatePersonaBody,
 } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -86,6 +89,27 @@ export const api = {
   backtestTrades: (id: string) => request<TradesResponse>(`/api/backtests/${id}/trades`),
   backtestThinking: (id: string) => request<ThinkingResponse>(`/api/backtests/${id}/thinking`),
   backtestRating: (id: string) => request<StrategyRating>(`/api/backtests/${id}/rating`),
+  updateAgent: (id: string, body: UpdateAgentBody) =>
+    request<Agent>(`/api/agents/${id}`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+  deleteAgent: (id: string) =>
+    request<void>(`/api/agents/${id}`, { method: 'DELETE' }),
+  rollbackPrompt: (agentId: string, versionId: number) =>
+    request<PromptVersion>(
+      `/api/agents/${agentId}/prompts/rollback`,
+      { method: 'POST', body: JSON.stringify({ version_id: versionId }) },
+    ),
+  createPersona: (body: CreatePersonaBody) =>
+    request<Persona>('/api/personas', {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  updatePersona: (id: string, body: UpdatePersonaBody) =>
+    request<Persona>(`/api/personas/${id}`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+  deletePersona: (id: string) =>
+    request<void>(`/api/personas/${id}`, { method: 'DELETE' }),
 };
 
 // Re-export types for convenience

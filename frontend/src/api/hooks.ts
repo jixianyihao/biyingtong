@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
-import type { JobStatus } from './types';
+import type { JobStatus, UpdateAgentBody, UpdatePersonaBody } from './types';
 
 export const usePersonas = () =>
   useQuery({ queryKey: ['personas'], queryFn: api.personas });
@@ -168,3 +168,68 @@ export const useBacktestRating = (resultId: string | undefined) =>
     queryFn: () => api.backtestRating(resultId!),
     enabled: !!resultId,
   });
+
+// ─── P3-B CRUD mutations ──────────────────────────────────────────────────
+
+export const useUpdateAgent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateAgentBody }) =>
+      api.updateAgent(id, body),
+    onSuccess: (_d, { id }) => {
+      qc.invalidateQueries({ queryKey: ['agents'] });
+      qc.invalidateQueries({ queryKey: ['agent', id] });
+    },
+  });
+};
+
+export const useDeleteAgent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteAgent(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+};
+
+export const useRollbackPrompt = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, versionId }: { agentId: string; versionId: number }) =>
+      api.rollbackPrompt(agentId, versionId),
+    onSuccess: (_d, { agentId }) => {
+      qc.invalidateQueries({ queryKey: ['agent-prompts', agentId] });
+      qc.invalidateQueries({ queryKey: ['agent', agentId] });
+    },
+  });
+};
+
+export const useCreatePersona = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.createPersona,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['personas'] }),
+  });
+};
+
+export const useUpdatePersona = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdatePersonaBody }) =>
+      api.updatePersona(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['personas'] });
+      // If system_prompt changed, agent prompt_versions changed too
+      qc.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+};
+
+export const useDeletePersona = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deletePersona(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['personas'] }),
+  });
+};
