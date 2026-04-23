@@ -143,6 +143,10 @@ class PersonaStore(Protocol):
         ...
     def get(self, persona_id: str) -> Persona | None: ...
     def list_all(self) -> list[Persona]: ...
+    def delete(self, persona_id: str) -> bool:
+        """Delete by id. Caller must check dependent agents first — store
+        does NOT enforce that constraint. Returns True if a row was removed."""
+        ...
 
 
 @runtime_checkable
@@ -168,6 +172,23 @@ class AgentStore(Protocol):
         """Persist health_score + trust_rating on the agent row."""
         ...
 
+    def update(self, agent_id: str, *,
+               display_name: str | None = None,
+               rules_override: dict | None = None) -> None:
+        """Partial update. None means don't change. Noop if agent missing."""
+        ...
+
+    def delete(self, agent_id: str) -> bool:
+        """Hard delete the agent + its prompt_versions. Returns True if
+        a row was removed. backtest_results for this agent are preserved
+        (they reference agent_id by value, not FK)."""
+        ...
+
+    def set_current_prompt_version(self, agent_id: str, version_id: int) -> None:
+        """Point agents.current_prompt_version_id at version_id. Noop if
+        agent not found."""
+        ...
+
 
 @runtime_checkable
 class PromptVersionStore(Protocol):
@@ -181,6 +202,12 @@ class PromptVersionStore(Protocol):
     def get_latest(self, agent_id: str) -> PromptVersion | None: ...
     def list_for_agent(self, agent_id: str) -> list[PromptVersion]:
         """Ascending by version_number."""
+        ...
+
+    def rollback(self, agent_id: str, version_id: int) -> 'PromptVersion':
+        """Copy an older version's prompt to a NEW version at max+1.
+        Returns the fresh PromptVersion. Does NOT mutate agents table —
+        caller updates current_prompt_version_id."""
         ...
 
 

@@ -121,6 +121,7 @@ def test_persona_store_protocol_runtime_checkable():
         def upsert(self, persona): pass
         def get(self, persona_id): return None
         def list_all(self): return []
+        def delete(self, persona_id): return False
 
     assert isinstance(Compliant(), PersonaStore)
 
@@ -137,6 +138,9 @@ def test_agent_store_protocol_runtime_checkable():
         def list_all(self): return []
         def update_status(self, agent_id, status): pass
         def update_health(self, agent_id, health, rating): pass
+        def update(self, agent_id, *, display_name=None, rules_override=None): pass
+        def delete(self, agent_id): return False
+        def set_current_prompt_version(self, agent_id, version_id): pass
 
     assert isinstance(Compliant(), AgentStore)
 
@@ -149,6 +153,7 @@ def test_prompt_version_store_protocol_runtime_checkable():
         def insert(self, agent_id, system_prompt, note=None): return None  # type: ignore
         def get_latest(self, agent_id): return None
         def list_for_agent(self, agent_id): return []
+        def rollback(self, agent_id, version_id): return None  # type: ignore
 
     assert isinstance(Compliant(), PromptVersionStore)
 
