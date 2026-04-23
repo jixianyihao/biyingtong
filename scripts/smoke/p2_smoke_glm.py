@@ -115,9 +115,27 @@ def main():
     )
     print(f'agent: {agent.id} ({agent.display_name})')
 
-    # Start small — a single week, 3 stocks, to keep API spend tiny on first run
+    # Wipe stale cache for this agent — previous smoke runs cached decisions
+    # made WITHOUT real tool execution; we want to see GLM use tools now.
+    # Set WIPE_CACHE=0 to skip this (pure replay from cache).
+    if os.environ.get('WIPE_CACHE', '1') != '0':
+        import sqlite3
+        from pathlib import Path
+        db = Path(__file__).resolve().parents[2] / 'data' / 'agent_state.db'
+        con = sqlite3.connect(db)
+        try:
+            n = con.execute(
+                'DELETE FROM llm_decision_cache WHERE agent_id = ?',
+                (agent.id,),
+            ).rowcount
+            con.commit()
+        finally:
+            con.close()
+        print(f'wiped {n} stale cache rows for this agent')
+
+    # 2-week window — meaningful stats while keeping API spend bounded
     start_date = '2025-11-17'
-    end_date = '2025-11-21'
+    end_date = '2025-11-28'
     universe = ['600519.SH', '601318.SH', '000858.SZ']
     initial_capital = 1_000_000.0
     session_id = f'smoke-glm-{int(time.time())}'
@@ -182,6 +200,38 @@ def main():
         reason = dec.get('reason', '')
         if reason:
             print(f'    reason: {reason[:100]}')
+
+    # --- 3 Baselines (000300 now loaded) ----------------------------------
+    print(f'\n--- running baselines (buy_and_hold + equal_weight + csi300) ---')
+    from backtest.baselines.runner import run_all
+    baselines = run_all(
+        session_id=session_id,
+        start_date=start_date, end_date=end_date,
+        initial_capital=initial_capital, universe=universe,
+    )
+    for b in sorted(baselines, key=lambda x: x.name):
+        print(f'  {b.name:16s}  final={b.final_equity:>13,.2f}'
+              f'  return={b.stats.total_return_pct:+6.2f}%'
+              f'  trades={b.stats.trade_count:>3d}')
+
+    # --- Comparison: agent vs baselines -----------------------------------
+    print(f'\n--- agent vs baselines ---')
+    print(f'  {"agent (linyuan/GLM-5-Turbo)":30s}  return={result.stats.total_return_pct:+6.2f}%  trades={result.stats.trade_count:>3d}')
+    for b in sorted(baselines, key=lambda x: x.name):
+        delta = result.stats.total_return_pct - b.stats.total_return_pct
+        print(f'  {b.name:30s}  return={b.stats.total_return_pct:+6.2f}%  (agent Δ={delta:+.2f}pp)')
+
+    # Tool execution evidence: count which tools the LLM actually called
+    print(f'\n--- tool usage (inferred from LLM call history) ---')
+    tool_call_counts: dict = {}
+    if hasattr(llm, 'calls'):
+        for c in llm.calls:
+            pass  # MockLLM only; real LLM calls not counted here
+    # Better: inspect the audit cache by re-reading decision_in records
+    for r in audit_rows:
+        if r['kind'] == 'validation':
+            continue
+    print('  (tool calls visible via session log / cache table, not re-counted here)')
 
     # Rating
     from agents.rating import compute_health, classify_rating

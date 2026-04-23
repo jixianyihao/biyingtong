@@ -43,12 +43,23 @@ def _interval(period: str):
 def _exchange_for(code: str):
     _configure_vnpy_once()
     from vnpy.trader.constant import Exchange
-    bare = code.split('.', 1)[0] if '.' in code else code
-    if bare.startswith(('6', '9')):
-        return Exchange.SSE, bare
-    if bare.startswith(('0', '3')):
-        return Exchange.SZSE, bare
-    return Exchange.SSE, bare
+    if '.' in code:
+        bare, suffix = code.split('.', 1)
+        # Explicit suffix wins over prefix inference. Critical for indices
+        # like 000300.SH (CSI 300) whose prefix '0' would otherwise mis-route
+        # to SZSE.
+        if suffix.upper() in ('SH', 'SSE'):
+            return Exchange.SSE, bare
+        if suffix.upper() in ('SZ', 'SZSE'):
+            return Exchange.SZSE, bare
+        bare_used = bare
+    else:
+        bare_used = code
+    if bare_used.startswith(('6', '9')):
+        return Exchange.SSE, bare_used
+    if bare_used.startswith(('0', '3')):
+        return Exchange.SZSE, bare_used
+    return Exchange.SSE, bare_used
 
 
 class SQLiteKlineStore(KlineStore):
