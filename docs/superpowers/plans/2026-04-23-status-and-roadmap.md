@@ -172,7 +172,7 @@
 
 按"用户体验阻塞度"与"前置依赖"排序。每一阶段独立可交付。
 
-### 🔥 P3-A：回测可观察性（最迫切，~3 天）
+### ✅ P3-A：回测可观察性 — Done 2026-04-23
 
 **问题：** BacktestLab 跑完只有最终汇总。用户问"那天到底买了啥 / 为什么决策 / 曲线长啥样"全没法回答。系统停留在 demo 阶段。
 
@@ -188,9 +188,14 @@
   - **Quality gate 聚焦面板** — 7 项 pass/fail 一栏
   - **Strategy rating 5 子分数面板** — rating endpoint 已有，前端展示
 
-**完成判据：** 跑一次回测后，用户能完整复盘每天发生了什么，为什么。
+**完成判据：** 跑一次回测后，用户能完整复盘每天发生了什么，为什么。✅
 
-**产物：** 3 commits + ~6-8 新前端组件 + schema 升级（backtest_results 加 2 列）+ 测试。
+**交付（commit 范围 bb7135e..5da1f57）：**
+- Backend: 3 JSON 列（backtest_results + baseline_results）+ migration helpers + AgentRunner.last_thinking + Runner trades/daily_records/thinking 序列化
+- API: `GET /api/backtests/:id/nav|trades|thinking`（已对接 baselines daily_records 接入点）
+- Frontend: NavChart(lightweight-charts) + TradesTable + ThinkingDrawer + QualityGatePanel + StrategyRatingPanel，挂 BacktestLab
+- 测试: 22 P3-A 新增 + 0 回归（`pytest -q` = 451 passed；frontend build 清洁）
+- 详细 plan: `2026-04-23-p3a-backtest-observability.md`
 
 ---
 
@@ -298,6 +303,7 @@ P3-F 等用户明确同意 + 独立排期。
 - `2026-04-22-p2c-llm-strategy-backtest.md` ✅ Done
 - `2026-04-22-p2d-baselines-rating.md` ✅ Done
 - `2026-04-22-p2e-speedup.md` ✅ Done
+- `2026-04-23-p3a-backtest-observability.md` ✅ Done 2026-04-23
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
