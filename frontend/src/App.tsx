@@ -7,6 +7,7 @@ import { BacktestLab } from './pages/BacktestLab';
 import { ComingSoon } from './pages/ComingSoon';
 import { Dashboard } from './pages/Dashboard';
 import { Editor } from './pages/Editor';
+import { PromptHistory } from './pages/PromptHistory';
 import { Risk } from './pages/Risk';
 import { Screener } from './pages/Screener';
 
@@ -21,6 +22,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/agent" element={<Agent />} />
+              <Route path="/agent/:agentId/prompts" element={<PromptHistory />} />
               <Route path="/live" element={<ComingSoon label="实盘交易" />} />
               <Route path="/risk" element={<Risk />} />
               <Route path="/audit" element={<Audit />} />

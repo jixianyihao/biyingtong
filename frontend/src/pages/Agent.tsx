@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   useAgent,
   useAgents,
@@ -320,6 +321,20 @@ function AgentDetail({
           })()}
           accent="brand"
         />
+      </div>
+      <div className="flex justify-end -mt-1">
+        <Link
+          to={`/agent/${agent.id}/prompts`}
+          className="mono text-[11px] uppercase tracking-wider"
+          style={{
+            color: 'var(--brand)',
+            textDecoration: 'none',
+            padding: '2px 4px',
+          }}
+          title="查看 Prompt 版本历史"
+        >
+          查看版本历史 · View History →
+        </Link>
       </div>
 
       {/* persona + model */}

@@ -89,3 +89,24 @@ def get_agent_health(agent_id):
         'health_score': health,
         'trust_rating': rating,
     })
+
+
+@api_bp.route('/agents/<agent_id>/prompt_versions')
+def list_agent_prompt_versions(agent_id):
+    """All prompt_version rows for an agent, ascending by version_number."""
+    import storage
+    a = storage.agents().get(agent_id)
+    if a is None:
+        return jsonify({'error': 'not_found'}), 404
+    rows = storage.prompt_versions().list_for_agent(agent_id)
+    return jsonify([
+        {
+            'id': v.id,
+            'agent_id': v.agent_id,
+            'version_number': v.version_number,
+            'system_prompt': v.system_prompt,
+            'created_at': v.created_at,
+            'note': v.note,
+        }
+        for v in rows
+    ])
