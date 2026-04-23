@@ -6,7 +6,9 @@ import { Audit } from './pages/Audit';
 import { BacktestLab } from './pages/BacktestLab';
 import { ComingSoon } from './pages/ComingSoon';
 import { Dashboard } from './pages/Dashboard';
+import { Editor } from './pages/Editor';
 import { Risk } from './pages/Risk';
+import { Screener } from './pages/Screener';
 
 export default function App() {
   return (
@@ -22,8 +24,8 @@ export default function App() {
               <Route path="/live" element={<ComingSoon label="实盘交易" />} />
               <Route path="/risk" element={<Risk />} />
               <Route path="/audit" element={<Audit />} />
-              <Route path="/screener" element={<ComingSoon label="选股器" />} />
-              <Route path="/editor" element={<ComingSoon label="策略研发" />} />
+              <Route path="/screener" element={<Screener />} />
+              <Route path="/editor" element={<Editor />} />
               <Route path="/backtest" element={<BacktestLab />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
