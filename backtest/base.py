@@ -43,6 +43,7 @@ class BacktestResult:
     daily_records: list = None   # list[dict] — per-day equity/cash/pnl_pct
     trades: list = None          # list[dict] — per-fill {date,code,action,shares,price,fee}
     thinking: list = None        # list[dict] — per-day LLM reasoning + tool_calls + decisions
+    kind: str = 'agent'          # 'agent' | 'rule' (P3-C)
 
     def __post_init__(self):
         if self.daily_records is None:
