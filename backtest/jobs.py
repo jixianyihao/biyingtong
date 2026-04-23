@@ -1,0 +1,115 @@
+"""In-memory async backtest job tracker.
+
+Start one with ``submit_backtest(...)``, poll status with ``get_status(session_id)``.
+When the API process restarts, jobs are lost — but the actual BacktestResult /
+BaselineResult rows they wrote live on in SQLite. Good enough for MVP.
+"""
+from __future__ import annotations
+
+import threading
+import time
+import traceback
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+
+
+@dataclass
+class JobStatus:
+    session_id: str
+    state: str = 'queued'        # 'queued' | 'running' | 'complete' | 'failed'
+    progress: str = ''            # free-text most-recent step
+    agent_ids: list = field(default_factory=list)
+    agent_result_ids: list = field(default_factory=list)
+    baseline_result_ids: list = field(default_factory=list)
+    error: str | None = None
+    submitted_at: float = field(default_factory=time.time)
+    started_at: float | None = None
+    finished_at: float | None = None
+
+
+_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='bt-job')
+_lock = threading.Lock()
+_jobs: dict[str, JobStatus] = {}
+
+
+def get_status(session_id: str) -> JobStatus | None:
+    with _lock:
+        return _jobs.get(session_id)
+
+
+def list_jobs() -> list[JobStatus]:
+    with _lock:
+        return list(_jobs.values())
+
+
+def submit_backtest(
+    *,
+    session_id: str,
+    agent_ids: list[str],
+    start_date: str,
+    end_date: str,
+    initial_capital: float,
+    universe: list[str],
+    include_baselines: bool = True,
+) -> JobStatus:
+    """Queue an async backtest: N agents parallel + optional baselines. Returns status."""
+    status = JobStatus(
+        session_id=session_id,
+        state='queued',
+        agent_ids=list(agent_ids),
+    )
+
+    def _run():
+        # Grab _lock first so callers observing st.state right after
+        # submit_backtest returns see 'queued' until we get a chance to flip
+        # to 'running'. Since submit_backtest holds _lock across _pool.submit,
+        # this call blocks until the caller releases.
+        with _lock:
+            pass
+        try:
+            status.state = 'running'
+            status.started_at = time.time()
+
+            from llm.factory import build_llm
+            from backtest.multi_agent_runner import run_multi
+
+            status.progress = 'building LLM adapters'
+            import storage
+            configs = []
+            for aid in agent_ids:
+                a = storage.agents().get(aid)
+                if a is None:
+                    raise ValueError(f'unknown agent_id: {aid}')
+                llm = build_llm(a.model_id)
+                configs.append({'agent_id': aid, 'llm': llm})
+
+            status.progress = f'running {len(configs)} agents in parallel'
+            results = run_multi(
+                session_id=session_id, agent_configs=configs,
+                start_date=start_date, end_date=end_date,
+                initial_capital=initial_capital, universe=universe,
+            )
+            status.agent_result_ids = [r.id for r in results]
+
+            if include_baselines:
+                status.progress = 'running baselines'
+                from backtest.baselines.runner import run_all
+                baselines = run_all(
+                    session_id=session_id,
+                    start_date=start_date, end_date=end_date,
+                    initial_capital=initial_capital, universe=universe,
+                )
+                status.baseline_result_ids = [b.id for b in baselines]
+
+            status.progress = 'done'
+            status.state = 'complete'
+        except Exception as e:  # noqa: BLE001
+            status.state = 'failed'
+            status.error = f'{type(e).__name__}: {e}\n{traceback.format_exc()[:500]}'
+        finally:
+            status.finished_at = time.time()
+
+    with _lock:
+        _jobs[session_id] = status
+        _pool.submit(_run)
+    return status
