@@ -130,3 +130,67 @@ export type PromptVersion = {
   created_at: string | null;
   note: string | null;
 };
+
+export type NavPoint = {
+  date: string;
+  equity: number;
+  cash?: number | null;       // absent on baseline curves
+  pnl_pct?: number | null;    // absent on baseline curves
+};
+
+export type BaselineCurve = {
+  name: string;
+  curve: Array<{ date: string; equity: number }>;
+};
+
+export type NavResponse = {
+  result_id: string;
+  agent: NavPoint[];
+  baselines: BaselineCurve[];
+};
+
+export type TradeRow = {
+  date: string;
+  code: string;
+  action: 'buy' | 'sell';
+  shares: number;
+  price: number;
+  fee: number;
+};
+
+export type TradesResponse = {
+  result_id: string;
+  trades: TradeRow[];
+};
+
+export type ThinkingDecision = {
+  action: string;
+  code?: string;
+  shares?: number;
+  price?: number;
+  outcome?: string;
+  reasoning?: string;
+};
+
+export type ThinkingEntry = {
+  date: string;
+  reasoning: string;
+  tool_calls: Array<{ name: string; input: Record<string, unknown> }>;
+  decisions: ThinkingDecision[];
+};
+
+export type ThinkingResponse = {
+  result_id: string;
+  thinking: ThinkingEntry[];
+};
+
+export type StrategyRating = {
+  overall: number;
+  letter: 'A+' | 'A' | 'B' | 'C' | 'D';
+  returns: number;
+  sharpe: number;
+  drawdown: number;
+  win_rate: number;
+  consistency: number;
+  notes: string[];
+};
