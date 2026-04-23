@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from .base import (
-    Agent, AgentStore, AuditStore, BacktestResultStore, CalendarStore,
-    FinancialStore, KlineStore, LLMDecisionCacheStore, ModelInfo, ModelStore,
-    Persona, PersonaStore, PromptVersion, PromptVersionStore, RedLineStore,
-    StockStatusStore,
+    Agent, AgentStore, AuditStore, BacktestResultStore, BaselineResultStore,
+    CalendarStore, FinancialStore, KlineStore, LLMDecisionCacheStore,
+    ModelInfo, ModelStore, Persona, PersonaStore, PromptVersion,
+    PromptVersionStore, RedLineStore, StockStatusStore,
 )
 
 _kline: KlineStore | None = None
@@ -20,6 +20,7 @@ _stock_status: StockStatusStore | None = None
 _audit: AuditStore | None = None
 _backtests: BacktestResultStore | None = None
 _llm_cache: LLMDecisionCacheStore | None = None
+_baselines: BaselineResultStore | None = None
 
 
 def kline() -> KlineStore:
@@ -118,6 +119,14 @@ def llm_cache() -> LLMDecisionCacheStore:
     return _llm_cache
 
 
+def baselines() -> BaselineResultStore:
+    global _baselines
+    if _baselines is None:
+        from .sqlite_baselines import SQLiteBaselineResultStore
+        _baselines = SQLiteBaselineResultStore()
+    return _baselines
+
+
 def set_kline(impl: KlineStore) -> None:
     global _kline
     _kline = impl
@@ -178,11 +187,16 @@ def set_llm_cache(impl: LLMDecisionCacheStore) -> None:
     _llm_cache = impl
 
 
+def set_baselines(impl: BaselineResultStore) -> None:
+    global _baselines
+    _baselines = impl
+
+
 def reset() -> None:
     global _kline, _financial, _models, _calendar
     global _personas, _agents, _prompt_versions
     global _redline, _stock_status, _audit
-    global _backtests, _llm_cache
+    global _backtests, _llm_cache, _baselines
     _kline = None
     _financial = None
     _models = None
@@ -195,3 +209,4 @@ def reset() -> None:
     _audit = None
     _backtests = None
     _llm_cache = None
+    _baselines = None
