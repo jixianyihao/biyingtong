@@ -78,6 +78,15 @@ class AgentRunner:
         # Live LLM tool loop
         from tools import filter_allowed
         allowed = filter_allowed(persona.allowed_tools if persona else [])
+        # When snapshot is provided, strip research tools — the LLM must decide
+        # from the pre-loaded data. Empirical finding: GLM ignores prompt
+        # directives and calls tools anyway; removing them from the schema is
+        # the only way to enforce single-turn decisions.
+        if market_snapshot and market_snapshot.get('stocks'):
+            research_tools = {'get_kline', 'get_financials', 'get_technical',
+                              'get_snapshot', 'get_index', 'get_news'}
+            allowed = {name: v for name, v in allowed.items()
+                       if name not in research_tools}
         # filter_allowed returns dict[name, (SPEC, call)]; extract specs for LLM
         tool_specs = [spec for spec, _ in allowed.values()]
 

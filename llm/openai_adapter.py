@@ -39,12 +39,14 @@ class OpenAILLM(LLMBase):
         base_url: str | None = None,
         provider: str = 'openai',
         training_cutoff: str = '2025-10-31',
+        extra_body: dict | None = None,
     ):
         self.model_id = model_id
         self.provider = provider
         self.training_cutoff = training_cutoff
         self._api_key = api_key
         self._base_url = base_url
+        self._extra_body = extra_body
 
     def chat(
         self,
@@ -56,9 +58,59 @@ class OpenAILLM(LLMBase):
     ) -> LLMResponse:
         client = _get_client(api_key=self._api_key, base_url=self._base_url)
 
-        openai_msgs = []
+        openai_msgs: list[dict] = []
         for m in messages:
-            d: dict = {'role': m.role, 'content': m.content}
+            # Translate Anthropic-style content blocks (produced by AgentRunner
+            # for tool_result and assistant tool_use turns) into OpenAI format.
+            if isinstance(m.content, list):
+                if m.role == 'user':
+                    # Split tool_result blocks into individual role='tool' messages
+                    for block in m.content:
+                        if isinstance(block, dict) and block.get('type') == 'tool_result':
+                            openai_msgs.append({
+                                'role': 'tool',
+                                'tool_call_id': block.get('tool_use_id', ''),
+                                'content': block.get('content', ''),
+                            })
+                        elif isinstance(block, dict) and block.get('type') == 'text':
+                            openai_msgs.append({
+                                'role': 'user',
+                                'content': block.get('text', ''),
+                            })
+                    continue
+                if m.role == 'assistant':
+                    text_parts = []
+                    tc_list = []
+                    for block in m.content:
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get('type') == 'text':
+                            text_parts.append(block.get('text', ''))
+                        elif block.get('type') == 'tool_use':
+                            tc_list.append({
+                                'id': block.get('id', ''),
+                                'type': 'function',
+                                'function': {
+                                    'name': block.get('name', ''),
+                                    'arguments': json.dumps(
+                                        block.get('input', {}),
+                                        ensure_ascii=False,
+                                    ),
+                                },
+                            })
+                    d: dict = {
+                        'role': 'assistant',
+                        'content': '\n'.join(text_parts) if text_parts else None,
+                    }
+                    if tc_list:
+                        d['tool_calls'] = tc_list
+                    openai_msgs.append(d)
+                    continue
+                # Fallback: stringify
+                openai_msgs.append({'role': m.role,
+                                    'content': json.dumps(m.content, ensure_ascii=False)})
+                continue
+            d = {'role': m.role, 'content': m.content}
             if m.tool_call_id is not None:
                 d['tool_call_id'] = m.tool_call_id
             openai_msgs.append(d)
@@ -81,6 +133,9 @@ class OpenAILLM(LLMBase):
                 }
                 for t in tools
             ]
+
+        if self._extra_body:
+            kwargs['extra_body'] = self._extra_body
 
         try:
             raw = client.chat.completions.create(**kwargs)
