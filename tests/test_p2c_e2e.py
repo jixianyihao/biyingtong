@@ -153,3 +153,47 @@ def test_e2e_rerun_uses_cache(wired_full, monkeypatch):
         initial_capital=1_000_000.0, universe=['600519.SH'],
     )
     assert len(llm_2.calls) == 0
+
+
+def test_zone_stats_split_across_cutoff(wired_full, monkeypatch):
+    """Window straddling a model's training_cutoff must produce zone_stats."""
+    from backtest.runner import BacktestRunner
+    import backtest.runner as mod
+    from llm.mock import MockLLM
+    import storage
+
+    # Override the model's cutoff mid-window.
+    class _M:
+        training_cutoff = '2024-03-10'
+    monkeypatch.setattr(storage.models(), 'get', lambda _id: _M())
+
+    agent = wired_full.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='Zones',
+    )
+
+    # 30 days straddling 2024-03-10 with 60-day buffer → all days are
+    # pollution (day<cutoff) or buffer (<cutoff+60d). None are clean.
+    days = [date(2024, 3, 1) + timedelta(days=i) for i in range(30)]
+    prices = [(d, 100.0) for d in days]
+    monkeypatch.setattr(mod, '_load_daily_closes', lambda c, s, e: prices)
+    monkeypatch.setattr(mod, '_trading_days', lambda s, e: days)
+
+    hold = {
+        'tool_calls': [{'id': 'c', 'name': 'place_decision',
+                        'input': {'action': 'hold',
+                                  'reason': 'nothing to do, markets are stable today',
+                                  'thinking': 't'}}],
+        'stop_reason': 'tool_use',
+    }
+    llm = MockLLM([hold] * 30)
+    result = BacktestRunner(llm=llm).run(
+        session_id='zones', agent_id=agent.id,
+        start_date='2024-03-01', end_date='2024-03-30',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+    )
+
+    by_zone = {z.zone: z for z in result.zone_stats}
+    assert by_zone['pollution'].days == 9   # 2024-03-01..2024-03-09
+    assert by_zone['buffer'].days == 21     # 2024-03-10..2024-03-30
+    assert by_zone['clean'].days == 0
