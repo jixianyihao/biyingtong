@@ -1,6 +1,8 @@
 """P3-B CRUD: agent/persona update + delete + prompt rollback."""
 from __future__ import annotations
 
+import pytest
+
 
 def test_agent_store_protocol_has_update_method():
     from storage.base import AgentStore
@@ -204,3 +206,265 @@ def test_prompt_version_rollback_wrong_agent_raises(observability_storage):
     with pytest.raises(ValueError, match='does not belong'):
         storage.prompt_versions().rollback(
             agent_id=a2.id, version_id=a1_v1.id)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: agent endpoints
+# ---------------------------------------------------------------------------
+
+
+def _fresh_flask_app():
+    """Minimal Flask app wrapping api_bp — avoids importing app.py (TDX)."""
+    from flask import Flask
+    from api import api_bp
+    app = Flask(__name__)
+    app.register_blueprint(api_bp)
+    app.config['TESTING'] = True
+    return app
+
+
+@pytest.fixture
+def client(observability_storage):
+    app = _fresh_flask_app()
+    with app.test_client() as c:
+        yield c
+
+
+def test_put_agent_updates_display_name(observability_storage, client):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='original', initial_capital=1_000_000.0,
+    )
+    resp = client.put(f'/api/agents/{agent.id}',
+                      json={'display_name': 'renamed'})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['display_name'] == 'renamed'
+    assert storage.agents().get(agent.id).display_name == 'renamed'
+
+
+def test_put_agent_updates_rules_override(observability_storage, client):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    resp = client.put(f'/api/agents/{agent.id}',
+                      json={'rules_override': {'max_holdings': 5}})
+    assert resp.status_code == 200
+    assert resp.get_json()['rules_override'] == {'max_holdings': 5}
+
+
+def test_put_agent_404_on_missing(observability_storage, client):
+    resp = client.put('/api/agents/nope', json={'display_name': 'x'})
+    assert resp.status_code == 404
+
+
+def test_put_agent_empty_body_is_noop_200(observability_storage, client):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    resp = client.put(f'/api/agents/{agent.id}', json={})
+    assert resp.status_code == 200
+    assert resp.get_json()['display_name'] == 't'
+
+
+def test_delete_agent_204(observability_storage, client):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    resp = client.delete(f'/api/agents/{agent.id}')
+    assert resp.status_code == 204
+    assert storage.agents().get(agent.id) is None
+
+
+def test_delete_agent_404_on_missing(observability_storage, client):
+    resp = client.delete('/api/agents/nope')
+    assert resp.status_code == 404
+
+
+def test_rollback_prompt_creates_new_version(observability_storage, client):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    storage.prompt_versions().insert(
+        agent_id=agent.id, system_prompt='v2 new', note='edited',
+    )
+    v1 = storage.prompt_versions().list_for_agent(agent.id)[0]
+
+    resp = client.post(
+        f'/api/agents/{agent.id}/prompts/rollback',
+        json={'version_id': v1.id},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['version_number'] == 3
+    assert data['system_prompt'] == v1.system_prompt
+    # agents.current_prompt_version_id updated
+    fresh = storage.agents().get(agent.id)
+    assert fresh.current_prompt_version_id == data['id']
+
+
+def test_rollback_404_on_missing_agent(observability_storage, client):
+    resp = client.post('/api/agents/nope/prompts/rollback',
+                       json={'version_id': 1})
+    assert resp.status_code == 404
+
+
+def test_rollback_400_on_missing_version_id(observability_storage, client):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    resp = client.post(f'/api/agents/{agent.id}/prompts/rollback', json={})
+    assert resp.status_code == 400
+
+
+def test_rollback_400_on_bad_version_id(observability_storage, client):
+    """version_id for a non-existent prompt version → 400 (ValueError from store)."""
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    resp = client.post(f'/api/agents/{agent.id}/prompts/rollback',
+                       json={'version_id': 99999})
+    assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Task 6: persona endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_post_persona_creates(observability_storage, client):
+    import storage
+    body = {
+        'id': 'custom1',
+        'name': 'Custom 1',
+        'style_desc': 'my custom style',
+        'system_prompt': 'You are a custom agent.',
+        'default_schedule': 'daily',
+    }
+    resp = client.post('/api/personas', json=body)
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data['id'] == 'custom1'
+    assert data['is_builtin'] is False
+    p = storage.personas().get('custom1')
+    assert p is not None
+    assert p.is_builtin is False
+
+
+def test_post_persona_409_on_duplicate_id(observability_storage, client):
+    resp = client.post('/api/personas', json={
+        'id': 'linyuan',  # seeded as builtin
+        'name': 'x', 'style_desc': 'x', 'system_prompt': 'x',
+    })
+    assert resp.status_code == 409
+
+
+def test_post_persona_400_on_missing_fields(observability_storage, client):
+    resp = client.post('/api/personas', json={'id': 'x'})
+    assert resp.status_code == 400
+
+
+def test_put_persona_updates_non_prompt_field(observability_storage, client):
+    import storage
+    from storage.base import Persona
+    storage.personas().upsert(Persona(
+        id='c2', name='C2', style_desc='old', system_prompt='old prompt',
+        default_pool=[], pool_filter=None, default_schedule='daily',
+        default_rules={}, allowed_tools=[], is_builtin=False,
+    ))
+    resp = client.put('/api/personas/c2', json={'name': 'C2 NEW'})
+    assert resp.status_code == 200
+    assert storage.personas().get('c2').name == 'C2 NEW'
+    # system_prompt unchanged
+    assert storage.personas().get('c2').system_prompt == 'old prompt'
+
+
+def test_put_persona_system_prompt_bumps_agent_versions(observability_storage, client):
+    """Key test: changing system_prompt must insert a new prompt_version for each
+    referencing agent and point its current_prompt_version_id at the new row."""
+    import storage
+    from storage.base import Persona
+    storage.personas().upsert(Persona(
+        id='c3', name='C3', style_desc='v', system_prompt='v1',
+        default_pool=[], pool_filter=None, default_schedule='daily',
+        default_rules={}, allowed_tools=[], is_builtin=False,
+    ))
+    agent = storage.agents().create_from_persona(
+        persona_id='c3', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    assert len(storage.prompt_versions().list_for_agent(agent.id)) == 1
+
+    resp = client.put('/api/personas/c3',
+                      json={'system_prompt': 'v2 improved'})
+    assert resp.status_code == 200
+
+    versions = storage.prompt_versions().list_for_agent(agent.id)
+    assert len(versions) == 2
+    assert versions[1].system_prompt == 'v2 improved'
+    assert 'c3' in (versions[1].note or '')
+    fresh = storage.agents().get(agent.id)
+    assert fresh.current_prompt_version_id == versions[1].id
+
+
+def test_put_persona_403_on_builtin(observability_storage, client):
+    resp = client.put('/api/personas/linyuan', json={'name': 'NOT ALLOWED'})
+    assert resp.status_code == 403
+
+
+def test_put_persona_404_on_missing(observability_storage, client):
+    resp = client.put('/api/personas/nope', json={'name': 'x'})
+    assert resp.status_code == 404
+
+
+def test_delete_persona_204(observability_storage, client):
+    import storage
+    from storage.base import Persona
+    storage.personas().upsert(Persona(
+        id='c4', name='c4', style_desc='x', system_prompt='x',
+        default_pool=[], pool_filter=None, default_schedule='daily',
+        default_rules={}, allowed_tools=[], is_builtin=False,
+    ))
+    resp = client.delete('/api/personas/c4')
+    assert resp.status_code == 204
+    assert storage.personas().get('c4') is None
+
+
+def test_delete_persona_403_on_builtin(observability_storage, client):
+    resp = client.delete('/api/personas/linyuan')
+    assert resp.status_code == 403
+
+
+def test_delete_persona_409_when_agent_references_it(observability_storage, client):
+    import storage
+    from storage.base import Persona
+    storage.personas().upsert(Persona(
+        id='c5', name='c5', style_desc='x', system_prompt='x',
+        default_pool=[], pool_filter=None, default_schedule='daily',
+        default_rules={}, allowed_tools=[], is_builtin=False,
+    ))
+    storage.agents().create_from_persona(
+        persona_id='c5', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    resp = client.delete('/api/personas/c5')
+    assert resp.status_code == 409
+    assert storage.personas().get('c5') is not None
+
+
+def test_delete_persona_404_on_missing(observability_storage, client):
+    resp = client.delete('/api/personas/nope')
+    assert resp.status_code == 404
