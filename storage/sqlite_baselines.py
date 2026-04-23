@@ -21,7 +21,9 @@ def _row_to_result(row):
     from backtest.base import BacktestStats
     from backtest.baselines.base import BaselineResult
     stats = BacktestStats(**json.loads(row[7]))
-    daily_records = json.loads(row[8]) if len(row) > 8 and row[8] else []
+    # Schema DEFAULT '[]' + ensure_baseline_observability_column on init guarantee
+    # row[8] is a non-NULL string; guard only against empty string from buggy callers.
+    daily_records = json.loads(row[8]) if row[8] else []
     return BaselineResult(
         id=row[0], session_id=row[1], name=row[2],
         start_date=row[3], end_date=row[4],
