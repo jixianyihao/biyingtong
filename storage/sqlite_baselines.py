@@ -46,6 +46,14 @@ class SQLiteBaselineResultStore(BaselineResultStore):
         con = sqlite3.connect(self._db_path)
         try:
             con.executescript(SCHEMA_BASELINE_RESULTS)
+            # Idempotency by (session_id, name): remove any OTHER row with the
+            # same session+name before inserting.  This makes run_all safe to
+            # rerun — fresh uuids don't accumulate duplicates.
+            con.execute(
+                '''DELETE FROM baseline_results
+                   WHERE session_id = ? AND name = ? AND id != ?''',
+                (result.session_id, result.name, result.id),
+            )
             con.execute(
                 '''INSERT OR REPLACE INTO baseline_results
                    (id, session_id, name, start_date, end_date,
