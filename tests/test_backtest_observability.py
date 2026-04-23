@@ -309,3 +309,82 @@ def test_agent_runner_thinking_cache_hit_uses_synthetic_entry(observability_stor
     live_keys = set(live_thk['decisions'][0])
     cached_keys = set(cached_thk['decisions'][0])
     assert live_keys == cached_keys
+
+
+def test_sqlite_backtests_roundtrips_observability_fields(observability_storage):
+    """Insert a BacktestResult with observability fields; get() returns them intact."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+
+    storage.backtests().create_session('s-rt', '2025-01-01', '2025-01-10', ['a1'])
+    stats = BacktestStats(
+        sharpe=1.2, max_drawdown_pct=-5.0, trade_count=4,
+        win_rate=75.0, max_daily_loss_pct=-1.5,
+        total_return_pct=8.0, final_equity=108_000.0,
+    )
+    result = BacktestResult(
+        id='r-rt', session_id='s-rt', agent_id='a1',
+        persona_id=None, model_id=None,
+        start_date='2025-01-01', end_date='2025-01-10',
+        initial_capital=100_000.0,
+        stats=stats,
+        zone_stats=[],
+        quality_gate_label='pass', quality_gate_criteria={},
+        final_equity=108_000.0,
+        daily_records=[{'date': '2025-01-02', 'equity': 100_500.0,
+                        'cash': 50_000.0, 'pnl_pct': 0.5,
+                        'trade_count': 1, 'won': 1}],
+        trades=[{'date': '2025-01-02', 'code': '600519.SH',
+                 'action': 'buy', 'shares': 100, 'price': 500.0,
+                 'fee': 15.0}],
+        thinking=[{'date': '2025-01-02', 'reasoning': 'strong brand',
+                   'tool_calls': [], 'decisions': []}],
+    )
+    storage.backtests().insert(result)
+
+    fetched = storage.backtests().get('r-rt')
+    assert fetched is not None
+    assert len(fetched.daily_records) == 1
+    assert fetched.daily_records[0]['equity'] == 100_500.0
+    assert fetched.daily_records[0]['cash'] == 50_000.0
+    assert fetched.trades[0]['code'] == '600519.SH'
+    assert fetched.trades[0]['shares'] == 100
+    assert fetched.thinking[0]['reasoning'] == 'strong brand'
+
+
+def test_sqlite_backtests_defaults_to_empty_lists_for_legacy_rows(observability_storage):
+    """Row written without observability columns (simulating pre-P3A data)
+    should still load with empty lists, not crash."""
+    import sqlite3, json
+    from dataclasses import asdict
+    import storage
+    from backtest.base import BacktestStats
+
+    store = storage.backtests()
+    db_path = store._db_path  # type: ignore[attr-defined]
+    storage.backtests().create_session('s-leg', '2025-01-01', '2025-01-02', ['al'])
+    stats = BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                          win_rate=0, max_daily_loss_pct=0,
+                          total_return_pct=0, final_equity=100_000)
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            '''INSERT INTO backtest_results (id, session_id, agent_id,
+                persona_id, model_id, start_date, end_date, initial_capital,
+                final_equity, stats_json, zone_stats_json, quality_gate_label,
+                quality_gate_json)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            ('r-leg', 's-leg', 'al', None, None, '2025-01-01', '2025-01-02',
+             100_000.0, 100_000.0, json.dumps(asdict(stats)),
+             '[]', 'pass', '{}'),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+    fetched = storage.backtests().get('r-leg')
+    assert fetched is not None
+    # Legacy row — new columns default to '[]' (via schema default), parse to []
+    assert fetched.daily_records == []
+    assert fetched.trades == []
+    assert fetched.thinking == []
