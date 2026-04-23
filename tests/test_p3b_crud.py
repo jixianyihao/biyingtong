@@ -151,3 +151,56 @@ def test_persona_delete_removes_row(observability_storage):
 def test_persona_delete_nonexistent_returns_false(observability_storage):
     import storage
     assert storage.personas().delete('nonexistent') is False
+
+
+def test_prompt_version_rollback_creates_new_version_with_old_prompt(observability_storage):
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    pv = storage.prompt_versions()
+    # v1 is auto-created; make v2
+    v2 = pv.insert(agent_id=agent.id, system_prompt='v2 prompt', note='updated')
+    assert v2.version_number == 2
+
+    # Rollback to v1
+    versions = pv.list_for_agent(agent.id)
+    v1 = versions[0]
+    assert v1.version_number == 1
+    new_version = pv.rollback(agent_id=agent.id, version_id=v1.id)
+
+    assert new_version.version_number == 3
+    assert new_version.system_prompt == v1.system_prompt
+    assert 'rolled back to v1' in (new_version.note or '')
+    # v1 and v2 unchanged
+    assert [v.version_number for v in pv.list_for_agent(agent.id)] == [1, 2, 3]
+
+
+def test_prompt_version_rollback_unknown_version_raises(observability_storage):
+    import pytest
+    import storage
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t', initial_capital=1_000_000.0,
+    )
+    with pytest.raises(ValueError, match='not found'):
+        storage.prompt_versions().rollback(
+            agent_id=agent.id, version_id=99999)
+
+
+def test_prompt_version_rollback_wrong_agent_raises(observability_storage):
+    import pytest
+    import storage
+    a1 = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='a1', initial_capital=1_000_000.0,
+    )
+    a2 = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='a2', initial_capital=1_000_000.0,
+    )
+    a1_v1 = storage.prompt_versions().list_for_agent(a1.id)[0]
+    with pytest.raises(ValueError, match='does not belong'):
+        storage.prompt_versions().rollback(
+            agent_id=a2.id, version_id=a1_v1.id)
