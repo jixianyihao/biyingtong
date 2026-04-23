@@ -1,0 +1,25 @@
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Chinese stock market convention: red = up, green = down */
+.up { color: var(--up); }
+.down { color: var(--down); }
+.mono { font-family: var(--f-mono); }
