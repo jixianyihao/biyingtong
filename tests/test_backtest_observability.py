@@ -216,3 +216,96 @@ def test_agent_runner_captures_thinking_per_day(observability_storage):
     assert thk['decisions'][0]['action'] == 'buy'
     assert 'outcome' in thk['decisions'][0]
     assert isinstance(thk['tool_calls'], list)
+
+
+def test_agent_runner_thinking_records_rejected_decisions(observability_storage):
+    """Rejected decisions must still surface in last_thinking.decisions."""
+    from agents.runner import AgentRunner
+    from llm.mock import MockLLM
+    import storage
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-rej', initial_capital=1_000_000.0,
+    )
+
+    # Portfolio already holds 200k of 600519 — existing value ≥ 15% cap →
+    # position_max_pct rejects any additional buy.
+    portfolio = {
+        'cash': 800_000, 'equity': 1_000_000,
+        'positions': {'600519.SH': {'shares': 2000, 'avg_price': 100.0}},
+    }
+    script = [
+        {
+            'text': 'want to add more',
+            'tool_calls': [{
+                'id': 'r1', 'name': 'place_decision',
+                'input': {'action': 'buy', 'code': '600519.SH',
+                          'qty': 100, 'reason': 'add more',
+                          'thinking': 'buying'},
+            }],
+            'stop_reason': 'tool_use',
+        },
+    ]
+    runner = AgentRunner(llm=MockLLM(script))
+    executed = runner.run_day(
+        agent_id=agent.id, date='2025-01-03',
+        portfolio=portfolio, market_context={},
+        mark_prices={'600519.SH': 100.0},
+    )
+    # Validation rejected → nothing executed
+    assert executed == []
+    # But thinking still records the rejected decision
+    thk = runner.last_thinking
+    assert len(thk['decisions']) == 1
+    assert thk['decisions'][0]['action'] == 'buy'
+    assert thk['decisions'][0]['outcome'] == 'rejected'
+
+
+def test_agent_runner_thinking_cache_hit_uses_synthetic_entry(observability_storage):
+    """Second identical run_day call hits cache → last_thinking has outcome='cached'."""
+    from agents.runner import AgentRunner
+    from llm.mock import MockLLM
+    import storage
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-cache', initial_capital=1_000_000.0,
+    )
+    script = [
+        {
+            'text': 'deciding',
+            'tool_calls': [{
+                'id': 'c1', 'name': 'place_decision',
+                'input': {'action': 'buy', 'code': '600519.SH',
+                          'qty': 100, 'reason': 'buy',
+                          'thinking': 'buy'},
+            }],
+            'stop_reason': 'tool_use',
+        },
+    ]
+    # First call populates cache; consume the script's only entry
+    runner = AgentRunner(llm=MockLLM(script))
+    kwargs = dict(
+        agent_id=agent.id, date='2025-01-03',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'600519.SH': 100.0},
+    )
+    runner.run_day(**kwargs)
+    live_thk = runner.last_thinking
+
+    # Second call with same state → cache hit. Give MockLLM an empty script so
+    # any accidental LLM call would raise loudly (proves cache was hit).
+    runner2 = AgentRunner(llm=MockLLM([]))
+    runner2.run_day(**kwargs)
+    cached_thk = runner2.last_thinking
+
+    assert cached_thk is not None
+    assert cached_thk['reasoning'] == '(cached — no LLM call)'
+    assert cached_thk['tool_calls'] == []
+    assert len(cached_thk['decisions']) == 1
+    assert cached_thk['decisions'][0]['outcome'] == 'cached'
+    # Shape must match live-call entries (except reasoning text + outcome value)
+    live_keys = set(live_thk['decisions'][0])
+    cached_keys = set(cached_thk['decisions'][0])
+    assert live_keys == cached_keys
