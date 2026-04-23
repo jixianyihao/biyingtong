@@ -13,6 +13,12 @@ from .base import CalendarStore
 
 
 class SQLiteCalendarStore(CalendarStore):
+    def __init__(self, tmp_path=None):
+        self._tmp_path = tmp_path
+
+    def init_schema(self) -> None:
+        """No-op: CalendarStore delegates to TDX/KlineStore, no own schema."""
+
     def get_trading_days(self, start: date, end: date) -> list[date]:
         days = self._try_primary(start, end)
         if days is not None:
