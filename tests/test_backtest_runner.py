@@ -284,3 +284,42 @@ def test_divergence_flag_is_computed(wired_full, monkeypatch):
     assert 'max_divergence_flag' in gate
     # With flat prices, both zones have ~0 return → divergence False
     assert gate['max_divergence_flag']['ok'] is True
+
+
+def test_runner_builds_daily_snapshot(wired_full, monkeypatch):
+    from datetime import date, timedelta
+    from backtest.runner import BacktestRunner
+    import backtest.runner as mod
+    from llm.mock import MockLLM
+
+    # Track snapshot builds
+    import agents.context_builder as cb
+    call_count = {'n': 0}
+    def fake_build(universe, d):
+        call_count['n'] += 1
+        return {'date': d.strftime('%Y-%m-%d'),
+                'stocks': {c: {'kline_summary': {'latest_close': 100.0}}
+                           for c in universe}}
+    monkeypatch.setattr(cb, 'build_market_snapshot', fake_build)
+
+    agent = wired_full.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='SnapTest',
+    )
+    days = [date(2025, 3, 1) + timedelta(days=i) for i in range(3)]
+    prices = [(d, 100.0) for d in days]
+    monkeypatch.setattr(mod, '_load_daily_closes', lambda c, s, e: prices)
+    monkeypatch.setattr(mod, '_trading_days', lambda s, e: days)
+
+    hold = {'tool_calls': [{'id': 'c', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'nothing to trade at this moment',
+                                      'thinking': 't'}}],
+            'stop_reason': 'tool_use'}
+    llm = MockLLM([hold] * 3)
+    BacktestRunner(llm=llm).run(
+        session_id='snap', agent_id=agent.id,
+        start_date='2025-03-01', end_date='2025-03-03',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+    )
+    assert call_count['n'] == 3  # one snapshot per trading day

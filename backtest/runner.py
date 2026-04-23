@@ -87,10 +87,19 @@ class BacktestRunner:
                 cash=book.cash, positions=book.positions_view(),
                 mark_prices=mark_prices,
             )
+            # Pre-fetch structured market data so the LLM can decide in a
+            # single roundtrip. Imported via module attribute so tests can
+            # monkeypatch `agents.context_builder.build_market_snapshot`.
+            import agents.context_builder as _cb
+            try:
+                snapshot = _cb.build_market_snapshot(universe, d)
+            except Exception:  # noqa: BLE001
+                snapshot = None
             decisions = runner.run_day(
                 agent_id=agent_id, date=d.strftime('%Y-%m-%d'),
                 portfolio=portfolio, market_context={},
                 mark_prices=mark_prices,
+                market_snapshot=snapshot,
             )
 
             # Apply decisions to the book at today's close
