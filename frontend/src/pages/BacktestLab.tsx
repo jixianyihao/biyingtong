@@ -12,6 +12,7 @@ import type {
   BaselineResult,
   JobStatus,
   SessionComposite,
+  ZoneStats,
 } from '../api/types';
 
 // ─── form defaults ─────────────────────────────────────────────────────────
@@ -333,7 +334,10 @@ function JobPanel({
       )}
 
       {job?.state === 'complete' && session && (
-        <ResultsTable session={session} />
+        <>
+          <ResultsTable session={session} />
+          <ZoneMetricsPanel session={session} />
+        </>
       )}
 
       {(!job || job.state === 'queued' || job.state === 'running') && !error && (
@@ -459,6 +463,285 @@ function ResultsTable({ session }: { session: SessionComposite }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ─── zone metrics (spec §11.3) ─────────────────────────────────────────────
+type ZoneKey = 'pollution' | 'buffer' | 'clean';
+
+type ZoneMeta = {
+  key: ZoneKey;
+  cn: string;
+  en: string;
+  /** accent bar color on left edge of each zone column */
+  accent: string;
+};
+
+const ZONE_ORDER: ZoneMeta[] = [
+  { key: 'pollution', cn: '污染区', en: 'Pollution', accent: 'oklch(0.58 0.14 25)' }, // muted red
+  { key: 'buffer',    cn: '缓冲区', en: 'Buffer',    accent: 'var(--warn)' },          // amber
+  { key: 'clean',     cn: '干净区', en: 'Clean',     accent: 'var(--down)' },          // brand green (Chinese-market "down" hue is green)
+];
+
+const ZONE_METRIC_ROWS: Array<{
+  key: string;
+  label: string;
+  sub: string;
+  /** true = higher is better (red/green by up/down sign); 'dd' = always shown as red-ish loss */
+  kind: 'plain' | 'pct' | 'dd' | 'daily_loss';
+  digits: number;
+}> = [
+  { key: 'sharpe',             label: 'Sharpe',     sub: '',           kind: 'plain',      digits: 2 },
+  { key: 'total_return_pct',   label: '总收益',     sub: 'Return',     kind: 'pct',        digits: 2 },
+  { key: 'max_drawdown_pct',   label: '最大回撤',   sub: 'Max DD',     kind: 'dd',         digits: 2 },
+  { key: 'win_rate',           label: '胜率',       sub: 'Win Rate',   kind: 'pct',        digits: 2 },
+  { key: 'trade_count',        label: '交易数',     sub: 'Trades',     kind: 'plain',      digits: 0 },
+  { key: 'max_daily_loss_pct', label: '最大日亏损', sub: 'Daily Loss', kind: 'daily_loss', digits: 2 },
+];
+
+function getZone(zones: ZoneStats[], key: ZoneKey): ZoneStats | undefined {
+  return zones.find((z) => z.zone === key);
+}
+
+function fmtZoneMetric(
+  v: number | undefined | null,
+  kind: (typeof ZONE_METRIC_ROWS)[number]['kind'],
+  digits: number,
+): { text: string; cls: string } {
+  if (v == null || Number.isNaN(v)) return { text: '—', cls: 'mono text-text-faint' };
+
+  if (kind === 'pct') {
+    const cls = `num ${pctCls(v)}`;
+    const sign = v > 0 ? '+' : '';
+    return { text: `${sign}${fmtNum(v, digits)}%`, cls };
+  }
+  if (kind === 'dd' || kind === 'daily_loss') {
+    // max_drawdown_pct is typically reported as a negative number (loss) or
+    // positive magnitude — show in 'down' (green in CN market = loss) either way.
+    return { text: `${fmtNum(v, digits)}%`, cls: 'num down' };
+  }
+  // plain
+  return { text: fmtNum(v, digits), cls: 'num text-text-hi' };
+}
+
+function ZoneColumn({ meta, zone }: { meta: ZoneMeta; zone: ZoneStats | undefined }) {
+  const hasStats = !!zone && zone.days >= 2;
+  return (
+    <div
+      style={{
+        background: 'var(--bg-3)',
+        border: '1px solid var(--panel-border-soft)',
+        borderRadius: 'var(--r-sm)',
+        borderLeft: `4px solid ${meta.accent}`,
+        padding: '10px 12px',
+      }}
+    >
+      <div className="flex items-baseline gap-2 mb-2 flex-wrap">
+        <span className="text-text-hi text-sm font-semibold" style={{ color: meta.accent }}>
+          {meta.cn}
+        </span>
+        <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+          {meta.en}
+        </span>
+        <span style={{ flex: 1 }} />
+        <span className="pill" style={{ fontSize: 10 }}>
+          {zone ? `${zone.days}d` : '0d'}
+        </span>
+      </div>
+      {hasStats ? (
+        <div className="grid gap-1.5">
+          {ZONE_METRIC_ROWS.map((row) => {
+            const v = zone!.stats[row.key];
+            const { text, cls } = fmtZoneMetric(v, row.kind, row.digits);
+            return (
+              <div
+                key={row.key}
+                className="flex items-baseline justify-between gap-2"
+                style={{
+                  padding: '3px 0',
+                  borderBottom: '1px dashed var(--panel-border-soft)',
+                }}
+              >
+                <div>
+                  <span className="text-text text-xs">{row.label}</span>
+                  {row.sub && (
+                    <span className="mono text-[9.5px] text-text-ghost uppercase ml-1.5 tracking-wider">
+                      {row.sub}
+                    </span>
+                  )}
+                </div>
+                <span className={`${cls} text-sm`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {text}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-text-faint text-xs italic py-2">
+          —  数据不足（需 ≥ 2 天）
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DivergenceBanner({ zones }: { zones: ZoneStats[] }) {
+  const pollution = getZone(zones, 'pollution');
+  const clean = getZone(zones, 'clean');
+  const p_sharpe = pollution?.stats.sharpe;
+  const c_sharpe = clean?.stats.sharpe;
+
+  const bothPresent =
+    p_sharpe != null && !Number.isNaN(p_sharpe) &&
+    c_sharpe != null && !Number.isNaN(c_sharpe);
+  const sufficient =
+    bothPresent && (pollution?.days ?? 0) >= 10 && (clean?.days ?? 0) >= 10;
+
+  if (!sufficient) {
+    return (
+      <div
+        className="text-xs mt-3"
+        style={{
+          padding: '8px 12px',
+          borderRadius: 'var(--r-sm)',
+          background: 'var(--bg-3)',
+          border: '1px solid var(--panel-border-soft)',
+          color: 'var(--text-faint)',
+        }}
+      >
+        需要至少 10 天污染区 + 10 天干净区数据才能评估泄漏风险
+      </div>
+    );
+  }
+
+  const delta = Math.abs((p_sharpe as number) - (c_sharpe as number));
+  const leaky = delta > 0.5;
+
+  if (leaky) {
+    return (
+      <div
+        className="text-xs mt-3"
+        style={{
+          padding: '10px 12px',
+          borderRadius: 'var(--r-sm)',
+          background: 'var(--up-bg)',
+          border: '1px solid var(--up-border)',
+          color: 'var(--up)',
+          borderLeft: '4px solid var(--warn)',
+        }}
+      >
+        <span style={{ fontWeight: 600 }}>⚠ </span>
+        污染区 Sharpe ({fmtNum(p_sharpe, 2)}) 明显高于干净区 ({fmtNum(c_sharpe, 2)}) —
+        考虑是否有知识泄漏，干净区数据才能反映泛化能力
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="text-xs mt-3"
+      style={{
+        padding: '10px 12px',
+        borderRadius: 'var(--r-sm)',
+        background: 'var(--down-bg)',
+        border: '1px solid var(--down-border)',
+        color: 'var(--down)',
+      }}
+    >
+      <span style={{ fontWeight: 600 }}>✓ </span>
+      污染区与干净区 Sharpe 差距可忽略 (|Δ{fmtNum(delta, 2)}|)，无明显知识泄漏信号
+    </div>
+  );
+}
+
+function ZoneMetricsPanel({ session }: { session: SessionComposite }) {
+  // Design choice: render ONE zone grid per agent in the session, each labeled
+  // with the agent's display name/id. In single-agent sessions this collapses
+  // to a single grid; multi-agent sessions stack them vertically so the user
+  // can audit knowledge-leakage per agent independently.
+  const agents = session.agents;
+  if (agents.length === 0) return null;
+
+  return (
+    <div className="panel p-5 mt-4">
+      <div className="flex items-baseline gap-2 mb-1 flex-wrap">
+        <h2 className="text-text-hi text-base font-semibold">跨截止区分区指标</h2>
+        <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+          Zone-Bifurcated Metrics
+        </span>
+      </div>
+      <div className="text-text-faint text-[11px] mb-2">
+        污染区 / 缓冲区 / 干净区 分别统计
+      </div>
+      <div
+        className="text-text-dim text-[11px] mb-4"
+        style={{ lineHeight: 1.6 }}
+      >
+        把回测窗口按模型 training_cutoff 切成三段分别计算，干净区的 Sharpe
+        才是"真实代"，污染区若远高于干净区说明模型在吃训练数据。
+      </div>
+
+      <div className="grid gap-5">
+        {agents.map((agent, idx) => {
+          const zones = agent.zone_stats ?? [];
+          return (
+            <div key={agent.id}>
+              {agents.length > 1 && (
+                <div className="flex items-baseline gap-2 mb-2 flex-wrap">
+                  <span
+                    className="pill brand"
+                    style={{ fontSize: 10 }}
+                  >
+                    Agent #{idx + 1}
+                  </span>
+                  <span className="text-text-hi text-sm font-semibold">
+                    {agent.agent_id}
+                  </span>
+                  {agent.persona_id && (
+                    <span className="mono text-[10px] text-text-faint">
+                      {agent.persona_id}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {zones.length === 0 ? (
+                <div
+                  className="text-xs"
+                  style={{
+                    padding: '14px 12px',
+                    borderRadius: 'var(--r-sm)',
+                    background: 'var(--bg-3)',
+                    border: '1px dashed var(--panel-border-soft)',
+                    color: 'var(--text-faint)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  (本次回测未生成分区统计 · Zone stats unavailable)
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="grid gap-3"
+                    style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+                  >
+                    {ZONE_ORDER.map((meta) => (
+                      <ZoneColumn
+                        key={meta.key}
+                        meta={meta}
+                        zone={getZone(zones, meta.key)}
+                      />
+                    ))}
+                  </div>
+                  <DivergenceBanner zones={zones} />
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
