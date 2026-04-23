@@ -180,7 +180,7 @@ export function Screener() {
 
       <div
         className="flex-1 min-h-0 grid gap-3 px-3 pb-3"
-        style={{ gridTemplateColumns: '320px minmax(0,1fr) 280px' }}
+        style={{ gridTemplateColumns: '260px minmax(360px,1fr) 240px' }}
       >
         {/* LEFT: factors */}
         <div className="panel flex flex-col min-h-0">
