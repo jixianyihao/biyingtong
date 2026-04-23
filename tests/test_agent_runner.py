@@ -145,3 +145,28 @@ def test_modified_decision_reflects_shrunk_shares(wired, seeded_agent):
     )
     assert len(out) == 1
     assert out[0]['shares'] == 600
+
+
+def test_run_day_accepts_market_snapshot(wired, seeded_agent):
+    from agents.runner import AgentRunner
+    from llm.mock import MockLLM
+    llm = MockLLM([{
+        'tool_calls': [{'id': 'c', 'name': 'place_decision',
+                        'input': {'action': 'hold',
+                                  'reason': 'saw the snapshot, staying put for today',
+                                  'thinking': 't'}}],
+        'stop_reason': 'tool_use',
+    }])
+    runner = AgentRunner(llm=llm)
+    snap = {'date': '2025-11-17',
+            'stocks': {'600519.SH': {'kline_summary': {'latest_close': 1600.0}}}}
+    runner.run_day(
+        agent_id=seeded_agent.id, date='2025-11-17',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'600519.SH': 1600.0},
+        market_snapshot=snap,
+    )
+    # The snapshot must end up in the prompt the LLM sees
+    first_call = llm.calls[0]
+    user_msg = [m for m in first_call['messages'] if m.role == 'user'][0]
+    assert '1600' in user_msg.content

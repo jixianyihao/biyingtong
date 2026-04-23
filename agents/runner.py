@@ -44,6 +44,7 @@ class AgentRunner:
         portfolio: dict,
         market_context: dict,
         mark_prices: dict,
+        market_snapshot: dict | None = None,
     ) -> list[dict]:
         """Return list of executed (validated/modified) decisions."""
         import storage
@@ -63,6 +64,7 @@ class AgentRunner:
             portfolio=portfolio,
             market_context=market_context,
             default_pool=persona.default_pool if persona else [],
+            market_snapshot=market_snapshot,
         )
         p_hash = prompt_hash(messages)
         port_hash = _portfolio_hash(portfolio)
