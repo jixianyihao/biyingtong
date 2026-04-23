@@ -14,6 +14,10 @@ import type { NavResponse } from '../api/types';
 // CSS vars.
 const COLORS = ['#c9a227', '#808080', '#3b82f6', '#a855f7', '#22c55e'];
 
+/** Pick the i-th baseline color. Shared by the chart series + legend so they
+ *  can't drift. Wraps if there are more baselines than colors (unlikely). */
+const baselineColor = (i: number): string => COLORS[(i + 1) % COLORS.length];
+
 function toTimestamp(dateStr: string): UTCTimestamp {
   // Daily bars: midnight UTC is fine — the lib only uses this for tick labels.
   return Math.floor(
@@ -101,7 +105,7 @@ export function NavChart({ data }: { data: NavResponse | undefined }) {
 
     data.baselines.forEach((b, i) => {
       const s = chart.addLineSeries({
-        color: COLORS[(i + 1) % COLORS.length],
+        color: baselineColor(i),
         lineWidth: 1,
         title: b.name,
       });
@@ -136,7 +140,7 @@ export function NavChart({ data }: { data: NavResponse | undefined }) {
         {data.baselines.map((b, i) => (
           <LegendSwatch
             key={b.name}
-            color={COLORS[(i + 1) % COLORS.length]}
+            color={baselineColor(i)}
             label={b.name}
           />
         ))}

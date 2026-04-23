@@ -134,8 +134,10 @@ export type PromptVersion = {
 export type NavPoint = {
   date: string;
   equity: number;
-  cash?: number | null;       // absent on baseline curves
-  pnl_pct?: number | null;    // absent on baseline curves
+  // Agent curves always populate cash + pnl_pct; baselines use BaselineCurve instead.
+  // Kept optional (not nullable) because the backend never emits null.
+  cash?: number;
+  pnl_pct?: number;
 };
 
 export type BaselineCurve = {
