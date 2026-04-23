@@ -1,7 +1,7 @@
-"""GET /api/agents + /api/agents/:id + /api/agents/:id/health."""
+"""GET /api/agents + /api/agents/:id + /api/agents/:id/health + POST /api/agents."""
 from __future__ import annotations
 
-from flask import jsonify
+from flask import jsonify, request
 
 from . import api_bp
 
@@ -36,6 +36,40 @@ def get_agent(agent_id):
     if a is None:
         return jsonify({'error': 'not_found'}), 404
     return jsonify(_agent_to_dict(a))
+
+
+@api_bp.route('/agents', methods=['POST'])
+def create_agent():
+    """Create an Agent instance from a persona + model.
+
+    Body: {persona_id, model_id, display_name, rules_override?, initial_capital?}
+    Returns: 201 + agent dict, or 400 on missing/bad input, 404 on unknown persona.
+    """
+    import storage
+    body = request.get_json(silent=True) or {}
+    persona_id = body.get('persona_id')
+    model_id = body.get('model_id')
+    display_name = body.get('display_name')
+    if not (persona_id and model_id and display_name):
+        return jsonify({'error': 'persona_id, model_id, display_name required'}), 400
+
+    if storage.personas().get(persona_id) is None:
+        return jsonify({'error': f'unknown persona_id: {persona_id}'}), 404
+    if storage.models().get(model_id) is None:
+        return jsonify({'error': f'unknown model_id: {model_id}'}), 404
+
+    kwargs = {
+        'persona_id': persona_id,
+        'model_id': model_id,
+        'display_name': display_name,
+    }
+    if 'rules_override' in body and body['rules_override'] is not None:
+        kwargs['rules_override'] = body['rules_override']
+    if 'initial_capital' in body and body['initial_capital'] is not None:
+        kwargs['initial_capital'] = float(body['initial_capital'])
+
+    agent = storage.agents().create_from_persona(**kwargs)
+    return jsonify(_agent_to_dict(agent)), 201
 
 
 @api_bp.route('/agents/<agent_id>/health')
