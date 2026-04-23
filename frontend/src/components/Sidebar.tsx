@@ -25,6 +25,7 @@ const ITEMS: Item[] = [
   { id: 'agent', kind: 'nav', icon: 'agent', label: '我的 AI 操盘手', sub: 'My Traders', to: '/agent', badge: '核心' },
   { id: 'live', kind: 'nav', icon: 'live', label: '实盘交易', sub: 'Trade', to: '/live' },
   { id: 'risk', kind: 'nav', icon: 'risk', label: '安全管控', sub: 'Safety', to: '/risk' },
+  { id: 'audit', kind: 'nav', icon: 'list', label: '审计日志', sub: 'Audit Log', to: '/audit' },
   { id: '__sep', kind: 'sep', label: '研究工具', sub: 'RESEARCH' },
   { id: 'screener', kind: 'nav', icon: 'filter', label: '选股器', sub: 'Screener', to: '/screener' },
   { id: 'editor', kind: 'nav', icon: 'code', label: '策略研发', sub: 'Strategy', to: '/editor' },

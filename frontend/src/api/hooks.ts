@@ -50,3 +50,25 @@ export const useSession = (sid: string | undefined, enabled = true) =>
 
 export const useRedlines = () =>
   useQuery({ queryKey: ['redlines'], queryFn: api.redlines });
+
+export const useUpdateRedlines = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.updateRedlines,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['redlines'] });
+      qc.invalidateQueries({ queryKey: ['audit'] });
+    },
+  });
+};
+
+export const useAuditQuery = (
+  params: { agent_id?: string; kind?: string; limit?: number },
+  opts: { refetchInterval?: number | false } = {},
+) =>
+  useQuery({
+    queryKey: ['audit', params],
+    queryFn: () => api.audit(params),
+    enabled: !!(params.agent_id || params.kind),
+    refetchInterval: opts.refetchInterval ?? false,
+  });

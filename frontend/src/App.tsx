@@ -2,9 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { Agent } from './pages/Agent';
+import { Audit } from './pages/Audit';
 import { BacktestLab } from './pages/BacktestLab';
 import { ComingSoon } from './pages/ComingSoon';
 import { Dashboard } from './pages/Dashboard';
+import { Risk } from './pages/Risk';
 
 export default function App() {
   return (
@@ -18,7 +20,8 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/agent" element={<Agent />} />
               <Route path="/live" element={<ComingSoon label="实盘交易" />} />
-              <Route path="/risk" element={<ComingSoon label="安全管控" />} />
+              <Route path="/risk" element={<Risk />} />
+              <Route path="/audit" element={<Audit />} />
               <Route path="/screener" element={<ComingSoon label="选股器" />} />
               <Route path="/editor" element={<ComingSoon label="策略研发" />} />
               <Route path="/backtest" element={<BacktestLab />} />
