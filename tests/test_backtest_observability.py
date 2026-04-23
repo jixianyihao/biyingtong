@@ -533,3 +533,178 @@ def test_thinking_endpoint_returns_per_day_reasoning(observability_storage, clie
 def test_thinking_endpoint_404_on_missing(observability_storage, client):
     resp = client.get('/api/backtests/nope/thinking')
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Baseline NAV persistence
+# ---------------------------------------------------------------------------
+
+def test_baseline_results_schema_has_daily_records_column():
+    """Fresh baseline_results schema must have daily_records_json."""
+    import sqlite3
+    from data_schema.baseline_state import SCHEMA_BASELINE_RESULTS
+    con = sqlite3.connect(':memory:')
+    con.executescript(SCHEMA_BASELINE_RESULTS)
+    cols = {row[1] for row in con.execute(
+        'PRAGMA table_info(baseline_results)').fetchall()}
+    con.close()
+    assert 'daily_records_json' in cols
+
+
+def test_ensure_baseline_observability_column_migrates(tmp_path):
+    """Legacy baseline_results (pre-P3A) is upgraded idempotently."""
+    import sqlite3
+    from data_schema.baseline_state import ensure_baseline_observability_column
+
+    db = tmp_path / 'b.db'
+    con = sqlite3.connect(db)
+    con.execute('''CREATE TABLE baseline_results (
+        id TEXT PRIMARY KEY, session_id TEXT NOT NULL, name TEXT NOT NULL,
+        start_date TEXT NOT NULL, end_date TEXT NOT NULL,
+        initial_capital REAL NOT NULL, final_equity REAL,
+        stats_json TEXT NOT NULL
+    )''')
+    con.execute(
+        "INSERT INTO baseline_results VALUES "
+        "('b1','s1','bh','2025-01-01','2025-01-02',100000.0,100000.0,'{}')",
+    )
+    con.commit()
+    ensure_baseline_observability_column(con)
+    ensure_baseline_observability_column(con)  # idempotent
+
+    cols = {row[1] for row in con.execute(
+        'PRAGMA table_info(baseline_results)').fetchall()}
+    assert 'daily_records_json' in cols
+    row = con.execute(
+        'SELECT daily_records_json FROM baseline_results WHERE id=?',
+        ('b1',),
+    ).fetchone()
+    assert row == ('[]',)
+    con.close()
+
+
+def test_baseline_result_daily_records_defaults_empty():
+    from backtest.baselines.base import BaselineResult
+    from backtest.base import BacktestStats
+    r = BaselineResult(
+        id='b', session_id='s', name='buy_and_hold',
+        start_date='2025-01-01', end_date='2025-01-10',
+        initial_capital=100_000.0,
+        stats=BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                            win_rate=0, max_daily_loss_pct=0,
+                            total_return_pct=0, final_equity=100_000),
+    )
+    assert r.daily_records == []
+
+
+def test_sqlite_baselines_roundtrips_daily_records(observability_storage):
+    """insert + get preserves daily_records for a BaselineResult."""
+    import storage
+    from backtest.baselines.base import BaselineResult
+    from backtest.base import BacktestStats
+
+    stats = BacktestStats(sharpe=0.5, max_drawdown_pct=-2.0, trade_count=3,
+                          win_rate=50.0, max_daily_loss_pct=-1.0,
+                          total_return_pct=3.0, final_equity=103_000.0)
+    r = BaselineResult(
+        id='b-rt', session_id='s-b', name='buy_and_hold',
+        start_date='2025-01-02', end_date='2025-01-08',
+        initial_capital=100_000.0, stats=stats, final_equity=103_000.0,
+        daily_records=[
+            {'date': '2025-01-02', 'equity': 100_000.0, 'pnl_pct': 0.0,
+             'trade_count': 1, 'won': 0},
+            {'date': '2025-01-03', 'equity': 101_000.0, 'pnl_pct': 1.0,
+             'trade_count': 0, 'won': 0},
+        ],
+    )
+    storage.baselines().insert(r)
+    fetched = storage.baselines().get('b-rt')
+    assert fetched is not None
+    assert len(fetched.daily_records) == 2
+    assert fetched.daily_records[0]['equity'] == 100_000.0
+    assert fetched.daily_records[1]['pnl_pct'] == 1.0
+
+
+def test_buy_and_hold_runner_produces_daily_records(observability_storage, monkeypatch):
+    """End-to-end: run_buy_and_hold returns BaselineResult with daily_records."""
+    from datetime import date, timedelta, datetime
+    import storage
+    from backtest.baselines.buy_and_hold import run_buy_and_hold
+    import backtest.baselines.buy_and_hold as bh_mod
+
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(5)]
+    # Monkeypatch the baseline's own _trading_days and _load_prices
+    monkeypatch.setattr(bh_mod, '_trading_days', lambda s, e: days)
+    # 5-day flat-ish price series for a single stock
+    prices = {'600519.SH': dict((d, 100.0 + i) for i, d in enumerate(days))}
+    def _fake_load(code, start, end):
+        return [(d, p) for d, p in sorted(prices[code].items())]
+    monkeypatch.setattr(bh_mod, '_load_prices', _fake_load)
+
+    r = run_buy_and_hold(
+        session_id='s-bh', start_date='2025-01-02', end_date='2025-01-06',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+        persist=False,
+    )
+    assert len(r.daily_records) == 5
+    for rec in r.daily_records:
+        assert 'date' in rec
+        assert 'equity' in rec
+        assert isinstance(rec['date'], str)  # isoformat, not date object
+
+
+def test_nav_endpoint_includes_baseline_curve_when_baseline_persisted(
+    observability_storage, client,
+):
+    """Baseline with daily_records in same session → /nav returns non-empty
+    baselines[0].curve (closes the 4-curve loop)."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    from backtest.baselines.base import BaselineResult
+
+    # Agent-side backtest
+    r = BacktestResult(
+        id='nav-b', session_id='s-nav-b', agent_id='a1',
+        persona_id=None, model_id=None,
+        start_date='2025-01-02', end_date='2025-01-03',
+        initial_capital=100_000.0,
+        stats=BacktestStats(sharpe=0.0, max_drawdown_pct=0.0,
+                            trade_count=0, win_rate=0.0,
+                            max_daily_loss_pct=0.0, total_return_pct=0.0,
+                            final_equity=100_000.0),
+        zone_stats=[],
+        quality_gate_label='pass', quality_gate_criteria={},
+        daily_records=[
+            {'date': '2025-01-02', 'equity': 100_000.0, 'cash': 100_000.0,
+             'pnl_pct': 0.0, 'trade_count': 0, 'won': 0},
+        ],
+    )
+    storage.backtests().create_session('s-nav-b', '2025-01-02',
+                                       '2025-01-03', ['a1'])
+    storage.backtests().insert(r)
+
+    # Baseline attached to the same session, with daily_records
+    bstats = BacktestStats(sharpe=0.0, max_drawdown_pct=0.0, trade_count=0,
+                           win_rate=0.0, max_daily_loss_pct=0.0,
+                           total_return_pct=1.0, final_equity=101_000.0)
+    b = BaselineResult(
+        id='bl-1', session_id='s-nav-b', name='buy_and_hold',
+        start_date='2025-01-02', end_date='2025-01-03',
+        initial_capital=100_000.0, stats=bstats, final_equity=101_000.0,
+        daily_records=[
+            {'date': '2025-01-02', 'equity': 100_000.0, 'pnl_pct': 0.0,
+             'trade_count': 1, 'won': 0},
+            {'date': '2025-01-03', 'equity': 101_000.0, 'pnl_pct': 1.0,
+             'trade_count': 0, 'won': 0},
+        ],
+    )
+    storage.baselines().insert(b)
+
+    resp = client.get('/api/backtests/nav-b/nav')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data['baselines']) == 1
+    assert data['baselines'][0]['name'] == 'buy_and_hold'
+    assert len(data['baselines'][0]['curve']) == 2
+    assert data['baselines'][0]['curve'][0]['equity'] == 100_000.0
+    assert data['baselines'][0]['curve'][1]['equity'] == 101_000.0

@@ -111,11 +111,20 @@ def run_equal_weight(*, session_id: str, start_date: str, end_date: str,
 
     overall, _zones = aggregate(daily_records, cutoff='2099-12-31',
                                 initial_capital=initial_capital)
+    daily_records_serial = [
+        {'date': rec['date'].isoformat(),
+         'equity': rec['equity'],
+         'pnl_pct': rec['pnl_pct'],
+         'trade_count': rec['trade_count'],
+         'won': rec['won']}
+        for rec in daily_records
+    ]
     result = BaselineResult(
         id=str(uuid.uuid4()), session_id=session_id, name='equal_weight',
         start_date=start_date, end_date=end_date,
         initial_capital=initial_capital,
         stats=overall, final_equity=prev_equity,
+        daily_records=daily_records_serial,
     )
     if persist:
         import storage

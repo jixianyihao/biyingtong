@@ -16,3 +16,8 @@ class BaselineResult:
     initial_capital: float
     stats: BacktestStats
     final_equity: float | None = None
+    daily_records: list = None   # list[dict] — {date, equity, pnl_pct, trade_count, won}
+
+    def __post_init__(self):
+        if self.daily_records is None:
+            self.daily_records = []
