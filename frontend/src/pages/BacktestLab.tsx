@@ -478,10 +478,23 @@ type ZoneMeta = {
   accent: string;
 };
 
+// Zone accent palette — deliberately DECOUPLED from the CN stock up/down
+// palette (which inverts: red=up, green=down). Using --up/--down here would
+// read as "clean zone = price down" which is nonsensical. Instead we use a
+// neutral severity scale:
+//   pollution → warn amber  ("data quality caveat")
+//   buffer    → text-faint  ("uncertain zone")
+//   clean     → brand gold  ("trusted data")
+const ZONE_COLORS: Record<ZoneKey, string> = {
+  pollution: 'var(--warn)',
+  buffer: 'var(--text-faint)',
+  clean: 'var(--brand)',
+};
+
 const ZONE_ORDER: ZoneMeta[] = [
-  { key: 'pollution', cn: '污染区', en: 'Pollution', accent: 'oklch(0.58 0.14 25)' }, // muted red
-  { key: 'buffer',    cn: '缓冲区', en: 'Buffer',    accent: 'var(--warn)' },          // amber
-  { key: 'clean',     cn: '干净区', en: 'Clean',     accent: 'var(--down)' },          // brand green (Chinese-market "down" hue is green)
+  { key: 'pollution', cn: '污染区', en: 'Pollution', accent: ZONE_COLORS.pollution },
+  { key: 'buffer',    cn: '缓冲区', en: 'Buffer',    accent: ZONE_COLORS.buffer },
+  { key: 'clean',     cn: '干净区', en: 'Clean',     accent: ZONE_COLORS.clean },
 ];
 
 const ZONE_METRIC_ROWS: Array<{
@@ -587,71 +600,46 @@ function ZoneColumn({ meta, zone }: { meta: ZoneMeta; zone: ZoneStats | undefine
   );
 }
 
-function DivergenceBanner({ zones }: { zones: ZoneStats[] }) {
-  const pollution = getZone(zones, 'pollution');
-  const clean = getZone(zones, 'clean');
-  const p_sharpe = pollution?.stats.sharpe;
-  const c_sharpe = clean?.stats.sharpe;
-
-  const bothPresent =
-    p_sharpe != null && !Number.isNaN(p_sharpe) &&
-    c_sharpe != null && !Number.isNaN(c_sharpe);
+function DivergenceBanner({ result }: { result: BacktestResult }) {
+  const { divergence_flag, divergence_metric, zone_stats } = result;
+  const byZone = Object.fromEntries(zone_stats.map((z) => [z.zone, z]));
+  const pollution = byZone['pollution'];
+  const clean = byZone['clean'];
+  const minDays = 10;
   const sufficient =
-    bothPresent && (pollution?.days ?? 0) >= 10 && (clean?.days ?? 0) >= 10;
+    pollution && clean && pollution.days >= minDays && clean.days >= minDays &&
+    pollution.stats && clean.stats;
 
   if (!sufficient) {
     return (
-      <div
-        className="text-xs mt-3"
-        style={{
-          padding: '8px 12px',
-          borderRadius: 'var(--r-sm)',
-          background: 'var(--bg-3)',
-          border: '1px solid var(--panel-border-soft)',
-          color: 'var(--text-faint)',
-        }}
-      >
-        需要至少 10 天污染区 + 10 天干净区数据才能评估泄漏风险
+      <div style={{ padding: '10px 14px', marginTop: 12, fontSize: 12,
+                    color: 'var(--text-dim)', background: 'var(--bg-3)',
+                    border: '1px solid var(--panel-border-soft)',
+                    borderRadius: 6 }}>
+        需要至少 10 天污染区 + 10 天干净区数据才能评估知识泄漏风险
       </div>
     );
   }
 
-  const delta = Math.abs((p_sharpe as number) - (c_sharpe as number));
-  const leaky = delta > 0.5;
-
-  if (leaky) {
+  if (divergence_flag) {
+    const pretty = divergence_metric !== null ? divergence_metric.toFixed(3) : '—';
     return (
-      <div
-        className="text-xs mt-3"
-        style={{
-          padding: '10px 12px',
-          borderRadius: 'var(--r-sm)',
-          background: 'var(--up-bg)',
-          border: '1px solid var(--up-border)',
-          color: 'var(--up)',
-          borderLeft: '4px solid var(--warn)',
-        }}
-      >
-        <span style={{ fontWeight: 600 }}>⚠ </span>
-        污染区 Sharpe ({fmtNum(p_sharpe, 2)}) 明显高于干净区 ({fmtNum(c_sharpe, 2)}) —
-        考虑是否有知识泄漏，干净区数据才能反映泛化能力
+      <div style={{ padding: '10px 14px', marginTop: 12, fontSize: 12,
+                    color: 'var(--warn)', background: 'var(--warn-bg, rgba(234,179,8,0.08))',
+                    border: '1px solid var(--warn)',
+                    borderRadius: 6 }}>
+        ⚠ 污染区与干净区收益差距显著（相对距离 {pretty} &gt; 0.5）—
+        考虑是否有知识泄漏，以干净区的指标评估泛化能力
       </div>
     );
   }
-
+  const pretty = divergence_metric !== null ? divergence_metric.toFixed(3) : '0.000';
   return (
-    <div
-      className="text-xs mt-3"
-      style={{
-        padding: '10px 12px',
-        borderRadius: 'var(--r-sm)',
-        background: 'var(--down-bg)',
-        border: '1px solid var(--down-border)',
-        color: 'var(--down)',
-      }}
-    >
-      <span style={{ fontWeight: 600 }}>✓ </span>
-      污染区与干净区 Sharpe 差距可忽略 (|Δ{fmtNum(delta, 2)}|)，无明显知识泄漏信号
+    <div style={{ padding: '10px 14px', marginTop: 12, fontSize: 12,
+                  color: 'var(--text-dim)', background: 'var(--bg-3)',
+                  border: '1px solid var(--panel-border-soft)',
+                  borderRadius: 6 }}>
+      ✓ 污染区与干净区收益相对距离可忽略（{pretty}），无明显知识泄漏信号
     </div>
   );
 }
@@ -735,7 +723,7 @@ function ZoneMetricsPanel({ session }: { session: SessionComposite }) {
                       />
                     ))}
                   </div>
-                  <DivergenceBanner zones={zones} />
+                  <DivergenceBanner result={agent} />
                 </>
               )}
             </div>

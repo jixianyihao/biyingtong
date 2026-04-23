@@ -66,6 +66,8 @@ export type BacktestResult = {
   zone_stats: ZoneStats[];
   quality_gate_label: 'pass' | 'warn' | 'fail';
   quality_gate_criteria: Record<string, unknown>;
+  divergence_flag: boolean;
+  divergence_metric: number | null;
 };
 
 export type BaselineResult = {

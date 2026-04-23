@@ -9,6 +9,8 @@ from . import api_bp
 
 
 def _result_to_dict(r) -> dict:
+    from backtest.divergence import compute_divergence
+    flag, metric = compute_divergence(r.zone_stats)
     return {
         'id': r.id,
         'session_id': r.session_id,
@@ -23,6 +25,8 @@ def _result_to_dict(r) -> dict:
         'zone_stats': [asdict(z) for z in r.zone_stats],
         'quality_gate_label': r.quality_gate_label,
         'quality_gate_criteria': r.quality_gate_criteria,
+        'divergence_flag': flag,
+        'divergence_metric': metric,
     }
 
 
@@ -234,6 +238,9 @@ def stream_backtest_job(session_id):
             if status.state in ('complete', 'failed'):
                 yield 'event: done\ndata: {}\n\n'
                 return
+            # NOTE: This polls in-process every 500ms and blocks a Flask worker per
+            # subscriber. Acceptable at MVP scale (≤ 5 concurrent users). If user
+            # count grows, switch to a thread-pool async pattern or Redis pub/sub.
             time.sleep(0.5)
             iterations += 1
         yield 'event: timeout\ndata: {}\n\n'

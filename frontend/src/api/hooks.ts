@@ -32,6 +32,11 @@ export const useCreateAgent = () => {
 export const useStartBacktest = () =>
   useMutation({ mutationFn: api.startBacktest });
 
+/**
+ * @deprecated Use `useJobStatusStream` (SSE) instead. Poll-based status
+ * query is kept for backward compat; all first-party pages now use the
+ * stream hook. This will be removed in a future cleanup.
+ */
 export const useJobStatus = (sid: string | undefined, enabled = true) =>
   useQuery({
     queryKey: ['job', sid],
