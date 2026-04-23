@@ -9,6 +9,10 @@ export type Persona = {
   allowed_tools: string[];
   default_rules: Record<string, unknown>;
   is_builtin: boolean;
+  // Only returned by GET /api/personas/:id (detail) — absent on list rows.
+  // Consumers that need these must call the detail endpoint.
+  system_prompt?: string;
+  pool_filter?: Record<string, unknown> | null;
 };
 
 export type ModelInfo = {
@@ -205,3 +209,22 @@ export type QualityGateCriterion = {
   threshold: number | string | boolean;
   reason?: string;
 };
+
+export type UpdateAgentBody = {
+  display_name?: string;
+  rules_override?: Record<string, unknown>;
+};
+
+export type CreatePersonaBody = {
+  id: string;
+  name: string;
+  style_desc: string;
+  system_prompt: string;
+  default_pool?: string[];
+  pool_filter?: Record<string, unknown> | null;
+  default_schedule?: string;
+  default_rules?: Record<string, unknown>;
+  allowed_tools?: string[];
+};
+
+export type UpdatePersonaBody = Partial<Omit<CreatePersonaBody, 'id'>>;

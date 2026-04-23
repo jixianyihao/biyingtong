@@ -91,6 +91,37 @@ class SQLitePromptVersionStore(PromptVersionStore):
             con.close()
         return self._row_to_version(row) if row else None
 
+    def rollback(self, agent_id: str, version_id: int) -> PromptVersion:
+        """Copy an older version's system_prompt into a fresh version at
+        max+1. Does NOT touch agents table — endpoint does that separately."""
+        con = sqlite3.connect(self._db_path)
+        try:
+            con.execute(SCHEMA_PROMPT_VERSIONS)
+            con.execute(SCHEMA_PROMPT_VERSION_INDEX)
+            row = con.execute(
+                '''SELECT id, agent_id, version_number, system_prompt,
+                          created_at, note
+                   FROM prompt_versions WHERE id = ?''',
+                (version_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(
+                    f'prompt version {version_id!r} not found')
+            if row[1] != agent_id:
+                raise ValueError(
+                    f'version {version_id} does not belong to agent '
+                    f'{agent_id!r} (it belongs to {row[1]!r})')
+            old_prompt = row[3]
+            old_version_number = row[2]
+        finally:
+            con.close()
+        # Reuse insert — it handles the version_number math + commit
+        return self.insert(
+            agent_id=agent_id,
+            system_prompt=old_prompt,
+            note=f'rolled back to v{old_version_number}',
+        )
+
     def list_for_agent(self, agent_id: str) -> list[PromptVersion]:
         con = sqlite3.connect(self._db_path)
         try:

@@ -4,10 +4,14 @@ import {
   useAgent,
   useAgents,
   useCreateAgent,
+  useDeletePersona,
   useModels,
   usePersonas,
 } from '../api/hooks';
 import type { Agent, ModelInfo, Persona } from '../api/types';
+import { AgentEditModal } from '../components/AgentEditModal';
+import { AgentDeleteDialog } from '../components/AgentDeleteDialog';
+import { PersonaFormModal } from '../components/PersonaFormModal';
 
 // ─── styling helpers ───────────────────────────────────────────────────────
 const inputCls =
@@ -229,11 +233,15 @@ function AgentDetail({
   personas,
   models,
   onShowPrompt,
+  onEdit,
+  onDelete,
 }: {
   agentId: string | null;
   personas: Persona[];
   models: ModelInfo[];
   onShowPrompt: (personaId: string) => void;
+  onEdit: (agent: Agent) => void;
+  onDelete: (agent: Agent) => void;
 }) {
   const q = useAgent(agentId ?? undefined);
   const agent = q.data;
@@ -294,7 +302,30 @@ function AgentDetail({
             id: <span className="text-text">{agent.id}</span>
           </div>
         </div>
-        <StatusPill status={agent.status} />
+        <div className="flex items-center gap-2">
+          <StatusPill status={agent.status} />
+          <button
+            className="btn ghost"
+            onClick={() => onEdit(agent)}
+            style={{ padding: '3px 10px', fontSize: 11 }}
+            title="编辑 Agent"
+          >
+            编辑
+          </button>
+          <button
+            className="btn ghost"
+            onClick={() => onDelete(agent)}
+            style={{
+              padding: '3px 10px',
+              fontSize: 11,
+              color: 'var(--down)',
+              borderColor: 'var(--down-border)',
+            }}
+            title="删除 Agent"
+          >
+            删除
+          </button>
+        </div>
       </div>
 
       {/* stats grid */}
@@ -1300,19 +1331,123 @@ function CreateAgentModal({
   );
 }
 
+// ─── Persona Row — used in the persona management section ─────────────────
+function PersonaRow({
+  persona,
+  onEdit,
+  onDelete,
+}: {
+  persona: Persona;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const color = personaColor(persona.id);
+  return (
+    <div
+      className="flex items-center gap-3 p-3 rounded"
+      style={{
+        background: 'var(--bg-2)',
+        border: '1px solid var(--panel-border-soft)',
+      }}
+    >
+      <div
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: 2,
+          background: color,
+          flexShrink: 0,
+        }}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <div className="text-text-hi font-semibold text-[13px] truncate">
+            {persona.name}
+          </div>
+          <div className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+            {persona.id}
+          </div>
+          {persona.is_builtin && (
+            <span className="pill brand" style={{ fontSize: 10 }}>
+              内置
+            </span>
+          )}
+        </div>
+        <div className="serif text-[11.5px] text-text-faint italic mt-1 line-clamp-1">
+          “{persona.style_desc}”
+        </div>
+      </div>
+      {!persona.is_builtin && (
+        <div className="flex gap-2 flex-shrink-0">
+          <button
+            className="btn ghost"
+            onClick={() => onEdit(persona.id)}
+            style={{ padding: '3px 10px', fontSize: 11 }}
+          >
+            编辑
+          </button>
+          <button
+            className="btn ghost"
+            onClick={() => onDelete(persona.id)}
+            style={{
+              padding: '3px 10px',
+              fontSize: 11,
+              color: 'var(--down)',
+              borderColor: 'var(--down-border)',
+            }}
+          >
+            删除
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type PersonaModalState =
+  | null
+  | { mode: 'create' }
+  | { mode: 'edit'; persona: Persona };
+
 // ─── page ──────────────────────────────────────────────────────────────────
 export function Agent() {
   const agents = useAgents();
   const personas = usePersonas();
   const models = useModels();
+  const deletePersona = useDeletePersona();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [promptPersonaId, setPromptPersonaId] = useState<string | null>(null);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null);
+  const [personaModal, setPersonaModal] = useState<PersonaModalState>(null);
 
   const agentList = agents.data ?? [];
   const personaList = personas.data ?? [];
   const modelList = models.data ?? [];
+
+  const onEditPersona = async (id: string) => {
+    try {
+      const r = await fetch(`/api/personas/${encodeURIComponent(id)}`);
+      if (!r.ok) {
+        alert(`加载 persona 失败: ${r.status} ${r.statusText}`);
+        return;
+      }
+      const full = (await r.json()) as Persona;
+      setPersonaModal({ mode: 'edit', persona: full });
+    } catch (e) {
+      alert(`加载 persona 失败: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const onDeletePersonaClick = (id: string) => {
+    if (!confirm(`确认删除 persona "${id}" ? 若有 agent 引用将拒绝。`)) return;
+    deletePersona.mutate(id, {
+      onError: (e) =>
+        alert(`删除失败: ${e instanceof Error ? e.message : String(e)}`),
+    });
+  };
 
   // Auto-select first agent once the list loads
   useEffect(() => {
@@ -1410,6 +1545,8 @@ export function Agent() {
             personas={personaList}
             models={modelList}
             onShowPrompt={(pid) => setPromptPersonaId(pid)}
+            onEdit={(a) => setEditingAgent(a)}
+            onDelete={(a) => setDeletingAgent(a)}
           />
 
           <div className="panel flex flex-col" style={{ minHeight: 240 }}>
@@ -1428,6 +1565,54 @@ export function Agent() {
         </div>
       </div>
 
+      {/* Persona management — create/edit/delete custom personas */}
+      <section className="panel p-5">
+        <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+          <h2 className="text-text-hi text-base font-semibold">
+            Persona 管理
+          </h2>
+          <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+            Personas · 操盘风格库
+          </span>
+          <span style={{ flex: 1 }} />
+          <button
+            className="btn primary"
+            onClick={() => setPersonaModal({ mode: 'create' })}
+            style={{ fontSize: 12 }}
+          >
+            + 新建 Persona
+          </button>
+        </div>
+        {personas.isLoading && (
+          <div className="text-text-faint text-sm p-2">加载中…</div>
+        )}
+        {personas.isError && (
+          <div className="text-down text-sm p-2">
+            加载失败：
+            {personas.error instanceof Error
+              ? personas.error.message
+              : '未知错误'}
+          </div>
+        )}
+        {!personas.isLoading && !personas.isError && personaList.length === 0 && (
+          <div className="text-text-faint text-sm p-3 leading-relaxed">
+            暂无 persona — 点击「+ 新建 Persona」开始。
+          </div>
+        )}
+        {personaList.length > 0 && (
+          <div className="grid gap-2">
+            {personaList.map((p) => (
+              <PersonaRow
+                key={p.id}
+                persona={p}
+                onEdit={onEditPersona}
+                onDelete={onDeletePersonaClick}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
       {showCreate && (
         <CreateAgentModal
           personas={personaList}
@@ -1440,6 +1625,37 @@ export function Agent() {
         <PromptModal
           personaId={promptPersonaId}
           onClose={() => setPromptPersonaId(null)}
+        />
+      )}
+      {editingAgent && (
+        <AgentEditModal
+          agent={editingAgent}
+          onClose={() => setEditingAgent(null)}
+        />
+      )}
+      {deletingAgent && (
+        <AgentDeleteDialog
+          agent={deletingAgent}
+          onClose={() => setDeletingAgent(null)}
+          onDeleted={() => {
+            // Clear selection if the deleted agent was currently selected
+            if (selectedId === deletingAgent.id) {
+              setSelectedId(null);
+            }
+          }}
+        />
+      )}
+      {personaModal?.mode === 'create' && (
+        <PersonaFormModal
+          mode="create"
+          onClose={() => setPersonaModal(null)}
+        />
+      )}
+      {personaModal?.mode === 'edit' && (
+        <PersonaFormModal
+          mode="edit"
+          persona={personaModal.persona}
+          onClose={() => setPersonaModal(null)}
         />
       )}
     </div>
