@@ -13,3 +13,11 @@ data/
 
 # pytest (added in P0)
 .pytest_cache/
+p2e-ui-*.png
+.playwright-mcp/
+dashboard-*.png
+screenshot*.png
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
