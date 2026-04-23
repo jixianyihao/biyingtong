@@ -6,6 +6,11 @@ from tdx_service import tdx
 app = Flask(__name__, static_folder='static', static_url_path='')
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
+# P2e REST API blueprint: /api/personas, /api/models, /api/agents,
+# /api/backtests, /api/baselines, /api/redlines, /api/audit
+from api import api_bp  # noqa: E402
+app.register_blueprint(api_bp)
+
 
 # ---- Serve Frontend ----
 
