@@ -5,40 +5,34 @@ import type { Persona } from '../api/types';
 
 type Mode = 'create' | 'edit';
 
-// The backend Persona row carries `system_prompt` and `pool_filter` fields
-// that haven't been surfaced on the shared Persona type yet (see types.ts).
-// We widen locally so this form can round-trip them without fighting TS.
-type PersonaFull = Persona & {
-  system_prompt?: string;
-  pool_filter?: Record<string, unknown> | null;
-};
-
 export function PersonaFormModal({
   mode,
   persona,
   onClose,
 }: {
   mode: Mode;
-  persona?: Persona; // required when mode === 'edit'
+  // For edit mode, caller should fetch GET /api/personas/:id first so that
+  // system_prompt and pool_filter are populated (those live only on the
+  // detail endpoint — see Persona type comment).
+  persona?: Persona;
   onClose: () => void;
 }) {
-  const p = persona as PersonaFull | undefined;
-  const [id, setId] = useState(p?.id ?? '');
-  const [name, setName] = useState(p?.name ?? '');
-  const [styleDesc, setStyleDesc] = useState(p?.style_desc ?? '');
-  const [systemPrompt, setSystemPrompt] = useState(p?.system_prompt ?? '');
-  const [schedule, setSchedule] = useState(p?.default_schedule ?? 'daily');
+  const [id, setId] = useState(persona?.id ?? '');
+  const [name, setName] = useState(persona?.name ?? '');
+  const [styleDesc, setStyleDesc] = useState(persona?.style_desc ?? '');
+  const [systemPrompt, setSystemPrompt] = useState(persona?.system_prompt ?? '');
+  const [schedule, setSchedule] = useState(persona?.default_schedule ?? 'daily');
   const [poolText, setPoolText] = useState(
-    (p?.default_pool ?? []).join(', '),
+    (persona?.default_pool ?? []).join(', '),
   );
   const [toolsText, setToolsText] = useState(
-    (p?.allowed_tools ?? []).join(', '),
+    (persona?.allowed_tools ?? []).join(', '),
   );
   const [rulesJson, setRulesJson] = useState(
-    p ? JSON.stringify(p.default_rules ?? {}, null, 2) : '{}',
+    persona ? JSON.stringify(persona.default_rules ?? {}, null, 2) : '{}',
   );
   const [poolFilterJson, setPoolFilterJson] = useState(
-    p?.pool_filter ? JSON.stringify(p.pool_filter, null, 2) : '',
+    persona?.pool_filter ? JSON.stringify(persona.pool_filter, null, 2) : '',
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -9,6 +9,10 @@ export type Persona = {
   allowed_tools: string[];
   default_rules: Record<string, unknown>;
   is_builtin: boolean;
+  // Only returned by GET /api/personas/:id (detail) — absent on list rows.
+  // Consumers that need these must call the detail endpoint.
+  system_prompt?: string;
+  pool_filter?: Record<string, unknown> | null;
 };
 
 export type ModelInfo = {
