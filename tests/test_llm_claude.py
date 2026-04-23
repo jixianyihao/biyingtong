@@ -28,7 +28,7 @@ def test_claude_simple_chat(monkeypatch):
 
     fake = MagicMock()
     fake.messages.create.return_value = _fake_resp(text='hello')
-    monkeypatch.setattr(claude, '_get_client', lambda api_key: fake)
+    monkeypatch.setattr(claude, '_get_client', lambda **kwargs: fake)
 
     llm = claude.ClaudeLLM(model_id='claude-opus-4-7', api_key='sk-test')
     resp = llm.chat([Message(role='user', content='hi')])
@@ -43,7 +43,7 @@ def test_claude_system_message_separated(monkeypatch):
 
     fake = MagicMock()
     fake.messages.create.return_value = _fake_resp()
-    monkeypatch.setattr(claude, '_get_client', lambda api_key: fake)
+    monkeypatch.setattr(claude, '_get_client', lambda **kwargs: fake)
 
     llm = claude.ClaudeLLM(model_id='claude-opus-4-7', api_key='sk-test')
     llm.chat([
@@ -67,7 +67,7 @@ def test_claude_tool_use_response(monkeypatch):
         text='', tool_use={'id': 't1', 'name': 'get_kline',
                            'input': {'code': '600519.SH'}}, stop='tool_use',
     )
-    monkeypatch.setattr(claude, '_get_client', lambda api_key: fake)
+    monkeypatch.setattr(claude, '_get_client', lambda **kwargs: fake)
 
     llm = claude.ClaudeLLM(model_id='claude-opus-4-7', api_key='sk-test')
     tools = [ToolSpec(name='get_kline', description='K', input_schema={})]
@@ -83,7 +83,7 @@ def test_claude_cacheable_prefix_adds_cache_control(monkeypatch):
 
     fake = MagicMock()
     fake.messages.create.return_value = _fake_resp()
-    monkeypatch.setattr(claude, '_get_client', lambda api_key: fake)
+    monkeypatch.setattr(claude, '_get_client', lambda **kwargs: fake)
 
     llm = claude.ClaudeLLM(model_id='claude-opus-4-7', api_key='sk-test')
     tools = [ToolSpec(name='x', description='x', input_schema={})]
@@ -108,7 +108,7 @@ def test_claude_usage_records_cache_tokens(monkeypatch):
     fake.messages.create.return_value = _fake_resp(
         in_tok=50, out_tok=10, cache_read=200, cache_write=80,
     )
-    monkeypatch.setattr(claude, '_get_client', lambda api_key: fake)
+    monkeypatch.setattr(claude, '_get_client', lambda **kwargs: fake)
 
     llm = claude.ClaudeLLM(model_id='claude-opus-4-7', api_key='sk-test')
     resp = llm.chat([Message(role='user', content='hi')])
@@ -124,7 +124,7 @@ def test_claude_api_error_raises_llm_error(monkeypatch):
 
     fake = MagicMock()
     fake.messages.create.side_effect = RuntimeError('429 rate limited')
-    monkeypatch.setattr(claude, '_get_client', lambda api_key: fake)
+    monkeypatch.setattr(claude, '_get_client', lambda **kwargs: fake)
 
     llm = claude.ClaudeLLM(model_id='claude-opus-4-7', api_key='sk-test')
     with pytest.raises(LLMError) as exc:

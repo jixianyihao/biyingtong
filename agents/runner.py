@@ -87,18 +87,26 @@ class AgentRunner:
             if not resp.tool_calls:
                 break
 
-            # Append assistant turn so next LLM call sees its own prior output
-            convo.extend(resp.messages)
+            # Preserve the FULL assistant turn (text + tool_use) in conversation —
+            # Anthropic-compatible APIs reject conversations where assistant
+            # tool_use is missing or where tool_result has the wrong role.
+            assistant_content: list = []
+            for m in resp.messages:
+                assistant_content.append({'type': 'text', 'text': m.content})
+            for tc in resp.tool_calls:
+                assistant_content.append({
+                    'type': 'tool_use', 'id': tc.id,
+                    'name': tc.name, 'input': tc.input,
+                })
+            if assistant_content:
+                convo.append(Message(role='assistant', content=assistant_content))
 
-            tool_results: list[Message] = []
+            # Tool results are a SINGLE user message with tool_result blocks.
+            tool_result_blocks: list = []
             terminated = False
             for call in resp.tool_calls:
                 if call.name == 'place_decision':
                     decision = dict(call.input)
-                    # Normalize qty → shares for ValidationEngine.
-                    # price: honour the LLM-provided value when present;
-                    # fall back to mark_prices so position_max_pct can fire
-                    # when the LLM explicitly includes a price in its decision.
                     decision.setdefault('shares', decision.get('qty', 0))
                     decision.setdefault('price',
                                         mark_prices.get(decision.get('code'),
@@ -115,14 +123,20 @@ class AgentRunner:
                         decisions_executed.append(result.decision_out)
                     terminated = True
                     break
-                # Non-terminator tool: just acknowledge (MVP keeps loop simple)
-                tool_results.append(Message(
-                    role='tool', content=json.dumps({'ack': True}),
-                    tool_call_id=call.id,
-                ))
+                # Non-terminator tool: ack (MVP keeps loop simple; P2e will
+                # wire real tool execution).
+                tool_result_blocks.append({
+                    'type': 'tool_result',
+                    'tool_use_id': call.id,
+                    'content': json.dumps({
+                        'ack': True,
+                        'note': 'MVP stub — real tool execution not yet wired',
+                    }),
+                })
             if terminated:
                 break
-            convo.extend(tool_results)
+            if tool_result_blocks:
+                convo.append(Message(role='user', content=tool_result_blocks))
 
         cache.put(CachedDecision(
             agent_id=agent_id, date=date,

@@ -4,10 +4,24 @@ from __future__ import annotations
 from .base import LLMBase, LLMError, LLMResponse, Message, ToolCall, ToolSpec, Usage
 
 
-def _get_client(api_key: str):
-    """Lazy SDK import; monkeypatched in tests."""
+def _get_client(api_key: str | None = None,
+                base_url: str | None = None,
+                auth_token: str | None = None):
+    """Lazy SDK import; monkeypatched in tests.
+
+    Supports Anthropic-compatible gateways (e.g. 智谱 GLM):
+      - Pass ``base_url`` to override the endpoint
+      - Pass ``auth_token`` (Bearer-style) for providers that don't accept x-api-key
+    """
     import anthropic
-    return anthropic.Anthropic(api_key=api_key)
+    kwargs: dict = {}
+    if api_key:
+        kwargs['api_key'] = api_key
+    if auth_token:
+        kwargs['auth_token'] = auth_token
+    if base_url:
+        kwargs['base_url'] = base_url
+    return anthropic.Anthropic(**kwargs)
 
 
 def _classify(e: Exception) -> tuple[str, bool]:
@@ -28,10 +42,15 @@ def _classify(e: Exception) -> tuple[str, bool]:
 class ClaudeLLM(LLMBase):
     provider = 'anthropic'
 
-    def __init__(self, model_id: str, api_key: str, training_cutoff: str = '2026-01-31'):
+    def __init__(self, model_id: str, api_key: str | None = None,
+                 training_cutoff: str = '2026-01-31',
+                 *, base_url: str | None = None,
+                 auth_token: str | None = None):
         self.model_id = model_id
         self.training_cutoff = training_cutoff
         self._api_key = api_key
+        self._base_url = base_url
+        self._auth_token = auth_token
 
     def chat(
         self,
@@ -41,7 +60,11 @@ class ClaudeLLM(LLMBase):
         temperature: float = 0.0,
         max_tokens: int = 2000,
     ) -> LLMResponse:
-        client = _get_client(self._api_key)
+        client = _get_client(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            auth_token=self._auth_token,
+        )
 
         system_msgs = [m for m in messages if m.role == 'system']
         other_msgs = [m for m in messages if m.role != 'system']
