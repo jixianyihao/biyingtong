@@ -3,8 +3,6 @@ import {
   createChart,
   ColorType,
   LineStyle,
-  type IChartApi,
-  type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import type { NavResponse } from '../api/types';
@@ -27,15 +25,17 @@ function toTimestamp(dateStr: string): UTCTimestamp {
 
 export function NavChart({ data }: { data: NavResponse | undefined }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Line'>[]>([]);
 
-  // Mount chart once; tear down on unmount
+  // Single effect: chart creation + series population + teardown atomic per data update.
+  // Merging the previous two-effect split avoids a React 19 StrictMode race where
+  // the data effect fired between the mount cleanup and re-mount, targeting a
+  // chart that had already been .remove()'d — leaving the container empty.
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container || !data || data.agent.length === 0) return;
 
-    const chart = createChart(containerRef.current, {
-      width: containerRef.current.clientWidth,
+    const chart = createChart(container, {
+      width: container.clientWidth || 600,
       height: 320,
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
@@ -43,57 +43,16 @@ export function NavChart({ data }: { data: NavResponse | undefined }) {
         fontSize: 11,
       },
       grid: {
-        vertLines: {
-          color: 'rgba(120,120,120,0.15)',
-          style: LineStyle.Dotted,
-        },
-        horzLines: {
-          color: 'rgba(120,120,120,0.15)',
-          style: LineStyle.Dotted,
-        },
+        vertLines: { color: 'rgba(120,120,120,0.15)', style: LineStyle.Dotted },
+        horzLines: { color: 'rgba(120,120,120,0.15)', style: LineStyle.Dotted },
       },
-      timeScale: {
-        borderColor: 'rgba(120,120,120,0.3)',
-        timeVisible: false,
-      },
-      rightPriceScale: {
-        borderColor: 'rgba(120,120,120,0.3)',
-      },
-      crosshair: {
-        mode: 1, // magnet
-      },
+      timeScale: { borderColor: 'rgba(120,120,120,0.3)', timeVisible: false },
+      rightPriceScale: { borderColor: 'rgba(120,120,120,0.3)' },
+      crosshair: { mode: 1 },
     });
-    chartRef.current = chart;
-
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) {
-        chart.applyOptions({ width: e.contentRect.width });
-      }
-    });
-    ro.observe(containerRef.current);
-
-    return () => {
-      ro.disconnect();
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = [];
-    };
-  }, []);
-
-  // Sync series on data change
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart || !data) return;
-
-    for (const s of seriesRef.current) {
-      chart.removeSeries(s);
-    }
-    seriesRef.current = [];
 
     const agentSeries = chart.addLineSeries({
-      color: COLORS[0],
-      lineWidth: 2,
-      title: 'Agent',
+      color: COLORS[0], lineWidth: 2, title: 'Agent',
     });
     agentSeries.setData(
       data.agent.map((p) => ({
@@ -101,13 +60,10 @@ export function NavChart({ data }: { data: NavResponse | undefined }) {
         value: p.equity,
       })),
     );
-    seriesRef.current.push(agentSeries);
 
     data.baselines.forEach((b, i) => {
       const s = chart.addLineSeries({
-        color: baselineColor(i),
-        lineWidth: 1,
-        title: b.name,
+        color: baselineColor(i), lineWidth: 1, title: b.name,
       });
       s.setData(
         b.curve.map((p) => ({
@@ -115,10 +71,19 @@ export function NavChart({ data }: { data: NavResponse | undefined }) {
           value: p.equity,
         })),
       );
-      seriesRef.current.push(s);
     });
 
     chart.timeScale().fitContent();
+
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) chart.applyOptions({ width: e.contentRect.width });
+    });
+    ro.observe(container);
+
+    return () => {
+      ro.disconnect();
+      chart.remove();
+    };
   }, [data]);
 
   if (!data) {
