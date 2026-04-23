@@ -187,3 +187,75 @@ def list_backtest_jobs():
         }
         for s in list_jobs()
     ])
+
+
+@api_bp.route('/backtests/jobs/<session_id>/stream')
+def stream_backtest_job(session_id):
+    """Server-Sent Events stream of job status updates.
+
+    Polls the in-memory job tracker every 500ms. Closes the stream when
+    the job reaches 'complete' or 'failed'. The client reconnects on
+    network hiccups via EventSource's built-in reconnect.
+    """
+    import json
+    import time
+    from flask import Response
+    from backtest.jobs import get_status
+
+    def _to_event(status) -> str:
+        payload = {
+            'session_id': status.session_id,
+            'state': status.state,
+            'progress': status.progress,
+            'agent_ids': status.agent_ids,
+            'agent_result_ids': status.agent_result_ids,
+            'baseline_result_ids': status.baseline_result_ids,
+            'error': status.error,
+            'submitted_at': status.submitted_at,
+            'started_at': status.started_at,
+            'finished_at': status.finished_at,
+        }
+        return f'data: {json.dumps(payload, ensure_ascii=False)}\n\n'
+
+    def generate():
+        last_serialised = None
+        iterations = 0
+        # Hard upper bound: 30 min × 120 polls/min = 3600 iterations
+        while iterations < 3600:
+            status = get_status(session_id)
+            if status is None:
+                yield 'event: notfound\ndata: {}\n\n'
+                return
+            serialised = _to_event(status)
+            # Only push when something changed to save bandwidth
+            if serialised != last_serialised:
+                yield serialised
+                last_serialised = serialised
+            if status.state in ('complete', 'failed'):
+                yield 'event: done\ndata: {}\n\n'
+                return
+            time.sleep(0.5)
+            iterations += 1
+        yield 'event: timeout\ndata: {}\n\n'
+
+    return Response(generate(), mimetype='text/event-stream', headers={
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',  # disable nginx/proxy buffering
+        'Connection': 'keep-alive',
+    })
+
+
+@api_bp.route('/backtests/<result_id>/rating')
+def get_backtest_rating(result_id):
+    """Compute + return 5-sub-score strategy rating for a backtest result."""
+    import storage
+    from dataclasses import asdict
+    r = storage.backtests().get(result_id)
+    if r is None:
+        return jsonify({'error': 'not_found'}), 404
+    from rating.strategy_rating import compute_strategy_rating
+    rating = compute_strategy_rating(r)
+    return jsonify({
+        **asdict(rating),
+        'notes': list(rating.notes),
+    })
