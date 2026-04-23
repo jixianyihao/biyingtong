@@ -388,3 +388,142 @@ def test_sqlite_backtests_defaults_to_empty_lists_for_legacy_rows(observability_
     assert fetched.daily_records == []
     assert fetched.trades == []
     assert fetched.thinking == []
+
+
+# ---------------------------------------------------------------------------
+# Task 5: GET /api/backtests/:id/{nav,trades,thinking} endpoints
+# ---------------------------------------------------------------------------
+
+def _fresh_app():
+    """Build a minimal Flask app with the api blueprint — avoids importing
+    app.py (which pulls in tdx_service)."""
+    from flask import Flask
+    from api import api_bp
+    app = Flask(__name__)
+    app.register_blueprint(api_bp)
+    app.config['TESTING'] = True
+    return app
+
+
+@pytest.fixture
+def client(observability_storage):
+    """Flask test client. Depends on observability_storage so the app sees
+    the wired-up storage singletons."""
+    return _fresh_app().test_client()
+
+
+def test_nav_endpoint_returns_daily_curves(observability_storage, client):
+    """GET /api/backtests/:id/nav returns agent curve + (empty) baseline curves."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    r = BacktestResult(
+        id='nav1', session_id='s-nav', agent_id='a1',
+        persona_id=None, model_id=None,
+        start_date='2025-01-02', end_date='2025-01-08',
+        initial_capital=100_000.0,
+        stats=BacktestStats(sharpe=1.0, max_drawdown_pct=-1.0,
+                            trade_count=0, win_rate=0.0,
+                            max_daily_loss_pct=0.0, total_return_pct=2.0,
+                            final_equity=102_000.0),
+        zone_stats=[],
+        quality_gate_label='pass', quality_gate_criteria={},
+        daily_records=[
+            {'date': '2025-01-02', 'equity': 100_000.0, 'cash': 100_000.0,
+             'pnl_pct': 0.0, 'trade_count': 0, 'won': 0},
+            {'date': '2025-01-03', 'equity': 101_000.0, 'cash': 0.0,
+             'pnl_pct': 1.0, 'trade_count': 1, 'won': 0},
+        ],
+    )
+    storage.backtests().create_session('s-nav', '2025-01-02', '2025-01-08', ['a1'])
+    storage.backtests().insert(r)
+
+    resp = client.get('/api/backtests/nav1/nav')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['result_id'] == 'nav1'
+    assert 'agent' in data
+    assert len(data['agent']) == 2
+    assert data['agent'][0]['date'] == '2025-01-02'
+    assert data['agent'][0]['equity'] == 100_000.0
+    assert data['agent'][0]['cash'] == 100_000.0
+    assert data['agent'][0]['pnl_pct'] == 0.0
+    assert 'baselines' in data
+    assert isinstance(data['baselines'], list)
+
+
+def test_nav_endpoint_404_on_missing(observability_storage, client):
+    resp = client.get('/api/backtests/nope/nav')
+    assert resp.status_code == 404
+
+
+def test_trades_endpoint_returns_fills(observability_storage, client):
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    r = BacktestResult(
+        id='tr1', session_id='s-tr', agent_id='a1',
+        persona_id=None, model_id=None,
+        start_date='2025-01-02', end_date='2025-01-08',
+        initial_capital=100_000.0,
+        stats=BacktestStats(sharpe=0.0, max_drawdown_pct=0.0, trade_count=1,
+                            win_rate=0.0, max_daily_loss_pct=0.0,
+                            total_return_pct=0.0, final_equity=100_000.0),
+        zone_stats=[],
+        quality_gate_label='pass', quality_gate_criteria={},
+        trades=[{'date': '2025-01-03', 'code': '600519.SH',
+                 'action': 'buy', 'shares': 100, 'price': 500.0, 'fee': 15.0}],
+    )
+    storage.backtests().create_session('s-tr', '2025-01-02', '2025-01-08', ['a1'])
+    storage.backtests().insert(r)
+
+    resp = client.get('/api/backtests/tr1/trades')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['result_id'] == 'tr1'
+    assert 'trades' in data
+    assert len(data['trades']) == 1
+    assert data['trades'][0]['code'] == '600519.SH'
+    assert data['trades'][0]['action'] == 'buy'
+
+
+def test_trades_endpoint_404_on_missing(observability_storage, client):
+    resp = client.get('/api/backtests/nope/trades')
+    assert resp.status_code == 404
+
+
+def test_thinking_endpoint_returns_per_day_reasoning(observability_storage, client):
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    r = BacktestResult(
+        id='th1', session_id='s-th', agent_id='a1',
+        persona_id=None, model_id=None,
+        start_date='2025-01-02', end_date='2025-01-08',
+        initial_capital=100_000.0,
+        stats=BacktestStats(sharpe=0.0, max_drawdown_pct=0.0, trade_count=0,
+                            win_rate=0.0, max_daily_loss_pct=0.0,
+                            total_return_pct=0.0, final_equity=100_000.0),
+        zone_stats=[],
+        quality_gate_label='pass', quality_gate_criteria={},
+        thinking=[{'date': '2025-01-02',
+                   'reasoning': 'strong consumer brand',
+                   'tool_calls': [],
+                   'decisions': [{'action': 'buy', 'code': '600519.SH',
+                                  'shares': 100, 'price': 1000.0,
+                                  'outcome': 'approved',
+                                  'reasoning': 'buy'}]}],
+    )
+    storage.backtests().create_session('s-th', '2025-01-02', '2025-01-08', ['a1'])
+    storage.backtests().insert(r)
+
+    resp = client.get('/api/backtests/th1/thinking')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['result_id'] == 'th1'
+    assert 'thinking' in data
+    assert len(data['thinking']) == 1
+    assert data['thinking'][0]['reasoning'] == 'strong consumer brand'
+    assert data['thinking'][0]['decisions'][0]['action'] == 'buy'
+
+
+def test_thinking_endpoint_404_on_missing(observability_storage, client):
+    resp = client.get('/api/backtests/nope/thinking')
+    assert resp.status_code == 404

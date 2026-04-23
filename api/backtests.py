@@ -266,3 +266,72 @@ def get_backtest_rating(result_id):
         **asdict(rating),
         'notes': list(rating.notes),
     })
+
+
+@api_bp.route('/backtests/<result_id>/nav')
+def get_backtest_nav(result_id):
+    """Daily equity curve for one backtest + same-session baselines.
+
+    Response: {
+      'result_id': str,
+      'agent': [{date, equity, cash, pnl_pct}, ...],
+      'baselines': [{name, curve: [{date, equity}, ...]}, ...]
+    }
+
+    Baselines don't persist per-day equity yet (P3-A Task 6 / future).
+    Return empty curves for now; frontend tolerates.
+    """
+    import storage
+    r = storage.backtests().get(result_id)
+    if r is None:
+        return jsonify({'error': 'not_found'}), 404
+    agent_curve = [
+        {'date': rec.get('date'),
+         'equity': rec.get('equity'),
+         'cash': rec.get('cash'),
+         'pnl_pct': rec.get('pnl_pct')}
+        for rec in (r.daily_records or [])
+    ]
+    baselines_payload = []
+    for b in storage.baselines().list_for_session(r.session_id):
+        b_records = getattr(b, 'daily_records', None) or []
+        b_curve = [{'date': rec.get('date'), 'equity': rec.get('equity')}
+                   for rec in b_records]
+        baselines_payload.append({'name': b.name, 'curve': b_curve})
+    return jsonify({
+        'result_id': result_id,
+        'agent': agent_curve,
+        'baselines': baselines_payload,
+    })
+
+
+@api_bp.route('/backtests/<result_id>/trades')
+def get_backtest_trades(result_id):
+    """Ordered list of fills for a backtest.
+
+    Response: {result_id, trades: [{date, code, action, shares, price, fee}, ...]}
+    """
+    import storage
+    r = storage.backtests().get(result_id)
+    if r is None:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify({
+        'result_id': result_id,
+        'trades': list(r.trades or []),
+    })
+
+
+@api_bp.route('/backtests/<result_id>/thinking')
+def get_backtest_thinking(result_id):
+    """Per-day LLM reasoning + tool_calls + decisions for a backtest.
+
+    Response: {result_id, thinking: [{date, reasoning, tool_calls, decisions}, ...]}
+    """
+    import storage
+    r = storage.backtests().get(result_id)
+    if r is None:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify({
+        'result_id': result_id,
+        'thinking': list(r.thinking or []),
+    })
