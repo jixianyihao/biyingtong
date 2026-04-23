@@ -189,10 +189,19 @@ export type ThinkingResponse = {
 export type StrategyRating = {
   overall: number;
   letter: 'A+' | 'A' | 'B' | 'C' | 'D';
-  returns: number;
-  sharpe: number;
-  drawdown: number;
-  win_rate: number;
-  consistency: number;
+  // 5 sub-scores (0-100); names match backend rating/strategy_rating.py
+  return_power: number;         // ① 收益能力
+  risk_control: number;         // ② 风险控制
+  stability: number;            // ③ 稳定性
+  trading_efficiency: number;   // ④ 交易效率
+  overfitting_risk: number;     // ⑤ 过拟合风险 (higher = less leakage = better)
   notes: string[];
+};
+
+/** One row of backend quality_gate_criteria. Matches validation/quality_gate.py. */
+export type QualityGateCriterion = {
+  ok: boolean;
+  actual: number | string | boolean | null;
+  threshold: number | string | boolean;
+  reason?: string;
 };

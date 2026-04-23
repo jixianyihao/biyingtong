@@ -1,38 +1,46 @@
-import type { BacktestResult } from '../api/types';
+import type { BacktestResult, QualityGateCriterion } from '../api/types';
 
-type Criterion = {
+type Row = {
   key: string;
   label: string;
-  value: number | string | boolean;
-  passed: boolean;
-  threshold?: string;
+  actual: number | string | boolean | null;
+  threshold: number | string | boolean;
+  ok: boolean;
+  reason?: string;
 };
 
-function buildCriteria(r: BacktestResult): Criterion[] {
-  const raw = r.quality_gate_criteria as Record<
-    string,
-    { passed?: boolean; value?: unknown; threshold?: string } | unknown
-  >;
-  const out: Criterion[] = [];
+function buildRows(r: BacktestResult): Row[] {
+  const raw = r.quality_gate_criteria as Record<string, unknown>;
+  const out: Row[] = [];
   for (const [k, v] of Object.entries(raw)) {
-    if (v && typeof v === 'object' && 'passed' in (v as object)) {
-      const entry = v as { passed: boolean; value?: unknown; threshold?: string };
-      out.push({
-        key: k,
-        label: k.replace(/_/g, ' '),
-        value: (entry.value as number | string | boolean) ?? '—',
-        passed: !!entry.passed,
-        threshold: entry.threshold,
-      });
-    }
+    if (!v || typeof v !== 'object') continue;
+    const entry = v as Partial<QualityGateCriterion>;
+    if (typeof entry.ok !== 'boolean') continue;
+    out.push({
+      key: k,
+      label: k.replace(/_/g, ' '),
+      actual: (entry.actual ?? '—') as Row['actual'],
+      threshold: (entry.threshold ?? '') as Row['threshold'],
+      ok: entry.ok,
+      reason: entry.reason,
+    });
   }
   return out;
 }
 
+function fmt(v: number | string | boolean | null): string {
+  if (v === null) return '—';
+  if (typeof v === 'number') {
+    return Number.isInteger(v) ? v.toString() : v.toFixed(2);
+  }
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  return v;
+}
+
 export function QualityGatePanel({ result }: { result: BacktestResult | undefined }) {
   if (!result) return null;
-  const items = buildCriteria(result);
-  if (items.length === 0) {
+  const rows = buildRows(result);
+  if (rows.length === 0) {
     return (
       <div className="panel p-5">
         <div className="flex items-baseline gap-2 mb-3 flex-wrap">
@@ -48,7 +56,7 @@ export function QualityGatePanel({ result }: { result: BacktestResult | undefine
     );
   }
 
-  const passCount = items.filter((i) => i.passed).length;
+  const passCount = rows.filter((r) => r.ok).length;
   const label = result.quality_gate_label;
   const chipCls =
     label === 'pass' ? 'pill brand' : label === 'warn' ? 'pill' : 'pill down';
@@ -64,20 +72,21 @@ export function QualityGatePanel({ result }: { result: BacktestResult | undefine
         </span>
         <span style={{ flex: 1 }} />
         <span className={chipCls}>
-          {chipTxt} · {passCount}/{items.length}
+          {chipTxt} · {passCount}/{rows.length}
         </span>
       </div>
       <div className="grid gap-2">
-        {items.map((c) => (
+        {rows.map((row) => (
           <div
-            key={c.key}
-            className="flex items-center gap-2"
+            key={row.key}
+            className="flex items-center gap-2 flex-wrap"
             style={{
               padding: '6px 10px',
               background: 'var(--bg-3)',
-              border: `1px solid ${c.passed ? 'var(--brand)' : 'var(--down-border)'}`,
+              border: `1px solid ${row.ok ? 'var(--brand)' : 'var(--down-border)'}`,
               borderRadius: 4,
             }}
+            title={row.reason || undefined}
           >
             <span
               style={{
@@ -87,20 +96,19 @@ export function QualityGatePanel({ result }: { result: BacktestResult | undefine
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: 999,
-                background: c.passed ? 'var(--brand)' : 'var(--down)',
+                background: row.ok ? 'var(--brand)' : 'var(--down)',
                 color: 'var(--bg)',
                 fontSize: 11,
                 fontWeight: 'bold',
                 flexShrink: 0,
               }}
             >
-              {c.passed ? '✓' : '✗'}
+              {row.ok ? '✓' : '✗'}
             </span>
-            <span className="text-xs text-text-hi capitalize">{c.label}</span>
+            <span className="text-xs text-text-hi capitalize">{row.label}</span>
             <span style={{ flex: 1 }} />
             <span className="mono text-xs text-text-faint">
-              {String(c.value)}
-              {c.threshold ? ` / ${c.threshold}` : ''}
+              {fmt(row.actual)} / {fmt(row.threshold)}
             </span>
           </div>
         ))}

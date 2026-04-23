@@ -1,15 +1,22 @@
 import type { StrategyRating } from '../api/types';
 
 const SUB_ROWS: Array<{
-  key: keyof Pick<StrategyRating, 'returns' | 'sharpe' | 'drawdown' | 'win_rate' | 'consistency'>;
+  key: keyof Pick<
+    StrategyRating,
+    | 'return_power'
+    | 'risk_control'
+    | 'stability'
+    | 'trading_efficiency'
+    | 'overfitting_risk'
+  >;
   label: string;
   weight: number;
 }> = [
-  { key: 'returns', label: '收益 Returns', weight: 30 },
-  { key: 'sharpe', label: '风险调整 Sharpe', weight: 30 },
-  { key: 'drawdown', label: '最大回撤 Drawdown', weight: 15 },
-  { key: 'win_rate', label: '胜率 Win Rate', weight: 15 },
-  { key: 'consistency', label: '一致性 Consistency', weight: 10 },
+  { key: 'return_power',       label: '收益能力 Return Power',     weight: 30 },
+  { key: 'risk_control',       label: '风险控制 Risk Control',     weight: 30 },
+  { key: 'stability',          label: '稳定性 Stability',          weight: 15 },
+  { key: 'trading_efficiency', label: '交易效率 Trading Eff.',     weight: 15 },
+  { key: 'overfitting_risk',   label: '抗过拟合 Anti-Overfit',     weight: 10 },
 ];
 
 function letterColor(letter: StrategyRating['letter']): string {
