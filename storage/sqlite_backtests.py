@@ -22,6 +22,13 @@ def _row_to_result(row):
     stats = BacktestStats(**stats_d)
     zone_raw = json.loads(row[10])
     zones = [ZoneStats(**z) for z in zone_raw]
+    # Columns 13/14/15 are daily_records_json/trades_json/thinking_json.
+    # Schema default is '[]' and ensure_observability_columns runs at init,
+    # so row[13:16] are always populated strings — but json.loads('') raises,
+    # so we still guard against empty strings from buggy callers.
+    daily_records = json.loads(row[13]) if row[13] else []
+    trades = json.loads(row[14]) if row[14] else []
+    thinking = json.loads(row[15]) if row[15] else []
     return BacktestResult(
         id=row[0], session_id=row[1], agent_id=row[2],
         persona_id=row[3], model_id=row[4],
@@ -30,6 +37,9 @@ def _row_to_result(row):
         stats=stats, zone_stats=zones,
         quality_gate_label=row[11],
         quality_gate_criteria=json.loads(row[12]),
+        daily_records=daily_records,
+        trades=trades,
+        thinking=thinking,
     )
 
 
@@ -46,6 +56,8 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.execute('PRAGMA journal_mode=WAL')
             con.executescript(SCHEMA_BACKTEST_SESSIONS)
             con.executescript(SCHEMA_BACKTEST_RESULTS)
+            from data_schema.backtest_state import ensure_observability_columns
+            ensure_observability_columns(con)
             con.commit()
         finally:
             con.close()
@@ -70,16 +82,22 @@ class SQLiteBacktestResultStore(BacktestResultStore):
         con = sqlite3.connect(self._db_path)
         try:
             con.executescript(SCHEMA_BACKTEST_RESULTS)
+            from data_schema.backtest_state import ensure_observability_columns
+            ensure_observability_columns(con)
             zone_serial = json.dumps(
                 [asdict(z) for z in result.zone_stats], ensure_ascii=False,
             )
+            daily_records = getattr(result, 'daily_records', None) or []
+            trades = getattr(result, 'trades', None) or []
+            thinking = getattr(result, 'thinking', None) or []
             con.execute(
                 '''INSERT OR REPLACE INTO backtest_results
                    (id, session_id, agent_id, persona_id, model_id,
                     start_date, end_date, initial_capital, final_equity,
                     stats_json, zone_stats_json,
-                    quality_gate_label, quality_gate_json)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    quality_gate_label, quality_gate_json,
+                    daily_records_json, trades_json, thinking_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (result.id, result.session_id, result.agent_id,
                  result.persona_id, result.model_id,
                  result.start_date, result.end_date,
@@ -87,7 +105,10 @@ class SQLiteBacktestResultStore(BacktestResultStore):
                  json.dumps(asdict(result.stats), ensure_ascii=False),
                  zone_serial,
                  result.quality_gate_label,
-                 json.dumps(result.quality_gate_criteria, ensure_ascii=False)),
+                 json.dumps(result.quality_gate_criteria, ensure_ascii=False),
+                 json.dumps(daily_records, ensure_ascii=False, default=str),
+                 json.dumps(trades, ensure_ascii=False, default=str),
+                 json.dumps(thinking, ensure_ascii=False, default=str)),
             )
             con.commit()
         finally:
@@ -97,7 +118,8 @@ class SQLiteBacktestResultStore(BacktestResultStore):
         return ('id, session_id, agent_id, persona_id, model_id, '
                 'start_date, end_date, initial_capital, final_equity, '
                 'stats_json, zone_stats_json, quality_gate_label, '
-                'quality_gate_json')
+                'quality_gate_json, daily_records_json, '
+                'trades_json, thinking_json')
 
     def get(self, result_id: str):
         con = sqlite3.connect(self._db_path)

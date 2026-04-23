@@ -130,3 +130,78 @@ export type PromptVersion = {
   created_at: string | null;
   note: string | null;
 };
+
+export type NavPoint = {
+  date: string;
+  equity: number;
+  // Agent curves always populate cash + pnl_pct; baselines use BaselineCurve instead.
+  // Kept optional (not nullable) because the backend never emits null.
+  cash?: number;
+  pnl_pct?: number;
+};
+
+export type BaselineCurve = {
+  name: string;
+  curve: Array<{ date: string; equity: number }>;
+};
+
+export type NavResponse = {
+  result_id: string;
+  agent: NavPoint[];
+  baselines: BaselineCurve[];
+};
+
+export type TradeRow = {
+  date: string;
+  code: string;
+  action: 'buy' | 'sell';
+  shares: number;
+  price: number;
+  fee: number;
+};
+
+export type TradesResponse = {
+  result_id: string;
+  trades: TradeRow[];
+};
+
+export type ThinkingDecision = {
+  action: string;
+  code?: string;
+  shares?: number;
+  price?: number;
+  outcome?: string;
+  reasoning?: string;
+};
+
+export type ThinkingEntry = {
+  date: string;
+  reasoning: string;
+  tool_calls: Array<{ name: string; input: Record<string, unknown> }>;
+  decisions: ThinkingDecision[];
+};
+
+export type ThinkingResponse = {
+  result_id: string;
+  thinking: ThinkingEntry[];
+};
+
+export type StrategyRating = {
+  overall: number;
+  letter: 'A+' | 'A' | 'B' | 'C' | 'D';
+  // 5 sub-scores (0-100); names match backend rating/strategy_rating.py
+  return_power: number;         // ① 收益能力
+  risk_control: number;         // ② 风险控制
+  stability: number;            // ③ 稳定性
+  trading_efficiency: number;   // ④ 交易效率
+  overfitting_risk: number;     // ⑤ 过拟合风险 (higher = less leakage = better)
+  notes: string[];
+};
+
+/** One row of backend quality_gate_criteria. Matches validation/quality_gate.py. */
+export type QualityGateCriterion = {
+  ok: boolean;
+  actual: number | string | boolean | null;
+  threshold: number | string | boolean;
+  reason?: string;
+};

@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from backtest.stats import aggregate
 
-from .base import BaselineResult
+from .base import BaselineResult, serialize_daily_records
 
 
 _INDEX_CODE = '000300.SH'
@@ -72,6 +72,7 @@ def run_csi300(*, session_id: str, start_date: str, end_date: str,
         start_date=start_date, end_date=end_date,
         initial_capital=initial_capital,
         stats=overall, final_equity=prev_equity,
+        daily_records=serialize_daily_records(daily_records),
     )
     if persist:
         import storage

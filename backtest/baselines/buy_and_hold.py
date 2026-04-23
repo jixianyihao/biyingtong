@@ -9,7 +9,7 @@ from backtest.commission import FeeModel
 from backtest.lot_allocator import allocate_lot
 from backtest.stats import aggregate
 
-from .base import BaselineResult
+from .base import BaselineResult, serialize_daily_records
 
 
 def _parse(s: str) -> date:
@@ -94,6 +94,7 @@ def run_buy_and_hold(*, session_id: str, start_date: str, end_date: str,
         start_date=start_date, end_date=end_date,
         initial_capital=initial_capital,
         stats=overall, final_equity=prev_equity,
+        daily_records=serialize_daily_records(daily_records),
     )
     if persist:
         import storage

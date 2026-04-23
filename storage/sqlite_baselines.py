@@ -6,7 +6,10 @@ import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 
-from data_schema.baseline_state import SCHEMA_BASELINE_RESULTS
+from data_schema.baseline_state import (
+    SCHEMA_BASELINE_RESULTS,
+    ensure_baseline_observability_column,
+)
 
 from .base import BaselineResultStore
 
@@ -18,11 +21,15 @@ def _row_to_result(row):
     from backtest.base import BacktestStats
     from backtest.baselines.base import BaselineResult
     stats = BacktestStats(**json.loads(row[7]))
+    # Schema DEFAULT '[]' + ensure_baseline_observability_column on init guarantee
+    # row[8] is a non-NULL string; guard only against empty string from buggy callers.
+    daily_records = json.loads(row[8]) if row[8] else []
     return BaselineResult(
         id=row[0], session_id=row[1], name=row[2],
         start_date=row[3], end_date=row[4],
         initial_capital=row[5], final_equity=row[6],
         stats=stats,
+        daily_records=daily_records,
     )
 
 
@@ -38,6 +45,7 @@ class SQLiteBaselineResultStore(BaselineResultStore):
         try:
             con.execute('PRAGMA journal_mode=WAL')
             con.executescript(SCHEMA_BASELINE_RESULTS)
+            ensure_baseline_observability_column(con)
             con.commit()
         finally:
             con.close()
@@ -46,6 +54,7 @@ class SQLiteBaselineResultStore(BaselineResultStore):
         con = sqlite3.connect(self._db_path)
         try:
             con.executescript(SCHEMA_BASELINE_RESULTS)
+            ensure_baseline_observability_column(con)
             # Idempotency by (session_id, name): remove any OTHER row with the
             # same session+name before inserting.  This makes run_all safe to
             # rerun — fresh uuids don't accumulate duplicates.
@@ -54,15 +63,18 @@ class SQLiteBaselineResultStore(BaselineResultStore):
                    WHERE session_id = ? AND name = ? AND id != ?''',
                 (result.session_id, result.name, result.id),
             )
+            daily_records = getattr(result, 'daily_records', None) or []
             con.execute(
                 '''INSERT OR REPLACE INTO baseline_results
                    (id, session_id, name, start_date, end_date,
-                    initial_capital, final_equity, stats_json)
-                   VALUES (?,?,?,?,?,?,?,?)''',
+                    initial_capital, final_equity, stats_json,
+                    daily_records_json)
+                   VALUES (?,?,?,?,?,?,?,?,?)''',
                 (result.id, result.session_id, result.name,
                  result.start_date, result.end_date,
                  result.initial_capital, result.final_equity,
-                 json.dumps(asdict(result.stats), ensure_ascii=False)),
+                 json.dumps(asdict(result.stats), ensure_ascii=False),
+                 json.dumps(daily_records, ensure_ascii=False, default=str)),
             )
             con.commit()
         finally:
@@ -70,7 +82,8 @@ class SQLiteBaselineResultStore(BaselineResultStore):
 
     def _cols(self):
         return ('id, session_id, name, start_date, end_date, '
-                'initial_capital, final_equity, stats_json')
+                'initial_capital, final_equity, stats_json, '
+                'daily_records_json')
 
     def get(self, result_id: str):
         con = sqlite3.connect(self._db_path)

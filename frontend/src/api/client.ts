@@ -4,10 +4,14 @@ import type {
   BacktestResult,
   JobStatus,
   ModelInfo,
+  NavResponse,
   Persona,
   PromptVersion,
   SessionComposite,
   SessionSummary,
+  StrategyRating,
+  ThinkingResponse,
+  TradesResponse,
 } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -78,6 +82,10 @@ export const api = {
     const q = new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
     return request<AuditRow[]>(`/api/audit?${q}`);
   },
+  backtestNav: (id: string) => request<NavResponse>(`/api/backtests/${id}/nav`),
+  backtestTrades: (id: string) => request<TradesResponse>(`/api/backtests/${id}/trades`),
+  backtestThinking: (id: string) => request<ThinkingResponse>(`/api/backtests/${id}/thinking`),
+  backtestRating: (id: string) => request<StrategyRating>(`/api/backtests/${id}/rating`),
 };
 
 // Re-export types for convenience

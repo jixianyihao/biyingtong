@@ -140,3 +140,31 @@ export const useAgentPromptVersions = (id: string | undefined) =>
     queryFn: () => api.agentPromptVersions(id!),
     enabled: !!id,
   });
+
+export const useBacktestNav = (resultId: string | undefined) =>
+  useQuery({
+    queryKey: ['backtest-nav', resultId],
+    queryFn: () => api.backtestNav(resultId!),
+    enabled: !!resultId,
+  });
+
+export const useBacktestTrades = (resultId: string | undefined) =>
+  useQuery({
+    queryKey: ['backtest-trades', resultId],
+    queryFn: () => api.backtestTrades(resultId!),
+    enabled: !!resultId,
+  });
+
+export const useBacktestThinking = (resultId: string | undefined) =>
+  useQuery({
+    queryKey: ['backtest-thinking', resultId],
+    queryFn: () => api.backtestThinking(resultId!),
+    enabled: !!resultId,
+  });
+
+export const useBacktestRating = (resultId: string | undefined) =>
+  useQuery({
+    queryKey: ['backtest-rating', resultId],
+    queryFn: () => api.backtestRating(resultId!),
+    enabled: !!resultId,
+  });

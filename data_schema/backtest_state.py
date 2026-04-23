@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS backtest_results (
     zone_stats_json      TEXT NOT NULL,
     quality_gate_label   TEXT NOT NULL,
     quality_gate_json    TEXT NOT NULL,
+    daily_records_json   TEXT NOT NULL DEFAULT '[]',
+    trades_json          TEXT NOT NULL DEFAULT '[]',
+    thinking_json        TEXT NOT NULL DEFAULT '[]',
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS results_by_session ON backtest_results(session_id);
@@ -43,3 +46,19 @@ CREATE TABLE IF NOT EXISTS llm_decision_cache (
 CREATE INDEX IF NOT EXISTS cache_by_agent_date
     ON llm_decision_cache(agent_id, date);
 '''
+
+
+def ensure_observability_columns(con):
+    """Add the 3 P3-A columns to an existing backtest_results table.
+    Idempotent: safe to call on a fresh schema."""
+    cols = {row[1] for row in con.execute(
+        'PRAGMA table_info(backtest_results)').fetchall()}
+    if 'daily_records_json' not in cols:
+        con.execute("ALTER TABLE backtest_results ADD COLUMN "
+                    "daily_records_json TEXT NOT NULL DEFAULT '[]'")
+    if 'trades_json' not in cols:
+        con.execute("ALTER TABLE backtest_results ADD COLUMN "
+                    "trades_json TEXT NOT NULL DEFAULT '[]'")
+    if 'thinking_json' not in cols:
+        con.execute("ALTER TABLE backtest_results ADD COLUMN "
+                    "thinking_json TEXT NOT NULL DEFAULT '[]'")
