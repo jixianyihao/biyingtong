@@ -156,3 +156,80 @@ def test_buy_decision_reduces_cash(wired_full, monkeypatch):
     # and stats.trade_count >= 1.
     assert result.final_equity is not None
     assert result.stats.trade_count >= 1
+
+
+def test_unknown_model_audits_warning(wired_full, monkeypatch):
+    """Unknown model_id emits an audit warning and uses fallback cutoff."""
+    import backtest.runner as mod
+    import storage
+    from datetime import date, timedelta
+    from llm.mock import MockLLM
+    from backtest.runner import BacktestRunner
+
+    agent = wired_full.agents().create_from_persona(
+        persona_id='linyuan', model_id='nonexistent-model-xyz',
+        display_name='Unknown',
+    )
+
+    days = [date(2024, 3, 1) + timedelta(days=i) for i in range(3)]
+    prices = [(d, 100.0) for d in days]
+    monkeypatch.setattr(mod, '_load_daily_closes', lambda c, s, e: prices)
+    monkeypatch.setattr(mod, '_trading_days', lambda s, e: days)
+
+    hold = {'tool_calls': [{'id': 'c', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'nothing to trade today right now',
+                                      'thinking': 't'}}],
+            'stop_reason': 'tool_use'}
+    llm = MockLLM([hold, hold, hold])
+    BacktestRunner(llm=llm).run(
+        session_id='unk', agent_id=agent.id,
+        start_date='2024-03-01', end_date='2024-03-03',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+    )
+
+    warns = [r for r in storage.audit().query_by_agent(agent.id)
+             if r['kind'] == 'warning']
+    assert len(warns) >= 1
+    assert any(w['details'].get('kind') == 'unknown_model' for w in warns)
+
+
+def test_divergence_flag_is_computed(wired_full, monkeypatch):
+    """BacktestRunner fills divergence_flag from zone_stats."""
+    import backtest.runner as mod
+    import storage
+    from datetime import date, timedelta
+    from llm.mock import MockLLM
+    from backtest.runner import BacktestRunner
+
+    # Override model cutoff to mid-window
+    class _M:
+        training_cutoff = '2024-03-15'
+    monkeypatch.setattr(storage.models(), 'get', lambda _id: _M())
+
+    agent = wired_full.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='DivTest',
+    )
+
+    days = [date(2024, 3, 1) + timedelta(days=i) for i in range(90)]
+    # Flat prices → zero return in both zones → metric=0 → flag False
+    prices = [(d, 100.0) for d in days]
+    monkeypatch.setattr(mod, '_load_daily_closes', lambda c, s, e: prices)
+    monkeypatch.setattr(mod, '_trading_days', lambda s, e: days)
+    hold = {'tool_calls': [{'id': 'c', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'holding pattern at current levels',
+                                      'thinking': 't'}}],
+            'stop_reason': 'tool_use'}
+    llm = MockLLM([hold] * 90)
+    result = BacktestRunner(llm=llm).run(
+        session_id='div', agent_id=agent.id,
+        start_date='2024-03-01', end_date='2024-05-29',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+    )
+    # divergence_flag enters quality_gate_criteria as max_divergence_flag
+    gate = result.quality_gate_criteria
+    assert 'max_divergence_flag' in gate
+    # With flat prices, both zones have ~0 return → divergence False
+    assert gate['max_divergence_flag']['ok'] is True

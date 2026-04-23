@@ -133,9 +133,19 @@ class BacktestRunner:
         model = storage.models().get(model_id) if model_id else None
         if model is not None:
             cutoff = model.training_cutoff
+        elif model_id:
+            # Non-empty model_id but not in registry → log warning
+            from validation.base import AuditEntry
+            storage.audit().log(AuditEntry(
+                kind='warning', agent_id=agent_id,
+                persona_id=persona_id, model_id=model_id,
+                details={'kind': 'unknown_model', 'model_id': model_id},
+            ))
 
         overall, zones = aggregate(daily_records, cutoff=cutoff,
                                    initial_capital=cap)
+        from .divergence import compute_divergence
+        divergence_flag, _ = compute_divergence(zones)
         gate_input = {
             'sharpe': overall.sharpe,
             'max_drawdown_pct': overall.max_drawdown_pct,
@@ -144,7 +154,7 @@ class BacktestRunner:
             'max_daily_loss_pct': overall.max_daily_loss_pct,
             'clean_zone_days': next(
                 (z.days for z in zones if z.zone == 'clean'), 0),
-            'divergence_flag': False,
+            'divergence_flag': divergence_flag,
         }
         gate = evaluate_quality_gate(gate_input)
 
