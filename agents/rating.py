@@ -1,7 +1,7 @@
 """Trust rating classifier (Spec § 8.2)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def classify_rating(health: int) -> str:
@@ -27,7 +27,7 @@ def compute_health(agent_id: str,
     audit = storage.audit()
     rows = audit.query_by_agent(agent_id, limit=10_000)
     # Filter by timestamp within window (keeps the store interface simple)
-    cutoff = datetime.utcnow() - timedelta(days=window_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=window_days)
     violations = 0
     parse_failures = 0
     for r in rows:
@@ -35,7 +35,7 @@ def compute_health(agent_id: str,
         try:
             dt = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
         except Exception:
-            dt = datetime.utcnow()  # fall back to now (include)
+            dt = datetime.now(timezone.utc).replace(tzinfo=None)  # fall back to now (include)
         if dt < cutoff:
             continue
         if r['kind'] == 'validation' and r.get('details', {}).get('outcome') \
