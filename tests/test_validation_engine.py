@@ -76,7 +76,7 @@ def test_modified_on_position_max_pct(wired):
     out = _req(decision={'action': 'buy', 'code': 'X.SH',
                          'shares': 200, 'price': 1000.0})
     assert out.outcome == 'modified'
-    assert out.decision_out['shares'] == 150
+    assert out.decision_out['shares'] == 100
     assert any(v.rule_id == 'position_max_pct' and v.severity == 'modify'
                for v in out.violations)
 
@@ -120,8 +120,9 @@ def test_override_narrows_rule(wired):
                   'shares': 100, 'price': 1000.0},
         override={'position_max_pct': 5.0},
     )
-    assert out.outcome == 'modified'
-    assert out.decision_out['shares'] == 50
+    assert out.outcome == 'rejected'
+    assert any(v.rule_id == 'position_max_pct' and v.severity == 'reject'
+               for v in out.violations)
 
 
 def test_override_cannot_widen(wired):
@@ -132,4 +133,4 @@ def test_override_cannot_widen(wired):
         override={'position_max_pct': 40.0},
     )
     assert out.outcome == 'modified'
-    assert out.decision_out['shares'] == 150
+    assert out.decision_out['shares'] == 100

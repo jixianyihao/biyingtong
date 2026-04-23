@@ -59,11 +59,20 @@ class Handler:
             return None
 
         allowed_additional = int(math.floor((max_value - held_value) / price))
+        # A-share lot: must be multiple of 100
+        allowed_additional = (allowed_additional // 100) * 100
+        if allowed_additional < 100:
+            return Violation(
+                rule_id=RULE_ID, severity='reject',
+                reason=(f'cap allows only {allowed_additional} shares; '
+                        f'below A-share minimum lot of 100'),
+            )
         if allowed_additional < shares_req:
             return Violation(
                 rule_id=RULE_ID, severity='modify',
-                reason=(f'post-trade value {post_value:.0f} > cap '
-                        f'{max_value:.0f}; shrink to {allowed_additional} shares'),
+                reason=(f'post-trade value > cap {max_value:.0f}; '
+                        f'shrink to {allowed_additional} shares '
+                        f'(rounded to lot of 100)'),
                 modification={'shares': allowed_additional},
             )
         return None
