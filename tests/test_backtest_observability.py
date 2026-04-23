@@ -352,9 +352,15 @@ def test_sqlite_backtests_roundtrips_observability_fields(observability_storage)
     assert fetched.thinking[0]['reasoning'] == 'strong brand'
 
 
-def test_sqlite_backtests_defaults_to_empty_lists_for_legacy_rows(observability_storage):
-    """Row written without observability columns (simulating pre-P3A data)
-    should still load with empty lists, not crash."""
+def test_sqlite_backtests_defaults_empty_when_observability_columns_omitted_in_insert(observability_storage):
+    """A raw INSERT that omits daily_records_json/trades_json/thinking_json
+    must still roundtrip — SQLite DEFAULT '[]' fills the missing columns,
+    and get() parses them back to empty lists instead of crashing.
+
+    Note: this test exercises the SCHEMA DEFAULT, not the migration helper.
+    Migration is tested separately in
+    test_ensure_observability_columns_migrates_old_schema above.
+    """
     import sqlite3, json
     from dataclasses import asdict
     import storage

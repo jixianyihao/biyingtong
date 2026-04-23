@@ -23,10 +23,12 @@ def _row_to_result(row):
     zone_raw = json.loads(row[10])
     zones = [ZoneStats(**z) for z in zone_raw]
     # Columns 13/14/15 are daily_records_json/trades_json/thinking_json.
-    # Guard for older DBs missing these columns (len check).
-    daily_records = json.loads(row[13]) if len(row) > 13 and row[13] else []
-    trades = json.loads(row[14]) if len(row) > 14 and row[14] else []
-    thinking = json.loads(row[15]) if len(row) > 15 and row[15] else []
+    # Schema default is '[]' and ensure_observability_columns runs at init,
+    # so row[13:16] are always populated strings — but json.loads('') raises,
+    # so we still guard against empty strings from buggy callers.
+    daily_records = json.loads(row[13]) if row[13] else []
+    trades = json.loads(row[14]) if row[14] else []
+    thinking = json.loads(row[15]) if row[15] else []
     return BacktestResult(
         id=row[0], session_id=row[1], agent_id=row[2],
         persona_id=row[3], model_id=row[4],
