@@ -35,6 +35,7 @@ class AgentRunner:
         self._llm = llm
         self._engine = engine or ValidationEngine()
         self._max_iterations = max_iterations
+        self.last_thinking: dict | None = None
 
     def run_day(
         self,
@@ -70,9 +71,25 @@ class AgentRunner:
         port_hash = _portfolio_hash(portfolio)
         cache_key = CachedDecision.build_key(agent_id, date, port_hash, p_hash)
 
+        # P3-A thinking capture
+        thinking_reasoning: list[str] = []
+        thinking_tool_calls: list[dict] = []
+        thinking_decisions: list[dict] = []
+
         cache = storage.llm_cache()
         cached = cache.get(cache_key)
         if cached is not None:
+            self.last_thinking = {
+                'reasoning': '(cached — no LLM call)',
+                'tool_calls': [],
+                'decisions': [
+                    {'action': d.get('action'), 'code': d.get('code'),
+                     'shares': d.get('shares'), 'price': d.get('price'),
+                     'outcome': 'cached',
+                     'reasoning': d.get('reason') or d.get('reasoning')}
+                    for d in cached.decisions
+                ],
+            }
             return list(cached.decisions)
 
         # Live LLM tool loop
@@ -95,6 +112,12 @@ class AgentRunner:
 
         for _ in range(self._max_iterations):
             resp = self._llm.chat(messages=convo, tools=tool_specs)
+
+            # Capture assistant text for thinking
+            for m in resp.messages:
+                if m.content:
+                    thinking_reasoning.append(m.content)
+
             if not resp.tool_calls:
                 break
 
@@ -130,10 +153,27 @@ class AgentRunner:
                         persona_id=agent.persona_id,
                         model_id=agent.model_id,
                     )
+                    # Record decision regardless of validation outcome so the UI
+                    # can show rejected attempts too.
+                    thinking_decisions.append({
+                        'action': decision.get('action'),
+                        'code': decision.get('code'),
+                        'shares': decision.get('shares'),
+                        'price': decision.get('price'),
+                        'outcome': result.outcome,
+                        'reasoning': decision.get('reason')
+                                     or decision.get('reasoning'),
+                    })
                     if result.outcome != 'rejected' and result.decision_out:
                         decisions_executed.append(result.decision_out)
                     terminated = True
                     break
+                # Non-place_decision tool calls are research/query tools —
+                # surface them in the thinking drawer.
+                thinking_tool_calls.append({
+                    'name': call.name,
+                    'input': call.input or {},
+                })
                 # Execute the real tool via tools registry
                 entry = allowed.get(call.name)
                 if entry is None:
@@ -174,4 +214,9 @@ class AgentRunner:
             portfolio_hash=port_hash, prompt_hash=p_hash,
             decisions=decisions_executed,
         ))
+        self.last_thinking = {
+            'reasoning': '\n'.join(thinking_reasoning).strip(),
+            'tool_calls': thinking_tool_calls,
+            'decisions': thinking_decisions,
+        }
         return decisions_executed

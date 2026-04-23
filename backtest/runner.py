@@ -69,6 +69,7 @@ class BacktestRunner:
         from .commission import FeeModel
         book = Book(cash=cap, fee_model=FeeModel())
         daily_records: list[dict] = []
+        per_day_thinking: list[dict] = []
         prev_equity = cap
 
         for d in days:
@@ -101,6 +102,14 @@ class BacktestRunner:
                 mark_prices=mark_prices,
                 market_snapshot=snapshot,
             )
+            per_day_thinking.append({
+                'date': d.strftime('%Y-%m-%d'),
+                **(runner.last_thinking or {
+                    'reasoning': '',
+                    'tool_calls': [],
+                    'decisions': [],
+                }),
+            })
 
             # Apply decisions to the book at today's close
             trade_count_today = 0
@@ -212,7 +221,7 @@ class BacktestRunner:
             final_equity=prev_equity,
             daily_records=daily_records_serial,
             trades=trades_serial,
-            thinking=[],  # populated in Task 3
+            thinking=per_day_thinking,
         )
         storage.backtests().insert(result)
         return result

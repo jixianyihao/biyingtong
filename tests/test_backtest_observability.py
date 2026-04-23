@@ -167,3 +167,52 @@ def test_backtest_runner_populates_trades_and_daily_records(
     assert r.trades[1]['action'] == 'sell'
     for t in r.trades:
         assert set(t) == {'date', 'code', 'action', 'shares', 'price', 'fee'}
+
+    # Task 3: per-day thinking is now populated
+    assert len(r.thinking) == 7
+    t0 = r.thinking[0]
+    assert set(t0) >= {'date', 'reasoning', 'tool_calls', 'decisions'}
+    assert t0['date'] == '2025-01-02'
+    # Day 0 is a buy → decision recorded
+    assert len(t0['decisions']) == 1
+    assert t0['decisions'][0]['action'] == 'buy'
+    assert 'outcome' in t0['decisions'][0]
+
+
+def test_agent_runner_captures_thinking_per_day(observability_storage):
+    """run_day 之后 last_thinking 包含 reasoning / tool_calls / decisions。"""
+    from agents.runner import AgentRunner
+    from llm.mock import MockLLM
+    import storage
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-thk', initial_capital=1_000_000.0,
+    )
+
+    script = [
+        {
+            'text': 'strong consumer brand, low P/E',
+            'tool_calls': [{
+                'id': 'c1', 'name': 'place_decision',
+                'input': {'action': 'buy', 'code': '600519.SH',
+                          'qty': 100,
+                          'reason': 'buy now',
+                          'thinking': 'buying now'},
+            }],
+            'stop_reason': 'tool_use',
+        },
+    ]
+    runner = AgentRunner(llm=MockLLM(script))
+    runner.run_day(
+        agent_id=agent.id, date='2025-01-03',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'600519.SH': 100.0},
+    )
+    thk = runner.last_thinking
+    assert thk is not None
+    assert 'strong consumer' in thk['reasoning']
+    assert len(thk['decisions']) == 1
+    assert thk['decisions'][0]['action'] == 'buy'
+    assert 'outcome' in thk['decisions'][0]
+    assert isinstance(thk['tool_calls'], list)
