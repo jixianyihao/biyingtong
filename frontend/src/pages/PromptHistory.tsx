@@ -5,6 +5,7 @@ import {
   useAgentPromptVersions,
   useModels,
   usePersonas,
+  useRollbackPrompt,
 } from '../api/hooks';
 import type { PromptVersion } from '../api/types';
 
@@ -62,16 +63,19 @@ function VersionListItem({
   selected,
   isCurrent,
   onClick,
+  onRollback,
+  rollbackPending,
 }: {
   v: PromptVersion;
   selected: boolean;
   isCurrent: boolean;
   onClick: () => void;
+  onRollback: () => void;
+  rollbackPending: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className="w-full text-left px-3 py-2.5 border-b transition-colors"
+    <div
+      className="w-full border-b transition-colors"
       style={{
         borderColor: 'var(--panel-border-soft)',
         background: selected ? 'var(--bg-hover)' : 'transparent',
@@ -80,42 +84,73 @@ function VersionListItem({
           : '2px solid transparent',
       }}
     >
-      <div className="flex items-center gap-2 mb-1">
-        <span
-          className="mono text-[12px] font-semibold"
-          style={{ color: selected ? 'var(--brand)' : 'var(--text-hi)' }}
-        >
-          v{v.version_number}
-        </span>
-        {isCurrent && (
-          <>
-            <span
-              className="inline-block rounded-full"
-              style={{
-                width: 6,
-                height: 6,
-                background: 'var(--brand)',
-              }}
-            />
-            <span
-              className="mono text-[10px] uppercase tracking-wider"
-              style={{ color: 'var(--brand)' }}
-            >
-              当前 · Current
-            </span>
-          </>
+      <button
+        onClick={onClick}
+        className="w-full text-left px-3 py-2.5"
+        style={{ background: 'transparent', border: 'none' }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <span
+            className="mono text-[12px] font-semibold"
+            style={{ color: selected ? 'var(--brand)' : 'var(--text-hi)' }}
+          >
+            v{v.version_number}
+          </span>
+          {isCurrent && (
+            <>
+              <span
+                className="inline-block rounded-full"
+                style={{
+                  width: 6,
+                  height: 6,
+                  background: 'var(--brand)',
+                }}
+              />
+              <span
+                className="mono text-[10px] uppercase tracking-wider"
+                style={{ color: 'var(--brand)' }}
+              >
+                当前 · Current
+              </span>
+            </>
+          )}
+          <span style={{ flex: 1 }} />
+          <span className="mono text-[10px] text-text-faint">
+            {formatRelative(v.created_at)}
+          </span>
+        </div>
+        <div className="text-[11.5px] text-text-faint leading-snug">
+          {v.note ? truncate(v.note, 60) : (
+            <span className="italic text-text-ghost">（无备注）</span>
+          )}
+        </div>
+      </button>
+      <div
+        className="flex items-center justify-end px-3 pb-2"
+        style={{ gap: 6 }}
+      >
+        {isCurrent ? (
+          <span
+            className="pill brand"
+            style={{ fontSize: 10, padding: '2px 8px' }}
+          >
+            当前
+          </span>
+        ) : (
+          <button
+            className="btn"
+            style={{ padding: '4px 10px', fontSize: 11 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRollback();
+            }}
+            disabled={rollbackPending}
+          >
+            {rollbackPending ? '回滚中…' : '回滚到此版本'}
+          </button>
         )}
-        <span style={{ flex: 1 }} />
-        <span className="mono text-[10px] text-text-faint">
-          {formatRelative(v.created_at)}
-        </span>
       </div>
-      <div className="text-[11.5px] text-text-faint leading-snug">
-        {v.note ? truncate(v.note, 60) : (
-          <span className="italic text-text-ghost">（无备注）</span>
-        )}
-      </div>
-    </button>
+    </div>
   );
 }
 
@@ -171,6 +206,24 @@ export function PromptHistory() {
   const versionsQ = useAgentPromptVersions(agentId);
   const personasQ = usePersonas();
   const modelsQ = useModels();
+  const rollback = useRollbackPrompt();
+
+  const onRollback = (versionId: number, versionNumber: number) => {
+    if (!agentId) return;
+    if (
+      !confirm(
+        `回滚将创建一个新的 v(max+1) 版本，复制 v${versionNumber} 的 prompt。确定吗？`,
+      )
+    ) {
+      return;
+    }
+    rollback.mutate(
+      { agentId, versionId },
+      {
+        onError: (e) => alert(`回滚失败: ${String(e)}`),
+      },
+    );
+  };
 
   const versions = useMemo(
     () => (versionsQ.data ?? []).slice().sort((a, b) => a.version_number - b.version_number),
@@ -293,6 +346,9 @@ export function PromptHistory() {
               const isCurrent =
                 currentPromptVersionId != null &&
                 String(v.id) === String(currentPromptVersionId);
+              const rollbackPending =
+                rollback.isPending &&
+                rollback.variables?.versionId === v.id;
               return (
                 <VersionListItem
                   key={v.id}
@@ -303,6 +359,8 @@ export function PromptHistory() {
                     setSelectedVN(v.version_number);
                     setShowDiff(false);
                   }}
+                  onRollback={() => onRollback(v.id, v.version_number)}
+                  rollbackPending={rollbackPending}
                 />
               );
             })}
