@@ -65,8 +65,9 @@ class BacktestRunner:
         model_id = agent.model_id if agent else None
 
         runner = AgentRunner(llm=self._llm)
-        cash = cap
-        positions: dict[str, dict] = {}
+        from .book import Book
+        from .commission import FeeModel
+        book = Book(cash=cap, fee_model=FeeModel())
         daily_records: list[dict] = []
         prev_equity = cap
 
@@ -83,7 +84,8 @@ class BacktestRunner:
                 continue
 
             portfolio = build_portfolio(
-                cash=cash, positions=positions, mark_prices=mark_prices,
+                cash=book.cash, positions=book.positions_view(),
+                mark_prices=mark_prices,
             )
             decisions = runner.run_day(
                 agent_id=agent_id, date=d.strftime('%Y-%m-%d'),
@@ -99,37 +101,24 @@ class BacktestRunner:
                 code = dec.get('code')
                 shares = int(dec.get('shares') or dec.get('qty') or 0)
                 px = mark_prices.get(code, float(dec.get('price', 0.0)))
-                if action == 'buy' and shares > 0 and px > 0 and cash >= shares * px:
-                    cost = shares * px
-                    pos = positions.setdefault(
-                        code, {'shares': 0, 'avg_price': 0.0})
-                    prev_shares = pos['shares']
-                    new_shares = prev_shares + shares
-                    pos['avg_price'] = (
-                        (pos['avg_price'] * prev_shares + cost) / new_shares
-                        if new_shares else 0.0
-                    )
-                    pos['shares'] = new_shares
-                    cash -= cost
-                    trade_count_today += 1
-                elif action == 'sell' and shares > 0 and code in positions:
-                    pos = positions[code]
-                    sell_n = min(shares, pos['shares'])
-                    if sell_n > 0:
-                        proceeds = sell_n * px
-                        cash += proceeds
-                        win = px > pos['avg_price']
-                        pos['shares'] -= sell_n
+                if action == 'buy':
+                    fill = book.execute_buy(code, shares=shares,
+                                            price=px, d=d)
+                    if fill:
                         trade_count_today += 1
-                        if win:
+                elif action == 'sell':
+                    # Track win via avg price before sell removes tranches
+                    avg_before = book.positions_view().get(
+                        code, {}).get('avg_price', 0.0)
+                    fill = book.execute_sell(code, shares=shares,
+                                             price=px, d=d)
+                    if fill:
+                        trade_count_today += 1
+                        if px > avg_before:
                             wins_today += 1
 
             # Mark-to-market equity
-            equity = cash + sum(
-                pos['shares'] * mark_prices.get(code, pos['avg_price'])
-                for code, pos in positions.items()
-                if pos['shares'] > 0
-            )
+            equity = book.equity(mark_prices)
             pnl_pct = ((equity - prev_equity) / prev_equity * 100.0
                        if prev_equity > 0 else 0.0)
             prev_equity = equity
