@@ -67,3 +67,43 @@ def test_prompt_hash_differs_for_different_dates():
     h1 = prompt_hash(build_messages(date='2024-03-15', **base))
     h2 = prompt_hash(build_messages(date='2024-03-16', **base))
     assert h1 != h2
+
+
+def test_market_snapshot_renders_in_user_message():
+    from agents.prompt_builder import build_messages
+    snap = {
+        'date': '2025-11-17',
+        'stocks': {
+            '600519.SH': {
+                'kline_summary': {
+                    'latest_close': 1600.0,
+                    'return_30d_pct': 2.5,
+                    'volatility_30d_pct': 1.8,
+                    'closes_last_30d': [1600, 1590, 1580],
+                },
+                'financials': {'pe': 25.0, 'roe': 30.0},
+                'technical': {'ma20': 1580.0, 'rsi14': 58.0},
+            },
+        },
+    }
+    msgs = build_messages(
+        system_prompt='x', date='2025-11-17',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, default_pool=['600519.SH'],
+        market_snapshot=snap,
+    )
+    user = msgs[1].content
+    assert '1600' in user or '1,600' in user
+    assert 'pe' in user.lower()
+    assert 'roe' in user.lower()
+
+
+def test_no_snapshot_keeps_old_behavior():
+    from agents.prompt_builder import build_messages
+    msgs = build_messages(
+        system_prompt='x', date='2025-11-17',
+        portfolio={'cash': 1, 'equity': 1, 'positions': {}},
+        market_context={}, default_pool=['X.SH'],
+    )
+    user = msgs[1].content
+    assert 'latest_close' not in user

@@ -14,6 +14,7 @@ def build_messages(
     portfolio: dict,
     market_context: dict,
     default_pool: list[str],
+    market_snapshot: dict | None = None,
 ) -> list[Message]:
     """Return [system Message, user Message]."""
     cash = portfolio.get('cash', 0)
@@ -36,6 +37,26 @@ def build_messages(
         lines.append('市场快照：')
         for k, v in market_context.items():
             lines.append(f'  - {k}: {v}')
+    if market_snapshot and market_snapshot.get('stocks'):
+        lines.append('')
+        lines.append('研究数据:')
+        for code, data in market_snapshot['stocks'].items():
+            lines.append(f'  {code}:')
+            ks = data.get('kline_summary')
+            if ks:
+                lines.append(
+                    f'    K线: latest={ks.get("latest_close")}, '
+                    f'30d_return={ks.get("return_30d_pct")}%, '
+                    f'vol={ks.get("volatility_30d_pct")}%'
+                )
+            fin = data.get('financials')
+            if fin:
+                fin_str = ', '.join(f'{k}={v}' for k, v in fin.items())
+                lines.append(f'    财务: {fin_str}')
+            tech = data.get('technical')
+            if tech:
+                tech_str = ', '.join(f'{k}={v}' for k, v in tech.items())
+                lines.append(f'    技术: {tech_str}')
     lines.append('')
     lines.append(
         '使用工具调研后调用 place_decision 给出当日决策（'
