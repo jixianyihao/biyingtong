@@ -1,12 +1,12 @@
 """Buy-and-hold baseline: equal-weight at day 1, hold to end."""
 from __future__ import annotations
 
-import math
 import uuid
 from datetime import date, datetime
 
 from backtest.book import Book
 from backtest.commission import FeeModel
+from backtest.lot_allocator import allocate_lot
 from backtest.stats import aggregate
 
 from .base import BaselineResult
@@ -33,10 +33,6 @@ def _load_prices(code: str, start, end) -> list:
     return [(b.datetime.date(), float(b.close_price)) for b in bars]
 
 
-def _lot_floor(shares: float) -> int:
-    return max(0, int(math.floor(shares / 100.0)) * 100)
-
-
 def run_buy_and_hold(*, session_id: str, start_date: str, end_date: str,
                      initial_capital: float, universe: list[str],
                      persist: bool = True) -> BaselineResult:
@@ -49,20 +45,20 @@ def run_buy_and_hold(*, session_id: str, start_date: str, end_date: str,
     price_series = {code: dict(_load_prices(code, start, end))
                     for code in universe}
 
-    book = Book(cash=initial_capital, fee_model=FeeModel())
+    fee_model = FeeModel()
+    book = Book(cash=initial_capital, fee_model=fee_model)
     entry_day = days[0]
 
-    # Day-1 equal-weight buy. Reserve 0.5% headroom for buy-side fees so
-    # lot-floored share count fits within cash (see prompt's "Before You
-    # Begin" analysis — a whole-lot allocation of 1M / 100 = 10_000 shares
-    # would otherwise be rejected by the 3 bp fee).
+    # Day-1 equal-weight buy. Iterative lot allocator picks the largest
+    # 100-share multiple whose (notional + commission) fits in the cash
+    # slice — an exact-fee-aware replacement for the older *0.995 buffer.
     alloc_per_stock = initial_capital / max(1, len(universe))
     for code in universe:
         px = price_series[code].get(entry_day)
         if px is None or px <= 0:
             continue
-        shares_raw = (alloc_per_stock * 0.995) / px
-        shares = _lot_floor(shares_raw)
+        shares = allocate_lot(cash=alloc_per_stock, price=px,
+                              fee_model=fee_model)
         if shares < 100:
             continue
         book.execute_buy(code, shares=shares, price=px, d=entry_day)

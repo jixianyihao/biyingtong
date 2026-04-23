@@ -1,12 +1,12 @@
 """Equal-weight monthly rebalance baseline."""
 from __future__ import annotations
 
-import math
 import uuid
 from datetime import date, datetime
 
 from backtest.book import Book
 from backtest.commission import FeeModel
+from backtest.lot_allocator import allocate_lot
 from backtest.stats import aggregate
 
 from .base import BaselineResult
@@ -30,10 +30,6 @@ def _load_prices(code: str, start, end) -> list:
         _dt(end.year, end.month, end.day),
     )
     return [(b.datetime.date(), float(b.close_price)) for b in bars]
-
-
-def _lot_floor(shares: float) -> int:
-    return max(0, int(math.floor(shares / 100.0)) * 100)
 
 
 def _is_month_start(d: date, prev_d: date | None) -> bool:
@@ -86,14 +82,17 @@ def run_equal_weight(*, session_id: str, start_date: str, end_date: str,
                         trades_today += 1
 
             equity_now = book.equity(mark_prices)
-            # Leave 0.5% cash buffer for fees
-            target_per_stock = (equity_now * 0.995) / n
+            target_per_stock = equity_now / n
             for code in universe:
                 px = mark_prices.get(code)
                 if px is None or px <= 0:
                     continue
-                shares_raw = target_per_stock / px
-                shares = _lot_floor(shares_raw)
+                # After each buy book.cash drops below the nominal target —
+                # the allocator needs the TRUE cash budget, not the target.
+                shares = allocate_lot(
+                    cash=min(book.cash, target_per_stock),
+                    price=px, fee_model=book.fee_model,
+                )
                 if shares < 100:
                     continue
                 fill = book.execute_buy(code, shares=shares, price=px, d=d)
