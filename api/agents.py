@@ -110,3 +110,60 @@ def list_agent_prompt_versions(agent_id):
         }
         for v in rows
     ])
+
+
+@api_bp.route('/agents/<agent_id>', methods=['PUT'])
+def update_agent(agent_id):
+    """Partial update: display_name, rules_override. 404 if missing."""
+    import storage
+    a = storage.agents().get(agent_id)
+    if a is None:
+        return jsonify({'error': 'not_found'}), 404
+    body = request.get_json(silent=True) or {}
+    kwargs = {}
+    if 'display_name' in body and body['display_name'] is not None:
+        kwargs['display_name'] = body['display_name']
+    if 'rules_override' in body and body['rules_override'] is not None:
+        kwargs['rules_override'] = body['rules_override']
+    if kwargs:
+        storage.agents().update(agent_id, **kwargs)
+    return jsonify(_agent_to_dict(storage.agents().get(agent_id)))
+
+
+@api_bp.route('/agents/<agent_id>', methods=['DELETE'])
+def delete_agent(agent_id):
+    """Hard delete agent + prompt_versions. backtest_results preserved."""
+    import storage
+    if storage.agents().get(agent_id) is None:
+        return jsonify({'error': 'not_found'}), 404
+    storage.agents().delete(agent_id)
+    return '', 204
+
+
+@api_bp.route('/agents/<agent_id>/prompts/rollback', methods=['POST'])
+def rollback_agent_prompt(agent_id):
+    """Create a new prompt version copying an older one's prompt.
+    Updates agents.current_prompt_version_id to the new row.
+    Body: {version_id: int}"""
+    import storage
+    a = storage.agents().get(agent_id)
+    if a is None:
+        return jsonify({'error': 'not_found'}), 404
+    body = request.get_json(silent=True) or {}
+    version_id = body.get('version_id')
+    if version_id is None:
+        return jsonify({'error': 'version_id required'}), 400
+    try:
+        new_version = storage.prompt_versions().rollback(
+            agent_id=agent_id, version_id=int(version_id))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    storage.agents().set_current_prompt_version(agent_id, new_version.id)
+    return jsonify({
+        'id': new_version.id,
+        'agent_id': new_version.agent_id,
+        'version_number': new_version.version_number,
+        'system_prompt': new_version.system_prompt,
+        'created_at': new_version.created_at,
+        'note': new_version.note,
+    })
