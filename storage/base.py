@@ -273,3 +273,17 @@ class LLMDecisionCacheStore(Protocol):
     def put(self, entry) -> None:
         """Upsert a CachedDecision."""
         ...
+
+
+# --- Added in P2d ---
+
+
+@runtime_checkable
+class BaselineResultStore(Protocol):
+    """baseline_results table."""
+    def init_schema(self) -> None: ...
+    def insert(self, result) -> None:
+        """Persist a BaselineResult. Idempotent by id."""
+        ...
+    def get(self, result_id: str): ...
+    def list_for_session(self, session_id: str) -> list: ...
