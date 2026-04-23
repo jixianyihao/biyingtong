@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
+  useBacktestNav,
+  useBacktestRating,
+  useBacktestThinking,
+  useBacktestTrades,
   useCreateAgent,
   useJobStatusStream,
   useModels,
@@ -14,6 +18,11 @@ import type {
   SessionComposite,
   ZoneStats,
 } from '../api/types';
+import { NavChart } from '../components/NavChart';
+import { TradesTable } from '../components/TradesTable';
+import { ThinkingDrawer } from '../components/ThinkingDrawer';
+import { QualityGatePanel } from '../components/QualityGatePanel';
+import { StrategyRatingPanel } from '../components/StrategyRatingPanel';
 
 // ─── form defaults ─────────────────────────────────────────────────────────
 const DEFAULT_UNIVERSE = '600519.SH, 601318.SH, 000858.SZ';
@@ -337,6 +346,9 @@ function JobPanel({
         <>
           <ResultsTable session={session} />
           <ZoneMetricsPanel session={session} />
+          {session.agents.map((a) => (
+            <ResultDetailPanels key={a.id} result={a} />
+          ))}
         </>
       )}
 
@@ -729,6 +741,56 @@ function ZoneMetricsPanel({ session }: { session: SessionComposite }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function ResultDetailPanels({ result }: { result: BacktestResult }) {
+  const nav = useBacktestNav(result.id);
+  const trades = useBacktestTrades(result.id);
+  const thinking = useBacktestThinking(result.id);
+  const rating = useBacktestRating(result.id);
+
+  return (
+    <div className="grid gap-4 mt-4">
+      {/* NAV curve */}
+      <div className="panel p-5">
+        <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+          <h2 className="text-text-hi text-base font-semibold">权益曲线</h2>
+          <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+            NAV Curve · {result.agent_id}
+          </span>
+        </div>
+        <NavChart data={nav.data} />
+      </div>
+
+      {/* Two-column: rating+gate | thinking */}
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
+        <div className="grid gap-4">
+          <StrategyRatingPanel rating={rating.data} />
+          <QualityGatePanel result={result} />
+        </div>
+        <div className="panel p-5">
+          <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+            <h2 className="text-text-hi text-base font-semibold">决策日志</h2>
+            <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+              LLM Thinking
+            </span>
+          </div>
+          <ThinkingDrawer thinking={thinking.data?.thinking ?? []} />
+        </div>
+      </div>
+
+      {/* Trade log */}
+      <div className="panel p-5">
+        <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+          <h2 className="text-text-hi text-base font-semibold">成交流水</h2>
+          <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+            Trade Log
+          </span>
+        </div>
+        <TradesTable trades={trades.data?.trades ?? []} />
       </div>
     </div>
   );
