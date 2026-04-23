@@ -106,68 +106,6 @@ def test_book_records_fills_on_buy_and_sell():
     assert f2.date == d2
 
 
-@pytest.fixture
-def observability_storage(tmp_path):
-    """Wire every store required for an end-to-end BacktestRunner call.
-
-    Adapted from tests/test_backtest_runner.py::wired_full. Diverges from the
-    task spec fixture because:
-      * the project's public persona seeder is ``personas.seed()`` (not
-        ``seed_builtin_personas``);
-      * kline seeding is unnecessary — the runner loads closes via
-        ``_load_daily_closes`` and trading days via ``_trading_days``, both of
-        which the tests monkeypatch directly.
-    """
-    import storage
-    from storage.sqlite_redline import SQLiteRedLineStore
-    from storage.sqlite_stock_status import SQLiteStockStatusStore
-    from storage.sqlite_audit import SQLiteAuditStore
-    from storage.sqlite_llm_cache import SQLiteLLMDecisionCache
-    from storage.sqlite_personas import SQLitePersonaStore
-    from storage.sqlite_agents import SQLiteAgentStore
-    from storage.sqlite_prompt_versions import SQLitePromptVersionStore
-    from storage.sqlite_models import SQLiteModelStore
-    from storage.sqlite_backtests import SQLiteBacktestResultStore
-    from storage.sqlite_calendar import SQLiteCalendarStore
-    from validation.base import DEFAULT_REDLINES
-
-    storage.reset()
-    for cls, setter in [
-        (SQLiteRedLineStore,        'set_redline'),
-        (SQLiteStockStatusStore,    'set_stock_status'),
-        (SQLiteAuditStore,          'set_audit'),
-        (SQLiteLLMDecisionCache,    'set_llm_cache'),
-        (SQLitePersonaStore,        'set_personas'),
-        (SQLiteAgentStore,          'set_agents'),
-        (SQLitePromptVersionStore,  'set_prompt_versions'),
-        (SQLiteModelStore,          'set_models'),
-        (SQLiteBacktestResultStore, 'set_backtests'),
-        (SQLiteCalendarStore,       'set_calendar'),
-    ]:
-        inst = cls(tmp_path=tmp_path)
-        inst.init_schema()
-        getattr(storage, setter)(inst)
-    storage.models().seed()
-
-    from validation import rules as _rules
-    _rules.reset()
-    from validation.handlers.position_max_pct import Handler as H1
-    from validation.handlers.ban_st import Handler as H2
-    from validation.handlers.max_holdings import Handler as H3
-    from validation.handlers.daily_loss_limit_pct import Handler as H4
-    _rules.register(H1())
-    _rules.register(H2())
-    _rules.register(H3())
-    _rules.register(H4())
-
-    storage.redline().set({**DEFAULT_REDLINES, 'position_max_pct': 15.0})
-    from personas import seed as seed_personas
-    seed_personas()
-
-    yield tmp_path
-    storage.reset()
-
-
 def test_backtest_runner_populates_trades_and_daily_records(
     observability_storage, monkeypatch,
 ):
@@ -219,11 +157,13 @@ def test_backtest_runner_populates_trades_and_daily_records(
         start_date='2025-01-02', end_date='2025-01-08',
         universe=['600519.SH'],
     )
-    assert len(r.daily_records) >= 3
+    # 7-day deterministic script → exactly 7 daily_records and 2 trades (1 buy + 1 sell)
+    assert len(r.daily_records) == 7
     for rec in r.daily_records:
-        assert 'equity' in rec
-        assert 'date' in rec
-        assert 'cash' in rec  # NEW in Task 2
-    assert len(r.trades) >= 2
-    t = r.trades[0]
-    assert set(t) >= {'date', 'code', 'action', 'shares', 'price', 'fee'}
+        assert set(rec) == {'date', 'equity', 'cash', 'pnl_pct',
+                            'trade_count', 'won'}
+    assert len(r.trades) == 2
+    assert r.trades[0]['action'] == 'buy'
+    assert r.trades[1]['action'] == 'sell'
+    for t in r.trades:
+        assert set(t) == {'date', 'code', 'action', 'shares', 'price', 'fee'}
