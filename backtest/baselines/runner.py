@@ -1,5 +1,7 @@
-"""Run all three MVP baselines under a shared session."""
+"""Run all three MVP baselines concurrently under a shared session."""
 from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
 
 from .buy_and_hold import run_buy_and_hold
 from .csi300 import run_csi300
@@ -13,11 +15,12 @@ def run_all(*, session_id: str, start_date: str, end_date: str,
         start_date=start_date, end_date=end_date,
         initial_capital=initial_capital,
     )
-    results = []
-    # Buy and hold
-    results.append(run_buy_and_hold(universe=universe, **common))
-    # Equal weight
-    results.append(run_equal_weight(universe=universe, **common))
-    # CSI 300 (index-only, no universe arg)
-    results.append(run_csi300(**common))
+    jobs = [
+        (run_buy_and_hold, dict(universe=universe, **common)),
+        (run_equal_weight, dict(universe=universe, **common)),
+        (run_csi300, dict(**common)),
+    ]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(fn, **kw) for fn, kw in jobs]
+        results = [f.result() for f in futures]
     return results
