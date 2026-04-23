@@ -83,3 +83,79 @@ def test_backtest_result_kind_rule():
         kind='rule',
     )
     assert r.kind == 'rule'
+
+
+def test_ma_crossover_buys_on_golden_cross():
+    from datetime import date
+    from backtest.strategies.ma_crossover import MACrossover
+
+    s = MACrossover(params={'fast': 3, 'slow': 5, 'position_pct': 0.3})
+    # fast (last 3) > slow (last 5), after prev day fast <= slow
+    d = date(2025, 1, 8)
+    close_history = {
+        '600519.SH': [
+            (date(2025, 1, 2), 100.0),
+            (date(2025, 1, 3), 105.0),
+            (date(2025, 1, 4), 108.0),
+            (date(2025, 1, 5), 110.0),
+            (date(2025, 1, 6), 115.0),
+            (date(2025, 1, 7), 118.0),
+            (date(2025, 1, 8), 120.0),
+        ],
+    }
+    portfolio = {'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}}
+    decisions = s.on_day(date=d, close_history=close_history, portfolio=portfolio)
+    assert len(decisions) == 1
+    assert decisions[0]['action'] == 'buy'
+    assert decisions[0]['code'] == '600519.SH'
+    assert decisions[0]['shares'] > 0
+
+
+def test_ma_crossover_sells_on_death_cross():
+    from datetime import date
+    from backtest.strategies.ma_crossover import MACrossover
+
+    s = MACrossover(params={'fast': 3, 'slow': 5})
+    d = date(2025, 1, 8)
+    close_history = {
+        '600519.SH': [
+            (date(2025, 1, 2), 120.0),
+            (date(2025, 1, 3), 115.0),
+            (date(2025, 1, 4), 110.0),
+            (date(2025, 1, 5), 108.0),
+            (date(2025, 1, 6), 105.0),
+            (date(2025, 1, 7), 100.0),
+            (date(2025, 1, 8), 95.0),
+        ],
+    }
+    portfolio = {
+        'cash': 500_000, 'equity': 500_000 + 100 * 95,
+        'positions': {'600519.SH': {'shares': 100, 'avg_price': 110.0}},
+    }
+    decisions = s.on_day(date=d, close_history=close_history, portfolio=portfolio)
+    assert any(d['action'] == 'sell' and d['code'] == '600519.SH' for d in decisions)
+
+
+def test_ma_crossover_insufficient_history_returns_empty():
+    from datetime import date
+    from backtest.strategies.ma_crossover import MACrossover
+    s = MACrossover(params={'fast': 5, 'slow': 20})
+    decisions = s.on_day(
+        date=date(2025, 1, 3),
+        close_history={'600519.SH': [(date(2025, 1, 2), 100.0)]},
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+    )
+    assert decisions == []
+
+
+def test_strategies_registry_has_ma_crossover():
+    from backtest.strategies import list_all, get, build
+    names = [d.name for d in list_all()]
+    assert 'ma_crossover' in names
+    entry = get('ma_crossover')
+    assert entry is not None
+    instance = build('ma_crossover')
+    assert instance.name == 'ma_crossover'
+    # Default params are populated
+    assert 'fast' in instance.params
+    assert 'slow' in instance.params
