@@ -4,6 +4,7 @@ flask-cors==5.0.1
 pandas>=2.2
 gevent==24.11.1
 gevent-websocket==0.10.1
+requests>=2.31
 
 # vnpy backtest stack (added in P0)
 # Notes on pins:
