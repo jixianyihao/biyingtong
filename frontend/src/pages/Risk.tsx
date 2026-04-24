@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useAuditQuery, useRedlines, useUpdateRedlines } from '../api/hooks';
 import type { AuditRow } from '../api/types';
+import { ProposalsPanel } from '../components/ProposalsPanel';
 
 // ─── key groupings of the RedLine dict ─────────────────────────────────────
 type NumericKey =
@@ -874,6 +875,16 @@ export function Risk() {
       </div>
 
       <div className="grid gap-5">
+        <div className="panel p-5 mb-4">
+          <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+            <h2 className="text-text-hi text-base font-semibold">待审批提议</h2>
+            <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+              Pending Proposals · Global Inbox
+            </span>
+          </div>
+          <ProposalsPanel />
+        </div>
+
         <LayeredProtection />
 
         <RedlineConfigPanel
