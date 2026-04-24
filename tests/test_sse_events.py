@@ -435,3 +435,89 @@ def test_submit_backtest_emits_baseline_done(observability_storage, monkeypatch)
     assert len(bl_events) == 2
     names = {e['baseline_name'] for e in bl_events}
     assert names == {'buy_and_hold', 'csi300'}
+
+
+def _fresh_flask_app():
+    from flask import Flask
+    from api import api_bp
+    app = Flask(__name__)
+    app.register_blueprint(api_bp)
+    app.config['TESTING'] = True
+    return app
+
+
+@pytest.fixture
+def client(observability_storage):
+    app = _fresh_flask_app()
+    with app.test_client() as c:
+        yield c
+
+
+def test_sse_stream_emits_events_after_completion(observability_storage, client, monkeypatch):
+    """Connect to SSE stream AFTER a job has already completed — should emit
+    accumulated events + final 'done' line. Test client is non-streaming so
+    we wait for the generator to close (which happens on state == complete)."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    from backtest.jobs import submit_backtest, get_status
+    import time
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-sse-end', initial_capital=1_000_000.0,
+    )
+
+    def _fake_run_multi(*, session_id, agent_configs, start_date, end_date,
+                       initial_capital, universe, on_event=None, **_kw):
+        if on_event:
+            on_event({'kind': 'progress', 'agent_id': agent.id,
+                      'date': start_date, 'equity': initial_capital,
+                      'pnl_pct': 0.0})
+        stats = BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                              win_rate=0, max_daily_loss_pct=0,
+                              total_return_pct=0, final_equity=initial_capital)
+        r = BacktestResult(
+            id='r-sse-end', session_id=session_id, agent_id=agent.id,
+            persona_id=None, model_id=None,
+            start_date=start_date, end_date=end_date,
+            initial_capital=initial_capital, stats=stats, zone_stats=[],
+            quality_gate_label='pass', quality_gate_criteria={},
+        )
+        storage.backtests().insert(r)
+        return [r]
+
+    import backtest.multi_agent_runner as mar
+    monkeypatch.setattr(mar, 'run_multi', _fake_run_multi)
+    import backtest.baselines.runner as bl_runner
+    monkeypatch.setattr(bl_runner, 'run_all', lambda *a, **kw: [])
+
+    submit_backtest(
+        session_id='s-sse-end', agent_ids=[agent.id],
+        start_date='2025-01-02', end_date='2025-01-08',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+        include_baselines=False,
+    )
+    for _ in range(50):
+        st = get_status('s-sse-end')
+        if st and st.state == 'complete':
+            break
+        time.sleep(0.1)
+
+    resp = client.get('/api/backtests/jobs/s-sse-end/stream')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # phase events were emitted by jobs.py
+    assert 'event: phase' in body
+    # progress event was emitted by the stubbed run_multi
+    assert 'event: progress' in body
+    # done event closes the stream
+    assert 'event: done' in body
+    # Status snapshot still emitted on default channel (no event: prefix line, just data:)
+    assert '"state": "complete"' in body or "'state': 'complete'" in body
+
+
+def test_sse_stream_notfound_for_unknown_session(observability_storage, client):
+    resp = client.get('/api/backtests/jobs/no-such-session/stream')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'event: notfound' in body

@@ -196,18 +196,19 @@ def list_backtest_jobs():
 
 @api_bp.route('/backtests/jobs/<session_id>/stream')
 def stream_backtest_job(session_id):
-    """Server-Sent Events stream of job status updates.
+    """SSE stream: status snapshots + fine-grained events (P3-D §15.6).
 
-    Polls the in-memory job tracker every 500ms. Closes the stream when
-    the job reaches 'complete' or 'failed'. The client reconnects on
-    network hiccups via EventSource's built-in reconnect.
+    Default channel: status snapshot (only on change).
+    Named channels: phase / progress / tool_call / decision / blocked /
+                    baseline_done — emitted as `event: <kind>\\ndata: {json}\\n\\n`.
+    Stream-level: notfound, timeout, done.
     """
     import json
     import time
     from flask import Response
     from backtest.jobs import get_status
 
-    def _to_event(status) -> str:
+    def _status_snapshot(status) -> str:
         payload = {
             'session_id': status.session_id,
             'state': status.state,
@@ -222,33 +223,43 @@ def stream_backtest_job(session_id):
         }
         return f'data: {json.dumps(payload, ensure_ascii=False)}\n\n'
 
+    def _event_line(ev: dict) -> str:
+        kind = ev.get('kind', 'unknown')
+        return (f'event: {kind}\n'
+                f'data: {json.dumps(ev, ensure_ascii=False)}\n\n')
+
     def generate():
-        last_serialised = None
+        last_snapshot = None
+        last_event_idx = 0
         iterations = 0
-        # Hard upper bound: 30 min × 120 polls/min = 3600 iterations
         while iterations < 3600:
             status = get_status(session_id)
             if status is None:
                 yield 'event: notfound\ndata: {}\n\n'
                 return
-            serialised = _to_event(status)
-            # Only push when something changed to save bandwidth
-            if serialised != last_serialised:
-                yield serialised
-                last_serialised = serialised
+
+            snapshot = _status_snapshot(status)
+            if snapshot != last_snapshot:
+                yield snapshot
+                last_snapshot = snapshot
+
+            # Drain new events since last poll
+            new_events = status.events[last_event_idx:]
+            for ev in new_events:
+                yield _event_line(ev)
+            last_event_idx = len(status.events)
+
             if status.state in ('complete', 'failed'):
                 yield 'event: done\ndata: {}\n\n'
                 return
-            # NOTE: This polls in-process every 500ms and blocks a Flask worker per
-            # subscriber. Acceptable at MVP scale (≤ 5 concurrent users). If user
-            # count grows, switch to a thread-pool async pattern or Redis pub/sub.
+
             time.sleep(0.5)
             iterations += 1
         yield 'event: timeout\ndata: {}\n\n'
 
     return Response(generate(), mimetype='text/event-stream', headers={
         'Cache-Control': 'no-cache',
-        'X-Accel-Buffering': 'no',  # disable nginx/proxy buffering
+        'X-Accel-Buffering': 'no',
         'Connection': 'keep-alive',
     })
 
