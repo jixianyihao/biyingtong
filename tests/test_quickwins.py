@@ -222,6 +222,28 @@ def test_compute_monthly_returns_out_of_order_input_still_groups():
     assert out[0]['days'] == 3
 
 
+def test_compute_monthly_returns_unsorted_input():
+    """Out-of-order daily_records should still give chronologically-correct monthly returns.
+
+    Regression guard — previously first_equity_of_month was set by first-seen-in-bucket
+    order, not by actual calendar date. When records arrive unsorted (parallel multi-agent
+    runs, or reconstruction from SQLite without ORDER BY), this produced wrong return_pct.
+    """
+    from backtest.stats import compute_monthly_returns
+    records = [
+        # Deliberately out-of-order: Feb-15 before Feb-01
+        {'date': '2025-02-15', 'equity': 105_000.0},
+        {'date': '2025-02-01', 'equity': 100_000.0},  # chronological first
+        {'date': '2025-02-28', 'equity': 110_000.0},  # chronological last
+    ]
+    out = compute_monthly_returns(records)
+    assert len(out) == 1
+    # Correct = (110_000 / 100_000 - 1) * 100 = 10.0
+    # Buggy would = (110_000 / 105_000 - 1) * 100 ≈ 4.76
+    assert abs(out[0]['return_pct'] - 10.0) < 0.01
+    assert out[0]['days'] == 3
+
+
 # ─── edge cases: cancel semantics ─────────────────────────────────────────
 
 def test_cancel_job_returns_false_for_failed_state():
