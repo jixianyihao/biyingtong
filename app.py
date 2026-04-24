@@ -12,6 +12,50 @@ from api import api_bp  # noqa: E402
 app.register_blueprint(api_bp)
 
 
+# ---- Startup crash recovery for deployed agents ----
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if a process with the given PID is running. Cross-platform.
+
+    On Unix: os.kill(pid, 0) raises ProcessLookupError if dead.
+    On Windows: requires looking at the tasklist — use psutil if available,
+    otherwise fall back to a best-effort check via os.kill(pid, 0) which
+    works slightly differently on Windows but still raises for dead PIDs.
+    """
+    import os
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # On Unix, PermissionError means the PID exists but we can't signal.
+        # Treat as alive.
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _recover_deployed_agents() -> int:
+    """On startup, mark any deployed agent whose subprocess is dead as 'crashed'.
+    Returns the number of agents reclassified."""
+    import storage
+    crashed = 0
+    try:
+        running = storage.deployed_agents().list_running()
+    except Exception:  # noqa: BLE001
+        # Fresh install — table doesn't exist yet. Init it and move on.
+        storage.deployed_agents().init_schema()
+        return 0
+    for d in running:
+        if not _pid_alive(d.pid):
+            storage.deployed_agents().mark_crashed(d.agent_id)
+            crashed += 1
+    return crashed
+
+
 # ---- Serve Frontend ----
 
 @app.route('/')
@@ -195,6 +239,19 @@ def push_quotes():
         snapshots = tdx.get_snapshots(codes)
         if snapshots:
             socketio.emit('quotes', snapshots)
+
+
+# ---- Crash recovery sweep at import time ----
+# Runs after all blueprints/routes are registered. Any deployed agent whose
+# subprocess is no longer alive gets flipped to 'crashed' so the UI reflects
+# reality. Auto-restart is intentionally NOT done here — that's a Phase 2
+# policy call; for Phase 1 we just surface the state.
+try:
+    _crashed_count = _recover_deployed_agents()
+    if _crashed_count:
+        print(f'[startup] marked {_crashed_count} deployed agent(s) as crashed')
+except Exception as e:  # noqa: BLE001
+    print(f'[startup] crash recovery skipped: {e}')
 
 
 if __name__ == '__main__':
