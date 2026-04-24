@@ -3,7 +3,7 @@ def test_all_tools_registered():
     assert set(ALL_TOOLS.keys()) == {
         'place_decision', 'get_kline', 'get_snapshot', 'get_financials',
         'get_technical', 'get_index', 'get_portfolio', 'get_news',
-        'get_stock_list', 'get_capital_flow',
+        'get_stock_list', 'get_capital_flow', 'get_forward_pe',
     }
 
 
