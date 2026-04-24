@@ -1,4 +1,4 @@
-import { useProposals, useRedlines } from '../api/hooks';
+import { useProposals } from '../api/hooks';
 import { ProposalsPanel } from '../components/ProposalsPanel';
 import { PositionsPanel } from '../components/PositionsPanel';
 
@@ -86,12 +86,7 @@ function RiskHintsCard({ proposalCount }: { proposalCount: number }) {
 }
 
 export function Live() {
-  // Use existing hook to show pending proposal count. We also kick off
-  // redlines fetch here so the card can (eventually) drive its hint text
-  // from real config; for Phase 1 the text is static, so we just surface
-  // the presence of the call as a placeholder.
   const proposals = useProposals({ status: 'pending', limit: 100 });
-  useRedlines();
   const proposalCount = proposals.data?.length ?? 0;
 
   return (
