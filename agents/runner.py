@@ -67,7 +67,15 @@ class AgentRunner:
         if agent is None:
             raise ValueError(f'unknown agent_id={agent_id}')
         persona = storage.personas().get(agent.persona_id)
-        pv = storage.prompt_versions().get_latest(agent_id)
+        # Honor agents.current_prompt_version_id — rollback and mid-flight
+        # prompt edits pin this pointer. Falling back to get_latest silently
+        # defeats the pin when latest != pinned. Legacy agents with NULL pin
+        # still get get_latest.
+        pv = None
+        if agent.current_prompt_version_id is not None:
+            pv = storage.prompt_versions().get_by_id(agent.current_prompt_version_id)
+        if pv is None:
+            pv = storage.prompt_versions().get_latest(agent_id)
         if pv is None:
             raise RuntimeError(f'agent {agent_id} has no prompt version')
         system_prompt = pv.system_prompt
