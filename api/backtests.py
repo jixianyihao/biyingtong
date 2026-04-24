@@ -263,6 +263,38 @@ def stream_backtest_job(session_id):
     })
 
 
+@api_bp.route('/backtests/jobs/<session_id>/cancel', methods=['POST'])
+def cancel_backtest_job(session_id):
+    """Mark a running job for cancellation."""
+    from backtest.jobs import cancel
+    if cancel(session_id):
+        return jsonify({'session_id': session_id, 'state': 'cancelling'})
+    return jsonify({'error': 'job not found or already terminal'}), 404
+
+
+@api_bp.route('/backtests/<result_id>/monthly_returns')
+def get_backtest_monthly_returns(result_id):
+    """Returns {result_id, monthly_returns: [{year, month, return_pct, days}]}."""
+    import storage
+    from backtest.stats import compute_monthly_returns
+    r = storage.backtests().get(result_id)
+    if r is None:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify({
+        'result_id': result_id,
+        'monthly_returns': compute_monthly_returns(r.daily_records or []),
+    })
+
+
+@api_bp.route('/backtests/<result_id>', methods=['DELETE'])
+def delete_backtest(result_id):
+    import storage
+    if storage.backtests().get(result_id) is None:
+        return jsonify({'error': 'not_found'}), 404
+    storage.backtests().delete(result_id)
+    return '', 204
+
+
 @api_bp.route('/backtests/<result_id>/rating')
 def get_backtest_rating(result_id):
     """Compute + return 5-sub-score strategy rating for a backtest result."""

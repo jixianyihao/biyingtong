@@ -306,6 +306,11 @@ class BacktestResultStore(Protocol):
         """
         ...
 
+    def delete(self, result_id: str) -> bool:
+        """Delete by id. Returns True if removed. Does NOT cascade to baselines
+        or sessions — those are independent rows."""
+        ...
+
 
 @runtime_checkable
 class LLMDecisionCacheStore(Protocol):

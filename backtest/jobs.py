@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 @dataclass
 class JobStatus:
     session_id: str
-    state: str = 'queued'        # 'queued' | 'running' | 'complete' | 'failed'
+    state: str = 'queued'        # 'queued' | 'running' | 'complete' | 'failed' | 'cancelled'
     progress: str = ''            # free-text most-recent step
     agent_ids: list = field(default_factory=list)
     agent_result_ids: list = field(default_factory=list)
@@ -26,6 +26,7 @@ class JobStatus:
     started_at: float | None = None
     finished_at: float | None = None
     events: list = field(default_factory=list)
+    cancel_requested: bool = False
 
 
 def emit_event(status: JobStatus, event: dict) -> None:
@@ -50,6 +51,16 @@ def get_status(session_id: str) -> JobStatus | None:
 def list_jobs() -> list[JobStatus]:
     with _lock:
         return list(_jobs.values())
+
+
+def cancel(session_id: str) -> bool:
+    """Mark a job for cancellation. Returns True if found + flagged."""
+    with _lock:
+        s = _jobs.get(session_id)
+        if s is None or s.state in ('complete', 'failed', 'cancelled'):
+            return False
+        s.cancel_requested = True
+    return True
 
 
 def submit_backtest(
@@ -102,15 +113,19 @@ def submit_backtest(
             def _on_event(ev):
                 emit_event(status, ev)
 
+            def _cancel_check():
+                return status.cancel_requested
+
             results = _mar.run_multi(
                 session_id=session_id, agent_configs=configs,
                 start_date=start_date, end_date=end_date,
                 initial_capital=initial_capital, universe=universe,
                 on_event=_on_event,
+                cancel_check=_cancel_check,
             )
             status.agent_result_ids = [r.id for r in results]
 
-            if include_baselines:
+            if include_baselines and not status.cancel_requested:
                 emit_event(status, {'kind': 'phase', 'phase': 'baselines',
                                     'session_id': session_id})
                 status.progress = 'running baselines'
@@ -126,9 +141,14 @@ def submit_backtest(
                                         'result_id': getattr(b, 'id', None)})
                 status.baseline_result_ids = [b.id for b in baselines]
 
-            status.progress = 'done'
-            status.state = 'complete'
-            emit_event(status, {'kind': 'done', 'session_id': session_id})
+            if status.cancel_requested:
+                status.progress = 'cancelled'
+                status.state = 'cancelled'
+                emit_event(status, {'kind': 'cancelled', 'session_id': session_id})
+            else:
+                status.progress = 'done'
+                status.state = 'complete'
+                emit_event(status, {'kind': 'done', 'session_id': session_id})
         except Exception as e:  # noqa: BLE001
             status.state = 'failed'
             status.error = f'{type(e).__name__}: {e}\n{traceback.format_exc()[:500]}'
