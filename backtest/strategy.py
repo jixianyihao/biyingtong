@@ -13,10 +13,25 @@ _EXCHANGE_TO_BIYINGTONG = {
 }
 
 
+_EXCHANGE_TO_VT = {
+    'SH': 'SSE',
+    'SZ': 'SZSE',
+}
+
+
 def vt_to_biyingtong(symbol: str, exchange: str) -> str:
     """'600519' + 'SSE' → '600519.SH'."""
     suffix = _EXCHANGE_TO_BIYINGTONG.get(exchange, exchange)
     return f'{symbol}.{suffix}'
+
+
+def biyingtong_to_vt(code: str) -> str:
+    """'600519.SH' → '600519.SSE'. Inverse of vt_to_biyingtong."""
+    if '.' not in code:
+        return code
+    sym, _, suffix = code.partition('.')
+    exch = _EXCHANGE_TO_VT.get(suffix.upper(), suffix.upper())
+    return f'{sym}.{exch}'
 
 
 try:
@@ -39,6 +54,7 @@ class LLMPortfolioStrategy(_BaseStrategy):
         self._cash = float(setting.get('initial_capital', 1_000_000.0))
         self._positions: dict = {}
         self.daily_decisions: list = []
+        self._bought_today: dict = {}  # vt_symbol -> shares bought on current bar
 
     def on_init(self):
         pass
@@ -47,8 +63,36 @@ class LLMPortfolioStrategy(_BaseStrategy):
         pass
 
     def on_bars(self, bars: dict):  # vnpy hook
+        # Reset T+1 tracker at the start of every bar (new trading day)
+        self._bought_today = {}
+
         day_decisions = self._process_bars(bars)
-        self.daily_decisions.append((self._extract_date(bars), day_decisions))
+        date_str = self._extract_date(bars)
+        self.daily_decisions.append((date_str, day_decisions))
+
+        for dec in day_decisions:
+            action = dec.get('action')
+            code = dec.get('code')
+            shares = int(dec.get('shares') or dec.get('qty') or 0)
+            if not code or shares <= 0 or action not in ('buy', 'sell'):
+                continue
+
+            vt_symbol = biyingtong_to_vt(code)
+            bar = bars.get(vt_symbol)
+            if bar is None:
+                continue
+            price = float(bar.close_price)
+
+            if action == 'buy':
+                self.buy(vt_symbol, price, shares)
+                self._bought_today[vt_symbol] = (
+                    self._bought_today.get(vt_symbol, 0) + shares
+                )
+            elif action == 'sell':
+                held_today = self._bought_today.get(vt_symbol, 0)
+                sellable = max(0, int(self.get_pos(vt_symbol)) - held_today)
+                if sellable >= shares:
+                    self.sell(vt_symbol, price, shares)
 
     def _extract_date(self, bars: dict) -> str:
         for bar in bars.values():

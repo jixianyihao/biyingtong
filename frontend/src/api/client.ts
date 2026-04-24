@@ -54,6 +54,7 @@ export type StartBacktestBody = {
   universe: string[];
   include_baselines?: boolean;
   session_id?: string;
+  engine?: 'legacy' | 'vnpy';
 };
 
 export const api = {
