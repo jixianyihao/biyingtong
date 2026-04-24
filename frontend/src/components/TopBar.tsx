@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { ExecutionModeBadge } from './ExecutionModeBadge';
 import { RedLineBar } from './RedLineBar';
 
 const TITLES: Record<string, [string, string]> = {
@@ -54,6 +55,8 @@ export function TopBar() {
       <div style={{ flex: 1 }} />
 
       <RedLineBar />
+
+      <ExecutionModeBadge />
 
       <div
         className="mono"
