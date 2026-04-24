@@ -276,3 +276,85 @@ def test_strategies_registry_lists_all_three():
     assert 'ma_crossover' in names
     assert 'rsi_breakout' in names
     assert 'macd_divergence' in names
+
+
+def test_rule_runner_returns_result_with_kind_rule(observability_storage, monkeypatch):
+    """In-memory result has kind='rule' (storage roundtrip is Task 5 territory)."""
+    from datetime import date, timedelta
+    import backtest.rule_runner as runner_mod
+    from backtest.rule_runner import RuleRunner
+    from backtest.strategies import build
+
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(40)]
+    prices = [100.0 + i * 0.5 for i in range(40)]
+    bars = list(zip(days, prices))
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    strategy = build('ma_crossover', params={'fast': 3, 'slow': 10,
+                                             'position_pct': 0.3})
+    r = RuleRunner(strategy=strategy).run(
+        session_id='s-rule', start_date='2025-01-02', end_date='2025-02-10',
+        universe=['600519.SH'], initial_capital=1_000_000.0,
+    )
+    assert r.kind == 'rule'
+    assert r.agent_id == ''
+    assert r.persona_id is None
+    assert r.model_id is None
+
+
+def test_rule_runner_produces_daily_records_and_trades(observability_storage, monkeypatch):
+    """Per-day records + at least 1 trade in a clear bullish window."""
+    from datetime import date, timedelta
+    import backtest.rule_runner as runner_mod
+    from backtest.rule_runner import RuleRunner
+    from backtest.strategies import build
+
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(40)]
+    prices = [100.0 + i * 0.5 for i in range(40)]
+    bars = list(zip(days, prices))
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    r = RuleRunner(strategy=build('ma_crossover', params={'fast': 3, 'slow': 10,
+                                                          'position_pct': 0.3})).run(
+        session_id='s-rule2', start_date='2025-01-02', end_date='2025-02-10',
+        universe=['600519.SH'], initial_capital=1_000_000.0,
+    )
+    assert len(r.daily_records) == 40
+    for rec in r.daily_records:
+        assert set(rec) >= {'date', 'equity', 'cash', 'pnl_pct', 'trade_count', 'won'}
+    assert len(r.trades) >= 1
+    assert r.trades[0]['action'] == 'buy'
+    # RuleRunner doesn't emit thinking (LLM concept)
+    assert r.thinking == []
+
+
+def test_rule_runner_creates_session_with_rule_prefix(observability_storage, monkeypatch):
+    """Session row's agent_ids should have 'rule:<strategy_name>' marker so the
+    frontend can render appropriately."""
+    from datetime import date, timedelta
+    import storage
+    import backtest.rule_runner as runner_mod
+    from backtest.rule_runner import RuleRunner
+    from backtest.strategies import build
+
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(15)]
+    bars = [(d, 100.0 + i) for i, d in enumerate(days)]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    RuleRunner(strategy=build('ma_crossover', params={'fast': 3, 'slow': 5})).run(
+        session_id='s-prefix', start_date='2025-01-02', end_date='2025-01-20',
+        universe=['600519.SH'], initial_capital=1_000_000.0,
+    )
+    sessions = storage.backtests().list_sessions(limit=10)
+    s = next((x for x in sessions if x['session_id'] == 's-prefix'), None)
+    assert s is not None
+    assert any(aid.startswith('rule:') for aid in s['agent_ids'])
