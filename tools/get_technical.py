@@ -1,19 +1,30 @@
-"""get_technical — compute MA/MACD/RSI/BOLL from storage.kline() closes."""
+"""get_technical — compute MA/MACD/RSI/BOLL via talib (C-implemented, battle-tested).
+
+Previous hand-rolled math (MA/EMA/RSI/BOLL) had well-known pitfalls:
+- Wilder RSI smoothing seed
+- MACD EMA initialization
+- BOLL sample vs population stddev
+This version delegates to talib 0.6.8 which is the industry standard.
+"""
 from __future__ import annotations
 
 import math
+
+import numpy as np
+import talib
 
 from llm.base import ToolSpec
 
 
 SPEC = ToolSpec(
     name='get_technical',
-    description='Compute technical indicator (MA/MACD/RSI/BOLL).',
+    description='Compute technical indicator (MA/MACD/RSI/BOLL) via talib.',
     input_schema={
         'type': 'object',
         'properties': {
             'code': {'type': 'string'},
-            'indicator': {'type': 'string', 'enum': ['MA', 'MACD', 'RSI', 'BOLL']},
+            'indicator': {'type': 'string',
+                          'enum': ['MA', 'MACD', 'RSI', 'BOLL']},
             'period': {'type': 'integer', 'minimum': 1,
                        'description': 'MA/RSI window. Default: MA=20, RSI=14.'},
         },
@@ -27,97 +38,66 @@ def _get_closes(code: str) -> list[float]:
     return kline().get_closes(code, 200)
 
 
-def _ma(closes, period):
+def _to_list(arr: np.ndarray, digits: int) -> list:
+    """Convert numpy array with NaN padding -> python list, rounding non-NaN."""
     out = []
-    for i in range(len(closes)):
-        if i + 1 < period:
+    for v in arr:
+        f = float(v)
+        if math.isnan(f):
             out.append(float('nan'))
         else:
-            out.append(round(sum(closes[i + 1 - period: i + 1]) / period, 2))
+            out.append(round(f, digits))
     return out
-
-
-def _ema(closes, period):
-    if not closes:
-        return []
-    alpha = 2 / (period + 1)
-    out = [closes[0]]
-    for i in range(1, len(closes)):
-        out.append(alpha * closes[i] + (1 - alpha) * out[-1])
-    return [round(v, 4) for v in out]
-
-
-def _macd(closes):
-    e12 = _ema(closes, 12)
-    e26 = _ema(closes, 26)
-    dif = [a - b for a, b in zip(e12, e26)]
-    dea = _ema(dif, 9)
-    bar = [2 * (d - e) for d, e in zip(dif, dea)]
-    return {
-        'dif': [round(v, 4) for v in dif],
-        'dea': [round(v, 4) for v in dea],
-        'bar': [round(v, 4) for v in bar],
-    }
-
-
-def _rsi(closes, period=14):
-    if len(closes) < period + 1:
-        return [50.0] * len(closes)
-    gains, losses = [], []
-    for i in range(1, len(closes)):
-        d = closes[i] - closes[i - 1]
-        gains.append(max(d, 0))
-        losses.append(max(-d, 0))
-    avg_g = sum(gains[:period]) / period
-    avg_l = sum(losses[:period]) / period
-    out = [float('nan')] * (period + 1)
-    for i in range(period, len(gains)):
-        avg_g = (avg_g * (period - 1) + gains[i]) / period
-        avg_l = (avg_l * (period - 1) + losses[i]) / period
-        rs = avg_g / avg_l if avg_l > 0 else 100
-        out.append(round(100 - 100 / (1 + rs), 2))
-    while len(out) < len(closes):
-        out.append(out[-1])
-    return out[: len(closes)]
-
-
-def _boll(closes, period=20, k=2.0):
-    mid = _ma(closes, period)
-    up, lo = [], []
-    for i in range(len(closes)):
-        if i + 1 < period or mid[i] != mid[i]:
-            up.append(float('nan'))
-            lo.append(float('nan'))
-        else:
-            w = closes[i + 1 - period: i + 1]
-            mean = mid[i]
-            var = sum((x - mean) ** 2 for x in w) / period
-            sd = math.sqrt(var)
-            up.append(round(mean + k * sd, 2))
-            lo.append(round(mean - k * sd, 2))
-    return {'upper': up, 'middle': mid, 'lower': lo}
 
 
 def call(input: dict) -> dict:
     code = input.get('code', '')
     ind = input.get('indicator', '').upper()
 
-    closes = _get_closes(code)
-    if not closes:
+    closes_raw = _get_closes(code)
+    if not closes_raw:
         return {'code': code, 'indicator': ind, 'error': 'no K-line data'}
+
+    closes = np.asarray(closes_raw, dtype=np.float64)
 
     if ind == 'MA':
         p = int(input.get('period', 20))
+        # talib.SMA: same-length output, first (p-1) entries are NaN
+        values = talib.SMA(closes, timeperiod=p)
         return {'code': code, 'indicator': 'MA', 'period': p,
-                'values': _ma(closes, p)}
+                'values': _to_list(values, 2)}
+
     if ind == 'MACD':
-        return {'code': code, 'indicator': 'MACD', **_macd(closes)}
+        # talib.MACD returns (macd, signal, hist) each len == len(closes)
+        # macd  ~ existing dif
+        # signal ~ existing dea
+        # hist   ~ existing bar / 2  (talib uses hist = macd - signal;
+        #                             old code doubled it: bar = 2*(dif-dea))
+        macd_line, signal_line, hist = talib.MACD(
+            closes, fastperiod=12, slowperiod=26, signalperiod=9)
+        return {
+            'code': code, 'indicator': 'MACD',
+            'dif': _to_list(macd_line, 4),
+            'dea': _to_list(signal_line, 4),
+            # Preserve the previous convention bar = 2*(dif-dea)
+            'bar': _to_list(hist * 2, 4),
+        }
+
     if ind == 'RSI':
         p = int(input.get('period', 14))
+        values = talib.RSI(closes, timeperiod=p)
         return {'code': code, 'indicator': 'RSI', 'period': p,
-                'values': _rsi(closes, p)}
+                'values': _to_list(values, 2)}
+
     if ind == 'BOLL':
         p = int(input.get('period', 20))
-        return {'code': code, 'indicator': 'BOLL', 'period': p, **_boll(closes, p)}
+        upper, middle, lower = talib.BBANDS(
+            closes, timeperiod=p, nbdevup=2.0, nbdevdn=2.0, matype=0)
+        return {
+            'code': code, 'indicator': 'BOLL', 'period': p,
+            'upper': _to_list(upper, 2),
+            'middle': _to_list(middle, 2),
+            'lower': _to_list(lower, 2),
+        }
 
     raise ValueError(f'unknown indicator: {ind}')
