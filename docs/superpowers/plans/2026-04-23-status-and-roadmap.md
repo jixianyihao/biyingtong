@@ -45,8 +45,10 @@
 | `DELETE /api/agents/{id}` | — | ❌ |
 | `POST /api/agents/{id}/deploy` | — | ❌（依赖 §13 subprocess） |
 | `POST /api/agents/{id}/stop` | — | ❌（依赖 §13） |
-| `POST /api/agents/{id}/approve` (审批待执行交易) | — | ❌（依赖 LiveTrading） |
-| `POST /api/agents/{id}/reject` | — | ❌（依赖 LiveTrading） |
+| `POST /api/agents/{id}/approve` (审批待执行交易) | ✅ POST /api/proposals/:id/approve（P3-F-Phase1，Phase 1 仅改 DB 状态不真下单） | ✅ |
+| `POST /api/agents/{id}/reject` | ✅ POST /api/proposals/:id/reject（同上） | ✅ |
+| `POST /api/agents/{id}/deploy` | ✅ P3-F-Phase1（subprocess + proposal 流） | ✅ |
+| `POST /api/agents/{id}/stop` | ✅ P3-F-Phase1 | ✅ |
 
 ### §15.3 Prompt 版本
 
@@ -146,7 +148,7 @@
 | RiskMonitor → 健康度 | ✅ |
 | RiskMonitor → 三层防护 | ✅ |
 | RiskMonitor → 审计日志 | ✅ 独立 /audit 页 |
-| **RiskMonitor → 待审批** (pending trades) | ❌ |
+| **RiskMonitor → 待审批** (pending trades) | ✅ P3-F-Phase1 ProposalsPanel 挂在 /risk 顶部 + 每 agent detail |
 | LiveTrading → AI 风控提示 | ❌（spec 标 Phase 2） |
 | Dashboard → AI 今日贡献 | ❌（spec 标 Phase 2） |
 | Marketplace | ❌（spec 标 Phase 2+） |
@@ -294,7 +296,19 @@
 
 ---
 
-### 🔴 P3-F：LiveTrading 全链（spec Milestone 5，~5-7 天，独立审批）
+### 🟡 P3-F Phase 1 — Done 2026-04-23（部署 + 审批 infra，零真金险）
+
+**交付（12 commits on feature/p3f-prep）：**
+- Backend: schemas + Protocols + SQLite stores（TradeProposal / DeployedAgent）+ `runner/agent_process.py` subprocess + 8 endpoints（deploy/stop/deploy_status/proposals CRUD+approve+reject）+ Flask startup crash recovery
+- Frontend: types + 6 hooks + ProposalsPanel + DeployButton + 挂在 Agent.tsx detail + Risk.tsx 全局 inbox
+- **安全承诺：approve 仅改 DB 状态，`NEVER 调 TDX place_order`**。subprocess 也不 import tdx_service
+- UI 里 2 处显式警告横幅（DeployButton + ProposalsPanel 顶部）
+- 测试：43+ 新 P3-F 测试 + 5 crash recovery + 0 回归（`pytest -q` = 616 passed；frontend build 清洁）
+- 详细 plan: `2026-04-23-p3f-phase1-deploy-no-money.md`
+
+---
+
+### 🔴 P3-F Phase 2 — LiveTrading 真单（待用户独立明确同意）
 
 **前置：** Subprocess 架构（被延后）+ 真金白银上链需用户明确同意。
 
@@ -342,6 +356,7 @@ P3-F 等用户明确同意 + 独立排期。
 - `2026-04-23-p3c-rule-mode.md` ✅ Done 2026-04-23
 - `2026-04-23-p3d-sse-events.md` ✅ Done 2026-04-23
 - P3-E + quickwins (no dedicated plan — 3 parallel subagents on `feature/p3e-quickwins`) ✅ Done 2026-04-23
+- `2026-04-23-p3f-phase1-deploy-no-money.md` ✅ Done 2026-04-23（零真金险 infra）
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
