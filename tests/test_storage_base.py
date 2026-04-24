@@ -152,6 +152,7 @@ def test_prompt_version_store_protocol_runtime_checkable():
         def init_schema(self): pass
         def insert(self, agent_id, system_prompt, note=None): return None  # type: ignore
         def get_latest(self, agent_id): return None
+        def get_by_id(self, version_id): return None
         def list_for_agent(self, agent_id): return []
         def rollback(self, agent_id, version_id): return None  # type: ignore
 

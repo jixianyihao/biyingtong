@@ -91,6 +91,21 @@ class SQLitePromptVersionStore(PromptVersionStore):
             con.close()
         return self._row_to_version(row) if row else None
 
+    def get_by_id(self, version_id: int) -> PromptVersion | None:
+        con = sqlite3.connect(self._db_path)
+        try:
+            row = con.execute(
+                '''SELECT id, agent_id, version_number, system_prompt,
+                          created_at, note
+                   FROM prompt_versions WHERE id = ?''',
+                (version_id,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        finally:
+            con.close()
+        return self._row_to_version(row) if row else None
+
     def rollback(self, agent_id: str, version_id: int) -> PromptVersion:
         """Copy an older version's system_prompt into a fresh version at
         max+1. Does NOT touch agents table — endpoint does that separately."""

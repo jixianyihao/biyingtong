@@ -122,7 +122,7 @@
 | `/editor` 策略研发 | ✅ stub 迭代轨迹 + 指标卡 + agent 工作流 |
 | `/backtest` 回测实验室 | ✅ 表单 + agent vs 3 baselines + zones 区间 + divergence banner |
 | `/agent/:id/prompts` Prompt 历史 | ✅ list + diff |
-| `/live` 实盘交易 | ❌ 仍 ComingSoon |
+| `/live` 实盘交易 | ⚠ Phase 1 UI scaffold 落地（warning banner + PositionsPanel stub + ProposalsPanel 挂载），Phase 2 真单仍 gated |
 
 ### Spec §16 表格元素覆盖
 
@@ -375,10 +375,11 @@ P3 阶段恢复"先 plan 后做"节律——本文是 P3 的入口，每个 P3-X
 
 ## 8. 测试与质量门禁
 
-- pytest: 429 ✅
+- pytest: 663 passed (2026-04-24) ✅
 - frontend build: ✅
 - 跨 subagent 并行编辑同一分支：本 session 验证有效，但需要 code-reviewer 兜底（已成习惯）
 - 已知 minor 债待清理：
-  - SSE `time.sleep(0.5)` 阻塞 worker（≤5 并发用户内 OK）
-  - api/backtests.py 已 262 行 8 routes，到 300 行考虑拆 `api/rating.py` + `api/backtest_jobs.py`
-  - 未知 model 警告去重已修；其他 audit 类型暂未去重
+  - ✅ SSE `time.sleep(0.5)` 修（2026-04-24，commit `4181c6a`，改 `socketio.sleep` + lazy import fallback）
+  - ✅ `api/backtests.py` 已拆出 `api/backtest_jobs.py` + `api/rating.py`（P2e 时期完成）
+  - 未知 model 警告去重已修；其他 audit 类型暂未去重（需具体 flooding 证据后再做）
+  - `compute_monthly_returns` 时序 bug ✅ 修（2026-04-24，commit `a315ddf`）

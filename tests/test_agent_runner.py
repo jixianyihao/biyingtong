@@ -170,3 +170,99 @@ def test_run_day_accepts_market_snapshot(wired, seeded_agent):
     first_call = llm.calls[0]
     user_msg = [m for m in first_call['messages'] if m.role == 'user'][0]
     assert '1600' in user_msg.content
+
+
+def test_run_day_honors_agent_current_prompt_version_id(wired, seeded_agent):
+    """agents/runner.py must resolve system_prompt via agent.current_prompt_version_id.
+
+    Regression guard for the 'current_prompt_version_id 指针失效' bug: the runner
+    used storage.prompt_versions().get_latest() which silently defeats rollback
+    and any path that inserts a version without also pinning it (or pins to a
+    non-latest version).
+
+    Setup: agent is seeded with v1 (persona default). Insert a v2 via store
+    WITHOUT updating agents.current_prompt_version_id — now latest=v2, pin=v1.
+    The LLM prompt must contain v1's content, not v2's.
+    """
+    import storage
+    from agents.runner import AgentRunner
+    from llm.mock import MockLLM
+
+    pinned_marker = 'PINNED_V1_MARKER_9f2c'
+    latest_marker = 'LATEST_V2_MARKER_4a7b'
+    # Overwrite v1 in place by inserting v2 with a detectable marker,
+    # but first pin v1 so current != latest after the v2 insert.
+    v1 = storage.prompt_versions().get_latest(seeded_agent.id)
+    assert v1 is not None
+    # Replace v1's body with the pinned_marker via rollback semantics:
+    # simplest approach is to insert a NEW v_pinned and point current_prompt_version_id there.
+    v_pinned = storage.prompt_versions().insert(
+        agent_id=seeded_agent.id,
+        system_prompt=f'You are a test agent. {pinned_marker}',
+        note='test pinned version',
+    )
+    storage.agents().set_current_prompt_version(seeded_agent.id, v_pinned.id)
+    # Now insert a LATER version but do NOT pin it. Pin stays at v_pinned.
+    storage.prompt_versions().insert(
+        agent_id=seeded_agent.id,
+        system_prompt=f'You are a test agent. {latest_marker}',
+        note='unpinned latest — runner must NOT use this',
+    )
+
+    llm = MockLLM([{
+        'tool_calls': [{'id': 'c', 'name': 'place_decision',
+                        'input': {'action': 'hold',
+                                  'reason': 'staying put for the regression test',
+                                  'thinking': 't'}}],
+        'stop_reason': 'tool_use',
+    }])
+    runner = AgentRunner(llm=llm)
+    runner.run_day(
+        agent_id=seeded_agent.id, date='2024-03-15',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'600519.SH': 100.0},
+    )
+    first_call = llm.calls[0]
+    system_msgs = [m for m in first_call['messages'] if m.role == 'system']
+    assert system_msgs, 'expected at least one system message'
+    system_text = '\n'.join(m.content for m in system_msgs)
+    assert pinned_marker in system_text, (
+        f"system prompt should contain pinned marker but did not. "
+        f"System text: {system_text[:200]!r}"
+    )
+    assert latest_marker not in system_text, (
+        f"system prompt contains the UNPINNED latest marker — "
+        f"runner is using get_latest() instead of current_prompt_version_id."
+    )
+
+
+def test_agent_rules_override_reaches_validation(wired, seeded_agent):
+    """agents/runner.py must pass agent.rules_override to ValidationEngine.validate().
+
+    Regression guard for the 'rules_override 断链' bug: prior to fix, per-agent
+    rules were silently dropped and every agent ran under the global RedLine,
+    defeating persona-level 风控 differentiation.
+
+    Setup: global RedLine position_max_pct=15% (set in fixture). Override this
+    specific agent to 5%. A buy of 1000 shares @ 237 = 237k (23.7% of 1M equity)
+    must shrink based on the TIGHTER 5% cap, not the 15% global.
+    """
+    import storage
+    from agents.runner import AgentRunner
+    storage.agents().update(
+        seeded_agent.id, rules_override={'position_max_pct': 5.0},
+    )
+    llm = _mock_llm_with_decision(code='600519.SH', shares=1000, price=237.0)
+    runner = AgentRunner(llm=llm)
+    out = runner.run_day(
+        agent_id=seeded_agent.id, date='2024-03-15',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'600519.SH': 237.0},
+    )
+    # 5% cap → 50k → 50_000 / 237 ≈ 210.97 → lot-round down to 200 shares.
+    # Without the fix (15% global applied), result would be 600 shares.
+    assert len(out) == 1
+    assert out[0]['shares'] == 200, (
+        f"Expected 200 shares (5% override applied) but got {out[0]['shares']}. "
+        f"Got 600 means rules_override wasn't passed to validate()."
+    )
