@@ -347,8 +347,12 @@ class BaselineResultStore(Protocol):
 
 @dataclass
 class TradeProposal:
-    """A trade proposal emitted by a deployed agent. Awaits user approval —
-    NEVER auto-executes in Phase 1."""
+    """A trade proposal emitted by a deployed agent. Awaits user approval.
+
+    Phase 1: approve/reject are DB-only.
+    Phase 2: approve dispatches to an ExecutionAdapter; the 6 execution fields
+    below record the outcome. They remain None until an approval has been
+    processed, and stay None forever on rejected/expired proposals."""
     id: str
     agent_id: str
     decision_at: str          # ISO datetime when agent made the decision
@@ -362,6 +366,14 @@ class TradeProposal:
     created_at: str | None = None
     decided_by: str | None = None
     decided_at: str | None = None
+    # Phase 2 execution fields — populated when approve dispatches to an
+    # ExecutionAdapter. None on rejected/expired/pending proposals.
+    execution_mode: str | None = None       # 'dry_run' | 'live'
+    execution_order_id: str | None = None   # TDX order id or 'mock-...'
+    execution_error: str | None = None      # human-readable error, None on success
+    executed_at: str | None = None          # ISO timestamp of adapter dispatch
+    filled_qty: int | None = None
+    filled_price: float | None = None
 
 
 @dataclass
@@ -387,6 +399,18 @@ class TradeProposalStore(Protocol):
     def update_status(self, proposal_id: str, status: str,
                       decided_by: str | None = None) -> bool:
         """Returns True if a row was updated. Sets decided_at to now."""
+        ...
+    def update_execution(self, proposal_id: str, *,
+                         execution_mode: str,
+                         execution_order_id: str | None,
+                         execution_error: str | None,
+                         filled_qty: int | None,
+                         filled_price: float | None,
+                         executed_at: str) -> bool:
+        """Write Phase 2 execution result fields for a proposal.
+
+        Returns True if a row matched. Intended to be called once per
+        proposal immediately after adapter.place_order returns."""
         ...
 
 

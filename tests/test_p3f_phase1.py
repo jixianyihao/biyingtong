@@ -26,6 +26,9 @@ def test_trade_proposals_schema_creates_table():
         'id', 'agent_id', 'created_at', 'decision_at',
         'action', 'code', 'shares', 'price',
         'reason', 'thinking', 'status', 'decided_by', 'decided_at',
+        # Phase 2 execution fields
+        'execution_mode', 'execution_order_id', 'execution_error',
+        'executed_at', 'filled_qty', 'filled_price',
     }
     assert cols == expected
 
