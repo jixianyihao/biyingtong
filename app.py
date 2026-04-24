@@ -281,46 +281,86 @@ def api_cancel_order():
 
 
 # ---- WebSocket: Real-time Quotes ----
+# Replaces the 3-second polling loop with tq.subscribe_hq push events.
+# Whenever `ws_subscribe` mutates `_ws_subscriptions`, we cancel the existing
+# subscription and open a fresh one covering the current set. The callback
+# emits a 'quotes' socket event so the frontend contract is unchanged.
 
-_ws_subscriptions = set()
+import json
+import threading
+
+_ws_subscriptions: set = set()
+_ws_lock = threading.Lock()
+_hq_handle = None
+
+
+def _hq_callback(payload):
+    """Called by tqcenter when a subscribed code ticks.
+
+    Payload shape per docs (JSON string): {'Code': '600519.SH', ...fields}.
+    We normalize to the same dict shape the old poll path produced via
+    get_snapshots so the frontend doesn't need to change.
+    """
+    try:
+        data = json.loads(payload) if isinstance(payload, str) else payload
+        code = data.get('Code') or data.get('code')
+        if not code:
+            return
+        socketio.emit('quotes', [data])
+    except Exception as e:  # noqa: BLE001
+        print(f'[hq] callback error: {e}')
+
+
+def _resubscribe_hq():
+    """Cancel any existing subscription and open a fresh one for the current set."""
+    global _hq_handle
+    with _ws_lock:
+        if _hq_handle is not None:
+            tdx.unsubscribe_hq(_hq_handle)
+            _hq_handle = None
+        codes = list(_ws_subscriptions)[:50]
+        if not codes or not tdx.is_connected():
+            return
+        _hq_handle = tdx.subscribe_hq(codes, _hq_callback)
 
 
 @socketio.on('connect')
 def ws_connect():
-    print(f'WebSocket client connected')
+    print('WebSocket client connected')
 
 
 @socketio.on('disconnect')
 def ws_disconnect():
-    print(f'WebSocket client disconnected')
+    print('WebSocket client disconnected')
 
 
 @socketio.on('subscribe')
 def ws_subscribe(data):
     codes = data.get('codes', [])
-    _ws_subscriptions.update(codes)
-    if len(_ws_subscriptions) > 100:
-        excess = len(_ws_subscriptions) - 100
-        for _ in range(excess):
-            _ws_subscriptions.pop()
+    changed = False
+    with _ws_lock:
+        before = len(_ws_subscriptions)
+        _ws_subscriptions.update(codes)
+        if len(_ws_subscriptions) > 100:
+            excess = len(_ws_subscriptions) - 100
+            for _ in range(excess):
+                _ws_subscriptions.pop()
+        changed = len(_ws_subscriptions) != before
+    if changed:
+        _resubscribe_hq()
     emit('subscribed', {'codes': list(_ws_subscriptions)})
 
 
 @socketio.on('unsubscribe')
 def ws_unsubscribe(data):
     codes = data.get('codes', [])
-    _ws_subscriptions.difference_update(codes)
-
-
-def push_quotes():
-    while True:
-        socketio.sleep(3)
-        if not _ws_subscriptions or not tdx.is_connected():
-            continue
-        codes = list(_ws_subscriptions)[:50]
-        snapshots = tdx.get_snapshots(codes)
-        if snapshots:
-            socketio.emit('quotes', snapshots)
+    changed = False
+    with _ws_lock:
+        before = len(_ws_subscriptions)
+        _ws_subscriptions.difference_update(codes)
+        changed = len(_ws_subscriptions) != before
+    if changed:
+        _resubscribe_hq()
 
 
 # ---- Crash recovery sweep at import time ----
@@ -350,5 +390,4 @@ if __name__ == '__main__':
     print("Connecting to TDX...")
     tdx.initialize()
     print(f"TDX connected: {tdx.is_connected()}")
-    socketio.start_background_task(push_quotes)
     socketio.run(app, host='127.0.0.1', port=5000, debug=False)
