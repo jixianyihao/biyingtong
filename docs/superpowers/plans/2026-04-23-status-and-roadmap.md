@@ -127,20 +127,20 @@
 | 元素 | 实际 |
 |---|---|
 | Agent cards | ✅ Dashboard top performers |
-| AutonomousScheduler 24h timeline | ✅ mock 占位 |
-| **Thinking log** (SSE decisions + 持久化) | ❌ |
+| AutonomousScheduler 24h timeline | ✅ mock 市场阶段 + 真 per-agent 调度 tick 叠加（commit `ff32e2f`） |
+| **Thinking log** (SSE decisions + 持久化) | ✅ P3-A ThinkingDrawer + P3-D LiveEventLog SSE |
 | **Positions panel** (vnpy state / TDX) | ❌ |
-| **Compare chart 5 curves** (`/nav` per agent) | ❌ |
+| **Compare chart 5 curves** (`/nav` per agent) | ✅ P3-A NavChart 4-curve（agent + 3 baselines） |
 | Cost stats (Token/¥/ROI) | ❌ 用户在 P1 删除了 token tracking |
 | Prompt panel + 版本 v7 风格 | ✅ + diff（无 rollback） |
 | Tools list (allowed_tools 复选框) | ✅ Agent 详情展示 |
 | Create Agent modal | ✅ |
-| **Backtest equity chart 4 curves** | ❌（依赖 `/nav`） |
+| **Backtest equity chart 4 curves** | ✅ P3-A NavChart |
 | Pollution / Clean split | ✅ Zone UI |
-| **Monthly heatmap** (monthly_returns) | ❌ |
-| **Trade log** (`/trades`) | ❌ |
-| Strategy rating A+/A/B/C + 5 子分数 | ✅ rating/ 已实现，但前端无聚焦展示面板 |
-| **Quality gate panel** (per criterion) | ⚠ 数据有，缺聚焦 UI |
+| **Monthly heatmap** (monthly_returns) | ✅ MonthlyHeatmap 组件 + GET `/monthly_returns` endpoint（commit `739224a`+`c9f6315`+`168ecd2`） |
+| **Trade log** (`/trades`) | ✅ P3-A TradesTable |
+| Strategy rating A+/A/B/C + 5 子分数 | ✅ P3-A StrategyRatingPanel |
+| **Quality gate panel** (per criterion) | ✅ P3-A QualityGatePanel |
 | **RedLineBar** (顶部实时用量) | ✅ TopBar 显示限值 chips（实时用量待 LiveTrading 接入） |
 | RedLineConfigModal | ✅ |
 | RiskMonitor → 健康度 | ✅ |
