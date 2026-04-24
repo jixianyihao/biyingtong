@@ -360,7 +360,12 @@ P3-F 等用户明确同意 + 独立排期。
 - **Framework-first 硬约束**（2026-04-24 用户 audit，memory/framework_first_principle.md）：
   - Batch A ✅ Done：`get_technical` talib/numpy + `load_financial` 启动流程自动加载
   - Batch B ✅ Done：VnpyBacktestRunner 并存路径 + `engine=legacy|vnpy` toggle + parity test
-  - Batch C 🟡 Pending：subscribe_hq 替代轮询 + 动态股池 + 资金流数据 + 5m bar BarGenerator
+  - Batch C ✅ Done 2026-04-24（`feature/framework-first-batch-c`，8 commits `300533b..08d98f3`）：
+    - `tq.subscribe_hq` 推送替换 `push_quotes` 3 秒轮询 + `tdx_service` 加 `get_gpjy_value`/`get_bkjy_value`/`get_stock_list_in_sector`/`get_sector_list` 薄包装
+    - `tools/get_stock_list` 动态板块股池工具 + `tools/get_capital_flow` 个股/板块资金流工具（两者入 `ALL_TOOLS`）
+    - 5m bar 支持：`storage/sqlite_kline._interval` 加 `5m`/`1m` + `scripts/setup/load_kline_intraday.py`
+    - ⚠ 本地 vnpy 版本缺 `Interval.MINUTE_5`，当前 fallback 到 `MINUTE`；5m 与 1m 复用同 interval 列，intraday 正式跑前需升 vnpy 或分表
+    - 测试：`pytest -q` = 654 passed（+19 本批新增：6 subscribe_hq + 5 get_stock_list + 4 get_capital_flow + 2 kline_intraday + 2 registry 扩展）；frontend build 清洁
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
