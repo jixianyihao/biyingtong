@@ -33,15 +33,14 @@ def _result_to_dict(r) -> dict:
 
 @api_bp.route('/backtests')
 def list_backtests():
-    """List recent backtests. Optional filter: ?agent_id=..."""
+    """List backtests. Without agent_id -> global most-recent list."""
     import storage
     agent_id = request.args.get('agent_id')
     limit = int(request.args.get('limit', '50'))
     if agent_id:
         rows = storage.backtests().list_for_agent(agent_id, limit=limit)
     else:
-        # No global list method on store; caller should filter by agent_id
-        return jsonify({'error': 'agent_id query param required'}), 400
+        rows = storage.backtests().list_all(limit=limit)
     return jsonify([_result_to_dict(r) for r in rows])
 
 

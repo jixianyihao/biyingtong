@@ -286,6 +286,9 @@ class BacktestResultStore(Protocol):
     def list_for_session(self, session_id: str) -> list:
         """All results under one session, agent_id ASC."""
         ...
+    def list_all(self, limit: int = 50) -> list:
+        """All backtest results across all agents, most recent first."""
+        ...
     def create_session(self, session_id: str, start_date: str,
                        end_date: str, agent_ids: list[str],
                        notes: str | None = None) -> None:
