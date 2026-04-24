@@ -30,10 +30,21 @@ def _interval(period: str):
         _configure_vnpy_once()
         from vnpy.trader.constant import Interval
         _INTERVAL_MAP = {}
-        for key, name in (('1d', 'DAILY'), ('1w', 'WEEKLY'), ('1M', 'MONTHLY')):
+        for key, name in (
+            ('1d', 'DAILY'),
+            ('1w', 'WEEKLY'),
+            ('1M', 'MONTHLY'),
+            ('5m', 'MINUTE_5'),
+            ('1m', 'MINUTE'),
+        ):
             val = getattr(Interval, name, None)
             if val is not None:
                 _INTERVAL_MAP[key] = val
+        # Fallback: if MINUTE_5 isn't present in this vnpy version but MINUTE
+        # is, map '5m' to MINUTE so downstream callers don't crash. The
+        # caller is expected to aggregate 1m into 5m as needed.
+        if '5m' not in _INTERVAL_MAP and '1m' in _INTERVAL_MAP:
+            _INTERVAL_MAP['5m'] = _INTERVAL_MAP['1m']
     iv = _INTERVAL_MAP.get(period)
     if iv is None:
         raise ValueError(f"unsupported period {period!r}; must be one of {list(_INTERVAL_MAP.keys())}")
