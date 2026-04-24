@@ -1,6 +1,6 @@
 [package]
 name = "biyingtong-desktop"
-version = "5.0.0"
+version = "0.5.0"
 description = "必赢通桌面版 - 量化交易终端"
 authors = ["jixianyihao"]
 edition = "2021"

@@ -45,11 +45,12 @@ jobs:
           tagName: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           releaseName: '必赢通 __VERSION__'
           releaseBody: |
-            必赢通桌面版 Windows 安装包。
+            必赢通桌面版 Windows 安装器（NSIS）。**早期版本，LiveTrading 链路未接入。**
 
-            - 下载 `.msi` 双击安装（推荐）
-            - 或下载 `.exe` 便携版
+            下载 `.exe` 双击运行 → 安装向导 → 从开始菜单启动「必赢通」。
 
-            首次启动 Windows SmartScreen 可能警告"未知发布者"，点"更多信息 → 仍要运行"即可。
+            首次启动 Windows SmartScreen 会警告"未知发布者"，点「更多信息 → 仍要运行」即可。未做代码签名的已知副作用。
+
+            > 桌面壳只承载前端 UI。后端 Flask + TDX 服务需本地自行启动（`python app.py`），详见仓库 README。
           releaseDraft: false
           prerelease: false
