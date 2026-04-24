@@ -602,7 +602,77 @@ function AgentCompareChart({
 }
 
 // ─── Autonomous Scheduler — Phase 3 scaffold ───────────────────────────────
-function AutonomousScheduler() {
+
+// A single scheduled decision point for an agent (derived from persona.default_schedule).
+type ScheduleTick = {
+  agent_id: string;
+  persona_id: string;
+  hour: number;
+  minute: number;
+  label: string;
+};
+
+// Derive decision ticks for a single agent from its persona's schedule string.
+// Spec §16: MVP visualisation — not actual triggering.
+function ticksForSchedule(
+  schedule: string,
+  agentId: string,
+  personaId: string
+): ScheduleTick[] {
+  const make = (h: number, m: number, label: string): ScheduleTick => ({
+    agent_id: agentId,
+    persona_id: personaId,
+    hour: h,
+    minute: m,
+    label,
+  });
+  switch (schedule) {
+    case 'daily':
+      // Daily decision at market open 9:30
+      return [make(9, 30, 'daily 9:30')];
+    case 'weekly':
+      // Weekly Monday 9:30 — for the 24h timeline, show as a single tick
+      return [make(9, 30, 'weekly 9:30')];
+    case 'intraday_5m': {
+      // 9:30-11:30, 13:00-15:00 every 5min is ~72 ticks — too dense.
+      // Down-sample to every 30min for visual clarity.
+      const out: ScheduleTick[] = [];
+      // Morning session: 9:30, 10:00, 10:30, 11:00
+      out.push(make(9, 30, '9:30'));
+      out.push(make(10, 0, '10:00'));
+      out.push(make(10, 30, '10:30'));
+      out.push(make(11, 0, '11:00'));
+      // Afternoon session: 13:00, 13:30, 14:00, 14:30
+      out.push(make(13, 0, '13:00'));
+      out.push(make(13, 30, '13:30'));
+      out.push(make(14, 0, '14:00'));
+      out.push(make(14, 30, '14:30'));
+      return out;
+    }
+    default:
+      return [];
+  }
+}
+
+// Flatten ticks across all agents by joining each agent with its persona.
+function allTicks(agentsArr: Agent[], personasArr: Persona[]): ScheduleTick[] {
+  const personaById = new Map(personasArr.map((p) => [p.id, p]));
+  const out: ScheduleTick[] = [];
+  for (const a of agentsArr) {
+    const p = personaById.get(a.persona_id);
+    if (!p) continue;
+    out.push(...ticksForSchedule(p.default_schedule, a.id, a.persona_id));
+  }
+  return out;
+}
+
+function AutonomousScheduler({
+  agents,
+  personas,
+}: {
+  agents: Agent[];
+  personas: Persona[];
+}) {
   const [autonomous, setAutonomous] = useState(false);
   const [now, setNow] = useState(new Date());
 
@@ -646,6 +716,18 @@ function AutonomousScheduler() {
     schedule.find((s) => s.start <= curHour && s.end > curHour)?.task ??
     '待机中';
   const fmtT = (d: Date) => d.toTimeString().slice(0, 8);
+
+  // Per-agent decision ticks derived from each persona's default_schedule.
+  // Overlaid on top of the generic market-phase backdrop. Phase 2 turns these
+  // into real triggers; for now they're purely visual (spec §16).
+  const personaById = useMemo(
+    () => new Map(personas.map((p) => [p.id, p])),
+    [personas]
+  );
+  const ticks = useMemo(
+    () => allTicks(agents, personas),
+    [agents, personas]
+  );
 
   return (
     <div
@@ -822,6 +904,39 @@ function AutonomousScheduler() {
             </div>
           );
         })}
+        {/* Per-agent decision ticks — overlay on the market-phase backdrop.
+            Each tick is an 8px dot color-coded per persona; position = (h*60+m)/1440. */}
+        {ticks.map((t, i) => {
+          const agent = agents.find((a) => a.id === t.agent_id);
+          const persona = personaById.get(t.persona_id);
+          const color = personaColor(t.persona_id);
+          const leftPct = ((t.hour * 60 + t.minute) / 1440) * 100;
+          const tooltip = [
+            agent?.display_name ?? t.agent_id,
+            persona?.name ?? t.persona_id,
+            t.label,
+          ].join(' · ');
+          return (
+            <div
+              key={`tick-${t.agent_id}-${i}`}
+              title={tooltip}
+              style={{
+                position: 'absolute',
+                left: `calc(${leftPct}% - 4px)`,
+                top: '50%',
+                marginTop: -4,
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: color,
+                border: '1px solid var(--bg-1)',
+                boxShadow: '0 0 4px ' + color,
+                pointerEvents: 'auto',
+                zIndex: 2,
+              }}
+            />
+          );
+        })}
         {/* NOW marker */}
         <div
           style={{
@@ -832,6 +947,7 @@ function AutonomousScheduler() {
             width: 2,
             background: 'var(--text-hi)',
             boxShadow: '0 0 6px var(--text-hi)',
+            zIndex: 3,
           }}
         />
       </div>
@@ -1493,7 +1609,7 @@ export function Agent() {
       </div>
 
       {/* autonomous scheduler — Phase 3 scaffold */}
-      <AutonomousScheduler />
+      <AutonomousScheduler agents={agentList} personas={personaList} />
 
       {/* main: list + detail + compare */}
       <div
