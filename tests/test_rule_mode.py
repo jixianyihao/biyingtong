@@ -270,6 +270,98 @@ def test_macd_divergence_insufficient_history_returns_empty():
     assert decisions == []
 
 
+def test_ma_crossover_below_lot_threshold_emits_no_buy():
+    """position_pct * equity < 100-share lot value → no buy decision.
+
+    With equity=1_000 and position_pct=0.1 → target=¥100 ÷ ¥50 = 2 shares,
+    floored to 0 lots, so no buy is emitted even on a valid golden cross.
+    """
+    from datetime import date
+    from backtest.strategies.ma_crossover import MACrossover
+
+    s = MACrossover(params={'fast': 3, 'slow': 5, 'position_pct': 0.1})
+    d = date(2025, 1, 8)
+    close_history = {
+        '600519.SH': [
+            (date(2025, 1, 2), 30.0),
+            (date(2025, 1, 3), 35.0),
+            (date(2025, 1, 4), 40.0),
+            (date(2025, 1, 5), 45.0),
+            (date(2025, 1, 6), 48.0),
+            (date(2025, 1, 7), 50.0),
+            (date(2025, 1, 8), 50.0),   # price 50
+        ],
+    }
+    # Tiny portfolio: 0.1 * 1_000 / 50 = 2 shares → floored to 0 lots
+    portfolio = {'cash': 1_000, 'equity': 1_000, 'positions': {}}
+    decisions = s.on_day(date=d, close_history=close_history, portfolio=portfolio)
+    # Golden cross detected but allocation rounds to < 100 shares → no buy
+    assert decisions == []
+
+
+def test_rsi_breakout_exact_oversold_boundary_fires_buy():
+    """rsi == oversold threshold triggers buy (inclusive lower bound)."""
+    from datetime import date
+    from backtest.strategies import rsi_breakout as rb_mod
+    from backtest.strategies.rsi_breakout import RSIBreakout
+
+    s = RSIBreakout(params={'period': 14, 'oversold': 30.0, 'overbought': 70.0,
+                            'position_pct': 0.3})
+    # Sufficient history: period + 1 entries so _rsi() computes, not 50.0 default
+    dates = [date(2025, 1, d) for d in range(2, 17)]
+    series = list(zip(dates, [100.0] * 15))  # prices don't matter — we monkeypatch _rsi
+    # Force RSI to EXACTLY the oversold boundary
+    rb_mod_rsi = rb_mod._rsi  # noqa: F841 (keep original reachable for hygiene)
+    import pytest
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(rb_mod, '_rsi', lambda closes, period: 30.0)
+    try:
+        decisions = s.on_day(
+            date=dates[-1], close_history={'600519.SH': series},
+            portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        )
+    finally:
+        monkeypatch.undo()
+    # rsi == 30.0 with rule `rsi <= oversold` → buy fires at the boundary
+    assert any(d['action'] == 'buy' for d in decisions), (
+        f'expected buy at rsi==oversold==30.0, got {decisions}'
+    )
+
+
+def test_macd_divergence_all_zero_series_emits_no_decision():
+    """Flat (all-zero-return) prices → MACD line stays at 0 → neither > 0 nor < 0
+    → no buy, no sell, regardless of existing position."""
+    from datetime import date, timedelta
+    from backtest.strategies.macd_divergence import MACDDivergence
+
+    s = MACDDivergence(params={'fast': 12, 'slow': 26, 'signal': 9})
+    d0 = date(2025, 1, 2)
+    dates = [d0 + timedelta(days=i) for i in range(40)]
+    # Constant (flat) prices — returns are all zero, EMAs are equal, MACD == 0
+    series = list(zip(dates, [100.0] * 40))
+
+    # Case 1: flat, with no position → no buy emitted
+    decisions_flat = s.on_day(
+        date=dates[-1], close_history={'600519.SH': series},
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+    )
+    assert decisions_flat == [], (
+        f'expected no decisions on flat series, got {decisions_flat}'
+    )
+
+    # Case 2: flat, WITH existing position → no sell emitted either
+    decisions_held = s.on_day(
+        date=dates[-1], close_history={'600519.SH': series},
+        portfolio={
+            'cash': 500_000, 'equity': 510_000,
+            'positions': {'600519.SH': {'shares': 100, 'avg_price': 100.0}},
+        },
+    )
+    assert decisions_held == [], (
+        f'expected no decisions on flat series w/ position, got {decisions_held}'
+    )
+
+
 def test_strategies_registry_lists_all_three():
     from backtest.strategies import list_all
     names = [d.name for d in list_all()]
