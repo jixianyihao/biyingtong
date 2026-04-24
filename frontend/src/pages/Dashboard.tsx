@@ -1,9 +1,25 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { useAgents, useSessions } from '../api/hooks';
+import {
+  useAgents,
+  useBacktestNav,
+  useSession,
+  useSessions,
+} from '../api/hooks';
 import { api } from '../api/client';
-import type { Agent, BacktestResult, SessionSummary } from '../api/types';
+import {
+  ColorType,
+  LineStyle,
+  createChart,
+  type UTCTimestamp,
+} from 'lightweight-charts';
+import type {
+  Agent,
+  BacktestResult,
+  NavResponse,
+  SessionSummary,
+} from '../api/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 function fmt(v: number | null | undefined, digits = 2): string {
@@ -425,6 +441,191 @@ function TopPerformers({ agents }: { agents: Agent[] }) {
   );
 }
 
+// ─── Compare Sessions ─────────────────────────────────────────────────────
+const COMPARE_COLORS = ['#c9a227', '#3b82f6']; // gold + blue
+
+function toTs(dateStr: string): UTCTimestamp {
+  return Math.floor(new Date(dateStr + 'T00:00:00Z').getTime() / 1000) as UTCTimestamp;
+}
+
+function CompareNavChart({
+  navA,
+  navB,
+  labelA,
+  labelB,
+}: {
+  navA: NavResponse | undefined;
+  navB: NavResponse | undefined;
+  labelA: string;
+  labelB: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const chart = createChart(container, {
+      width: container.clientWidth || 600,
+      height: 280,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#8a8a8a',
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: 'rgba(120,120,120,0.15)', style: LineStyle.Dotted },
+        horzLines: { color: 'rgba(120,120,120,0.15)', style: LineStyle.Dotted },
+      },
+      timeScale: { borderColor: 'rgba(120,120,120,0.3)', timeVisible: false },
+      rightPriceScale: { borderColor: 'rgba(120,120,120,0.3)' },
+      crosshair: { mode: 1 },
+    });
+
+    if (navA && navA.agent.length > 0) {
+      const s = chart.addLineSeries({
+        color: COMPARE_COLORS[0],
+        lineWidth: 2,
+        title: labelA,
+      });
+      s.setData(navA.agent.map((p) => ({ time: toTs(p.date), value: p.equity })));
+    }
+    if (navB && navB.agent.length > 0) {
+      const s = chart.addLineSeries({
+        color: COMPARE_COLORS[1],
+        lineWidth: 2,
+        title: labelB,
+      });
+      s.setData(navB.agent.map((p) => ({ time: toTs(p.date), value: p.equity })));
+    }
+
+    chart.timeScale().fitContent();
+
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) chart.applyOptions({ width: e.contentRect.width });
+    });
+    ro.observe(container);
+
+    return () => {
+      ro.disconnect();
+      chart.remove();
+    };
+  }, [navA, navB, labelA, labelB]);
+
+  return (
+    <div>
+      <div ref={containerRef} style={{ width: '100%', height: 280 }} />
+      <div className="flex flex-wrap gap-3 mt-2 text-[11px]">
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            style={{
+              width: 14,
+              height: 3,
+              background: COMPARE_COLORS[0],
+              borderRadius: 1,
+              display: 'inline-block',
+            }}
+          />
+          <span className="text-text-dim">{labelA || 'Session A'}</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            style={{
+              width: 14,
+              height: 3,
+              background: COMPARE_COLORS[1],
+              borderRadius: 1,
+              display: 'inline-block',
+            }}
+          />
+          <span className="text-text-dim">{labelB || 'Session B'}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CompareSessionsPanel() {
+  const sessions = useSessions(20);
+  const list = sessions.data ?? [];
+  const [sidA, setSidA] = useState<string>('');
+  const [sidB, setSidB] = useState<string>('');
+
+  const sessionA = useSession(sidA || undefined, !!sidA);
+  const sessionB = useSession(sidB || undefined, !!sidB);
+
+  const ridA = sessionA.data?.agents?.[0]?.id;
+  const ridB = sessionB.data?.agents?.[0]?.id;
+
+  const navA = useBacktestNav(ridA);
+  const navB = useBacktestNav(ridB);
+
+  return (
+    <div className="panel p-5">
+      <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+        <h2 className="text-text-hi text-base font-semibold">Session 对比</h2>
+        <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+          Compare Sessions
+        </span>
+      </div>
+
+      <div
+        className="grid gap-3 mb-4"
+        style={{ gridTemplateColumns: '1fr 1fr' }}
+      >
+        <div>
+          <label className="text-[10px] text-text-faint uppercase tracking-wider mb-1 block">
+            Session A
+          </label>
+          <select
+            className="w-full bg-bg-2 border border-panel-border-soft rounded px-3 py-2 text-sm text-text-hi"
+            value={sidA}
+            onChange={(e) => setSidA(e.target.value)}
+            disabled={sessions.isLoading}
+          >
+            <option value="">{sessions.isLoading ? '加载中…' : '请选择'}</option>
+            {list.map((s) => (
+              <option key={s.session_id} value={s.session_id}>
+                {s.session_id.slice(0, 18)} · {s.start_date} → {s.end_date}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-text-faint uppercase tracking-wider mb-1 block">
+            Session B
+          </label>
+          <select
+            className="w-full bg-bg-2 border border-panel-border-soft rounded px-3 py-2 text-sm text-text-hi"
+            value={sidB}
+            onChange={(e) => setSidB(e.target.value)}
+            disabled={sessions.isLoading}
+          >
+            <option value="">{sessions.isLoading ? '加载中…' : '请选择'}</option>
+            {list.map((s) => (
+              <option key={s.session_id} value={s.session_id}>
+                {s.session_id.slice(0, 18)} · {s.start_date} → {s.end_date}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {!sidA && !sidB ? (
+        <div className="text-text-faint text-sm italic">
+          选择两个 session 进行 NAV 曲线叠加对比。
+        </div>
+      ) : (
+        <CompareNavChart
+          navA={navA.data}
+          navB={navB.data}
+          labelA={sidA.slice(0, 12) || 'A'}
+          labelB={sidB.slice(0, 12) || 'B'}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────
 export function Dashboard() {
   const agentsQ = useAgents();
@@ -577,6 +778,9 @@ export function Dashboard() {
 
       {/* Row 3 — Top performers */}
       <TopPerformers agents={agents} />
+
+      {/* Row 4 — Compare Sessions (NAV overlay) */}
+      <CompareSessionsPanel />
     </div>
   );
 }

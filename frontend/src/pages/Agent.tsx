@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   useAgent,
   useAgents,
+  useAuditQuery,
   useCreateAgent,
   useDeletePersona,
   useModels,
@@ -227,6 +228,82 @@ function AgentListItem({
   );
 }
 
+// ─── AuditEvents — recent audit log for an agent ───────────────────────────
+function AuditEvents({ agentId }: { agentId: string }) {
+  const audit = useAuditQuery({ agent_id: agentId, limit: 20 });
+
+  if (audit.isLoading) {
+    return <div className="text-text-faint text-xs">加载中…</div>;
+  }
+  if (audit.error || !audit.data) {
+    return null;
+  }
+  if (audit.data.length === 0) {
+    return (
+      <div className="text-text-faint text-xs italic">
+        暂无审计记录。
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="grid gap-1"
+      style={{
+        maxHeight: 240,
+        overflowY: 'auto',
+        border: '1px solid var(--panel-border-soft)',
+        borderRadius: 4,
+        padding: '6px 8px',
+        background: 'var(--bg-3)',
+        fontSize: 11,
+      }}
+    >
+      {audit.data.map((row) => {
+        const ts = row.timestamp?.replace('T', ' ').slice(0, 19) ?? '';
+        const kind = row.kind ?? 'event';
+        // pick a color per kind
+        const color =
+          kind === 'validation' ? 'var(--text-dim)'
+          : kind === 'warning' ? 'var(--warn)'
+          : kind === 'redline_changed' ? 'var(--brand)'
+          : kind === 'parse_failure' ? 'var(--down)'
+          : 'var(--text-dim)';
+        // Brief detail summary — first 80 chars of stringified details
+        const detailStr = row.details
+          ? JSON.stringify(row.details).slice(0, 80)
+          : '';
+        return (
+          <div key={row.id} className="flex gap-2 items-baseline mono">
+            <span className="text-text-ghost" style={{ fontSize: 10 }}>
+              {ts}
+            </span>
+            <span
+              style={{
+                padding: '1px 6px',
+                borderRadius: 2,
+                fontSize: 9,
+                background: 'var(--bg-2)',
+                color,
+                minWidth: 80,
+                textAlign: 'center',
+              }}
+            >
+              {kind}
+            </span>
+            <span
+              className="text-text-dim"
+              style={{ wordBreak: 'break-all', flex: 1 }}
+            >
+              {detailStr}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── AgentDetail — right panel ─────────────────────────────────────────────
 function AgentDetail({
   agentId,
@@ -443,6 +520,16 @@ function AgentDetail({
             </table>
           </div>
         )}
+      </div>
+
+      {/* recent audit events */}
+      <div>
+        <div className="flex items-baseline gap-2 mb-2 flex-wrap">
+          <div className={sectionLabelCls} style={{ marginBottom: 0 }}>
+            最近审计 · Recent Audit · last 20
+          </div>
+        </div>
+        <AuditEvents agentId={agent.id} />
       </div>
 
       {/* trust rating breakdown */}
