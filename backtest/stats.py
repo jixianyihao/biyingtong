@@ -31,6 +31,16 @@ def compute_monthly_returns(daily_records: list) -> list:
         s = str(d)
         return int(s[0:4]), int(s[5:7])
 
+    # Sort chronologically so 'first' / 'last' reflect calendar order
+    # (not first-seen-in-bucket order).
+    def _sort_key(rec):
+        d = rec.get('date')
+        if isinstance(d, (_dt_cls, _date_cls)):
+            return d
+        # 'YYYY-MM-DD' strings sort correctly lexicographically
+        return str(d)
+    daily_records = sorted(daily_records, key=_sort_key)
+
     buckets: dict = {}
     order: list = []  # preserves first-insert order per (year, month)
     for rec in daily_records:

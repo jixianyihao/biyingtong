@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-必赢通 (BiYingTong) — a quantitative trading terminal built on top of 通达信 (TongDaXin/TDX), a Chinese stock trading platform. Current state: working prototype with live market data, simulated trading, and AI agent UI. A major expansion is planned (see design spec below).
+必赢通 (BiYingTong) — a quantitative trading terminal built on top of 通达信 (TongDaXin/TDX), a Chinese stock trading platform. The app combines live TDX market data, a dual-engine backtest runner (legacy + vnpy `BacktestingEngine`), LLM-driven trading agents with configurable personas and a validation rule engine, and subprocess-based live deployment with UI-gated proposal approval. Real-money order execution is intentionally gated behind an explicit sign-off and is currently deferred.
 
 ## Running the App
 
@@ -21,34 +21,78 @@ No build step, no tests, no Docker.
 ## Architecture
 
 ```
-Browser (React 18 SPA, CDN-loaded, Babel standalone JSX)
-   │  REST /api/*  +  Socket.IO WebSocket
+Browser (two frontends co-exist)
+  ├─ static/   legacy React 18 SPA, CDN-loaded, Babel standalone JSX  (served by Flask)
+  └─ frontend/ Vite + React + TypeScript + Tailwind (ES modules, proper build)
+   │  REST /api/*  +  Socket.IO WebSocket  +  SSE fine-grained events
    ▼
-Flask (app.py)  ◄──►  TDXService (tdx_service.py)  ◄──►  TDX SDK (tqcenter)
-                         thread-safe singleton
+Flask (app.py)
+   │
+   ├──► TDXService (tdx_service.py)  ◄──►  TDX SDK (tqcenter)
+   │        thread-safe singleton; tq.subscribe_hq push replaces 3-sec polling
+   │
+   ├──► LLM adapter layer (llm/)  — Claude / OpenAI / Gemini / Mock via factory
+   │
+   ├──► Backtest runners (backtest/)
+   │        ├─ runner.py        legacy path
+   │        └─ vnpy_runner.py   parallel path (?engine=vnpy)
+   │                            reuses vnpy_portfoliostrategy.BacktestingEngine
+   │                            + LLMPortfolioStrategy + calculate_statistics
+   │
+   ├──► Validation engine (validation/)  — 4 rule handlers + audit log
+   │
+   ├──► SQLite stores (storage/)  — agents, personas, backtests, proposals,
+   │        audit, kline, financial, calendar, llm_cache, prompt_versions,
+   │        redline, stock_status, baselines, deployed_agents, models
+   │
+   └──► Live deployment (runner/agent_process.py)
+            subprocess per deployed agent + in-memory HTTP control channel;
+            proposals emitted to UI for human approval (Phase 1 — no real-money exec)
 ```
 
-**Backend**: Flask + Flask-SocketIO. `app.py` serves static frontend files, exposes REST API routes, and pushes live quotes via WebSocket every 3 seconds. `tdx_service.py` is a thread-safe singleton wrapping the `tqcenter` SDK for market data and trading.
+**Backend**: Flask + Flask-SocketIO. `app.py` serves the legacy static frontend, exposes REST API routes, pushes live quotes via WebSocket (now backed by `tq.subscribe_hq` push), and streams backtest progress via SSE. `tdx_service.py` is a thread-safe singleton wrapping the `tqcenter` SDK for market data and trading.
 
-**Frontend**: No bundler. React 18 + Babel standalone loaded from CDNs. All `.jsx` files are individual `<script type="text/babel">` tags in `index.html`. Components are global functions, not ES modules. `api.js` exposes `window.BYT` as the API client.
+**Frontend**: Two frontends co-exist. The active one served by Flask is `static/` (CDN React 18 + Babel standalone, `.jsx` files loaded as `<script type="text/babel">`, components are global functions, `api.js` exposes `window.BYT`). The `frontend/` directory is a separate Vite + React + TS + Tailwind app (built artifacts in `frontend/dist`).
 
 **Color convention**: Chinese stock market — red = up, green = down. Theme uses `oklch` color tokens in `static/styles/tokens.css`.
 
 ## Key Files
 
-- `app.py` — Flask entry point, all REST + WebSocket endpoints
+- `app.py` — Flask entry point, all REST + WebSocket + SSE endpoints
 - `tdx_service.py` — TDX SDK wrapper singleton (market data, trading, account management)
-- `static/index.html` — SPA entry, loads all CDN deps and JSX modules via script tags
+- `backtest/runner.py` — legacy backtest runner
+- `backtest/vnpy_runner.py` — vnpy-based backtest runner (parallel path)
+- `backtest/strategy.py` — `LLMPortfolioStrategy` bridging LLM decisions into vnpy
+- `llm/factory.py` — LLM adapter factory (Claude / OpenAI / Gemini / Mock)
+- `personas/` — 6 built-in personas (linyuan / fuyou / buffet / soros / quant_neutral / intraday_t0)
+- `tools/` — tool implementations exposed to agents (10+ in `ALL_TOOLS`)
+- `storage/` — SQLite protocol interfaces and implementations
+- `runner/agent_process.py` — subprocess-based live agent deployment
+- `validation/` — rule engine with 4 handlers + audit log
+- `static/index.html` — legacy SPA entry, loads all CDN deps and JSX modules via script tags
 - `static/src/api.js` — `window.BYT` API client (REST + WebSocket helpers)
 - `static/src/shell.jsx` — App shell (Sidebar, TopBar, StatusBar, navigation state)
 - `static/styles/tokens.css` — Design tokens, dark/light themes, oklch colors
+- `frontend/` — Vite + React + TS + Tailwind app (parallel / newer frontend)
 
-## Planned Expansion
+## Status
 
-Design spec at `docs/superpowers/specs/2026-04-22-trading-agent-backtest-design.md` describes:
-- **vnpy (VeighNa)** for backtesting engine and strategy templates
-- **LLM-driven trading agents** (Claude/GPT/DeepSeek) with 5 pre-defined personas
-- **Frontend migration** from CDN React to Vite + React with proper ES modules
-- **SQLite** for K-line data caching via vnpy_sqlite
-- **Subprocess + message queue** architecture for deployed agents with crash recovery
-- **Configurable validation rule engine** for pre-trade checks and post-backtest quality gates
+Authoritative roadmap: `docs/superpowers/plans/2026-04-23-status-and-roadmap.md`.
+
+Delivered so far:
+
+- **P2a–f**: personas × agents × rules engine; LLM adapters; LLM backtest runner with baselines; validation engine (4 rule handlers + audit log); strategy rating (5 sub-scores); prompt versioning with rollback; zone-bifurcated stats against cutoff for anti-leakage; health + trust rating.
+- **P3-A**: backtest observability — NAV / trades / thinking endpoints + NavChart + TradesTable + ThinkingDrawer + QualityGatePanel + StrategyRatingPanel.
+- **P3-B**: agent + persona CRUD + prompt rollback.
+- **P3-C**: rule-mode backtests — 3 built-in strategies (MA / RSI / MACD) head-to-head vs agents + baselines.
+- **P3-D**: SSE fine-grained events (7 spec event types).
+- **P3-E**: in-prompt disclaimer with training cutoff + global backtest list + `RedLineBar` widget.
+- **P3-F Phase 1**: deploy / stop / proposal architecture (subprocess + in-memory HTTP). **No real-money execution.**
+- **Framework-first audit remediation** (2026-04-24; 3 serial batches all done):
+  - Batch A: `get_technical` → talib 0.6.8; `load_financial` auto-loaded on startup (background thread).
+  - Batch B: `VnpyBacktestRunner` as a parallel path (`?engine=vnpy` toggle); parity test vs legacy runner.
+  - Batch C: `tq.subscribe_hq` push replaces 3-sec polling; `get_stock_list` + `get_capital_flow` tools; 5m bar storage support (fallback to `MINUTE` since local vnpy lacks `MINUTE_5`).
+
+Current totals (approx): ~660 pytest passing; 10+ tools in `ALL_TOOLS`; 6 built-in personas; 4 LLM adapters; dual-engine backtest runners; subprocess-based agent deployment with UI-gated approval flow.
+
+**Phase 2** (real TDX order execution on proposal approval) is gated on explicit user sign-off and is currently deferred.

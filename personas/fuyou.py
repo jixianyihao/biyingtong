@@ -24,7 +24,8 @@ PERSONA = {
 - 每日决策（rebalance_schedule=daily）
 - 关注近期涨停/放量异动
 - 没有明确信号时，优先持现金
-- 对持仓的止损线（-4%）绝对服从""",
+- 对持仓的止损线（-4%）绝对服从
+- 可调 get_stock_list(sector="热门概念") 动态更新股池，或 get_capital_flow(code="XXX") 看个股/板块资金流向""",
     'default_pool': [
         '300750.SZ',   # 宁德时代
         '002594.SZ',   # 比亚迪
@@ -58,6 +59,7 @@ PERSONA = {
     'allowed_tools': [
         'get_kline', 'get_snapshot', 'get_technical',
         'get_index', 'get_portfolio',
+        'get_stock_list', 'get_capital_flow',
     ],
     'is_builtin': True,
 }

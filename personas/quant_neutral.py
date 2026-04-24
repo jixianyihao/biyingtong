@@ -21,7 +21,8 @@ PERSONA = {
 - 每日决策（rebalance_schedule=daily）
 - 按因子综合得分排序，取 Top N
 - 单票上限很低（8%），强调持仓分散
-- 严格控制日亏损""",
+- 严格控制日亏损
+- 可调 get_stock_list(sector="...") 构建动态 universe""",
     'default_pool': [
         '600519.SH',   # 贵州茅台
         '000858.SZ',   # 五粮液
@@ -55,6 +56,7 @@ PERSONA = {
     'allowed_tools': [
         'get_kline', 'get_financials', 'get_technical',
         'get_index', 'get_portfolio',
+        'get_stock_list',
     ],
     'is_builtin': True,
 }
