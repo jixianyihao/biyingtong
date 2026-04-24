@@ -27,6 +27,7 @@ def _result_to_dict(r) -> dict:
         'quality_gate_criteria': r.quality_gate_criteria,
         'divergence_flag': flag,
         'divergence_metric': metric,
+        'kind': getattr(r, 'kind', 'agent'),
     }
 
 
@@ -335,3 +336,49 @@ def get_backtest_thinking(result_id):
         'result_id': result_id,
         'thinking': list(r.thinking or []),
     })
+
+
+@api_bp.route('/backtests/rule', methods=['POST'])
+def start_rule_backtest():
+    """Synchronous rule-strategy backtest. Can join an existing session."""
+    import uuid
+    body = request.get_json(silent=True) or {}
+    strategy_name = body.get('strategy_name')
+    params = body.get('params') or {}
+    start_date = body.get('start_date')
+    end_date = body.get('end_date')
+    universe = body.get('universe')
+    initial_capital = body.get('initial_capital')
+    if not (strategy_name and start_date and end_date
+            and isinstance(universe, list) and universe
+            and initial_capital is not None):
+        return jsonify({'error': 'strategy_name, start_date, end_date, '
+                                  'universe, initial_capital required'}), 400
+
+    from backtest.strategies import get as get_strategy, build
+    if get_strategy(strategy_name) is None:
+        return jsonify({'error': f'unknown strategy: {strategy_name!r}'}), 400
+
+    try:
+        strategy = build(strategy_name, params=params)
+    except Exception as e:  # noqa: BLE001
+        return jsonify({'error': f'strategy build failed: {e}'}), 400
+
+    session_id = body.get('session_id') or f'session-{uuid.uuid4().hex[:12]}'
+
+    from backtest.rule_runner import RuleRunner
+    try:
+        result = RuleRunner(strategy=strategy).run(
+            session_id=session_id,
+            start_date=start_date, end_date=end_date,
+            initial_capital=float(initial_capital),
+            universe=universe,
+        )
+    except Exception as e:  # noqa: BLE001
+        return jsonify({'error': f'run failed: {e}'}), 500
+
+    return jsonify({
+        'session_id': session_id,
+        'result_id': result.id,
+        'state': 'complete',
+    }), 202

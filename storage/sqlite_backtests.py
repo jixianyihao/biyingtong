@@ -29,6 +29,8 @@ def _row_to_result(row):
     daily_records = json.loads(row[13]) if row[13] else []
     trades = json.loads(row[14]) if row[14] else []
     thinking = json.loads(row[15]) if row[15] else []
+    # P3-C: kind_str at index 16; default 'agent' for buggy callers returning empty
+    kind = row[16] if len(row) > 16 and row[16] else 'agent'
     return BacktestResult(
         id=row[0], session_id=row[1], agent_id=row[2],
         persona_id=row[3], model_id=row[4],
@@ -40,6 +42,7 @@ def _row_to_result(row):
         daily_records=daily_records,
         trades=trades,
         thinking=thinking,
+        kind=kind,
     )
 
 
@@ -56,8 +59,11 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.execute('PRAGMA journal_mode=WAL')
             con.executescript(SCHEMA_BACKTEST_SESSIONS)
             con.executescript(SCHEMA_BACKTEST_RESULTS)
-            from data_schema.backtest_state import ensure_observability_columns
+            from data_schema.backtest_state import (
+                ensure_observability_columns, ensure_kind_column,
+            )
             ensure_observability_columns(con)
+            ensure_kind_column(con)
             con.commit()
         finally:
             con.close()
@@ -82,22 +88,26 @@ class SQLiteBacktestResultStore(BacktestResultStore):
         con = sqlite3.connect(self._db_path)
         try:
             con.executescript(SCHEMA_BACKTEST_RESULTS)
-            from data_schema.backtest_state import ensure_observability_columns
+            from data_schema.backtest_state import (
+                ensure_observability_columns, ensure_kind_column,
+            )
             ensure_observability_columns(con)
+            ensure_kind_column(con)
             zone_serial = json.dumps(
                 [asdict(z) for z in result.zone_stats], ensure_ascii=False,
             )
             daily_records = getattr(result, 'daily_records', None) or []
             trades = getattr(result, 'trades', None) or []
             thinking = getattr(result, 'thinking', None) or []
+            kind = getattr(result, 'kind', 'agent') or 'agent'
             con.execute(
                 '''INSERT OR REPLACE INTO backtest_results
                    (id, session_id, agent_id, persona_id, model_id,
                     start_date, end_date, initial_capital, final_equity,
                     stats_json, zone_stats_json,
                     quality_gate_label, quality_gate_json,
-                    daily_records_json, trades_json, thinking_json)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    daily_records_json, trades_json, thinking_json, kind_str)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (result.id, result.session_id, result.agent_id,
                  result.persona_id, result.model_id,
                  result.start_date, result.end_date,
@@ -108,7 +118,8 @@ class SQLiteBacktestResultStore(BacktestResultStore):
                  json.dumps(result.quality_gate_criteria, ensure_ascii=False),
                  json.dumps(daily_records, ensure_ascii=False, default=str),
                  json.dumps(trades, ensure_ascii=False, default=str),
-                 json.dumps(thinking, ensure_ascii=False, default=str)),
+                 json.dumps(thinking, ensure_ascii=False, default=str),
+                 kind),
             )
             con.commit()
         finally:
@@ -119,7 +130,7 @@ class SQLiteBacktestResultStore(BacktestResultStore):
                 'start_date, end_date, initial_capital, final_equity, '
                 'stats_json, zone_stats_json, quality_gate_label, '
                 'quality_gate_json, daily_records_json, '
-                'trades_json, thinking_json')
+                'trades_json, thinking_json, kind_str')
 
     def get(self, result_id: str):
         con = sqlite3.connect(self._db_path)

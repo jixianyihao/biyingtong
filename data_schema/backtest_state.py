@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS backtest_results (
     daily_records_json   TEXT NOT NULL DEFAULT '[]',
     trades_json          TEXT NOT NULL DEFAULT '[]',
     thinking_json        TEXT NOT NULL DEFAULT '[]',
+    kind_str             TEXT NOT NULL DEFAULT 'agent',
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS results_by_session ON backtest_results(session_id);
@@ -62,3 +63,12 @@ def ensure_observability_columns(con):
     if 'thinking_json' not in cols:
         con.execute("ALTER TABLE backtest_results ADD COLUMN "
                     "thinking_json TEXT NOT NULL DEFAULT '[]'")
+
+
+def ensure_kind_column(con):
+    """Add kind_str to existing backtest_results if absent. Idempotent."""
+    cols = {row[1] for row in con.execute(
+        'PRAGMA table_info(backtest_results)').fetchall()}
+    if 'kind_str' not in cols:
+        con.execute("ALTER TABLE backtest_results ADD COLUMN "
+                    "kind_str TEXT NOT NULL DEFAULT 'agent'")

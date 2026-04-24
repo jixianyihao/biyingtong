@@ -72,6 +72,7 @@ export type BacktestResult = {
   quality_gate_criteria: Record<string, unknown>;
   divergence_flag: boolean;
   divergence_metric: number | null;
+  kind: 'agent' | 'rule';
 };
 
 export type BaselineResult = {
@@ -228,3 +229,26 @@ export type CreatePersonaBody = {
 };
 
 export type UpdatePersonaBody = Partial<Omit<CreatePersonaBody, 'id'>>;
+
+export type StrategyDescriptor = {
+  name: string;
+  display_name: string;
+  description: string;
+  default_params: Record<string, number | string>;
+};
+
+export type StartRuleBacktestBody = {
+  strategy_name: string;
+  params?: Record<string, number>;
+  session_id?: string;
+  start_date: string;
+  end_date: string;
+  universe: string[];
+  initial_capital: number;
+};
+
+export type StartRuleBacktestResponse = {
+  session_id: string;
+  result_id: string;
+  state: string;
+};
