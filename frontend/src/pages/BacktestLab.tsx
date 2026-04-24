@@ -46,6 +46,7 @@ type FormState = {
   end_date: string;
   initial_capital: number;
   include_baselines: boolean;
+  engine: 'legacy' | 'vnpy';
 };
 
 function parseUniverse(raw: string): string[] {
@@ -166,6 +167,29 @@ function BacktestForm({
                 </option>
               ))}
           </select>
+        </div>
+
+        <div>
+          <label className={fieldLabelCls}>回测引擎 · Engine</label>
+          <select
+            className={inputCls}
+            value={state.engine}
+            onChange={(e) =>
+              setState({ engine: e.target.value as 'legacy' | 'vnpy' })
+            }
+          >
+            <option value="legacy">Legacy (默认)</option>
+            <option value="vnpy">vnpy (Beta)</option>
+          </select>
+          {state.engine === 'vnpy' && (
+            <div
+              className="text-[10px] text-text-faint mt-1"
+              style={{ lineHeight: 1.5 }}
+            >
+              Beta：走 vnpy.BacktestingEngine，使用 engine.calculate_statistics()。
+              撮合时间点与 Legacy 有细微差异（next-bar-open vs same-day-close）。
+            </div>
+          )}
         </div>
 
         <div>
@@ -1079,6 +1103,7 @@ export function BacktestLab() {
     end_date: DEFAULT_END,
     initial_capital: DEFAULT_CAPITAL,
     include_baselines: true,
+    engine: 'legacy',
   }));
   const patch = (p: Partial<FormState>) => setForm((prev) => ({ ...prev, ...p }));
 
@@ -1166,6 +1191,7 @@ export function BacktestLab() {
         initial_capital: form.initial_capital,
         universe: tickers,
         include_baselines: form.include_baselines,
+        engine: form.engine,
       });
       setSessionMode('agent');
       setSessionId(res.session_id);

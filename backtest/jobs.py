@@ -72,8 +72,14 @@ def submit_backtest(
     initial_capital: float,
     universe: list[str],
     include_baselines: bool = True,
+    engine: str = 'legacy',
 ) -> JobStatus:
-    """Queue an async backtest: N agents parallel + optional baselines. Returns status."""
+    """Queue an async backtest: N agents parallel + optional baselines.
+
+    ``engine`` is 'legacy' (hand-rolled BacktestRunner, multi-agent parallel) or
+    'vnpy' (vnpy.BacktestingEngine via VnpyBacktestRunner, sequential per agent).
+    Returns status.
+    """
     status = JobStatus(
         session_id=session_id,
         state='queued',
@@ -108,7 +114,6 @@ def submit_backtest(
 
             emit_event(status, {'kind': 'phase', 'phase': 'running',
                                 'session_id': session_id})
-            status.progress = f'running {len(configs)} agents in parallel'
 
             def _on_event(ev):
                 emit_event(status, ev)
@@ -116,13 +121,32 @@ def submit_backtest(
             def _cancel_check():
                 return status.cancel_requested
 
-            results = _mar.run_multi(
-                session_id=session_id, agent_configs=configs,
-                start_date=start_date, end_date=end_date,
-                initial_capital=initial_capital, universe=universe,
-                on_event=_on_event,
-                cancel_check=_cancel_check,
-            )
+            if engine == 'vnpy':
+                # vnpy.BacktestingEngine isn't designed for simultaneous
+                # multi-agent in a single run — iterate agents sequentially.
+                status.progress = (
+                    f'running {len(configs)} agents via vnpy (sequential)'
+                )
+                from backtest.vnpy_runner import VnpyBacktestRunner
+                results = []
+                for cfg in configs:
+                    if status.cancel_requested:
+                        break
+                    r = VnpyBacktestRunner(llm=cfg['llm']).run(
+                        session_id=session_id, agent_id=cfg['agent_id'],
+                        start_date=start_date, end_date=end_date,
+                        initial_capital=initial_capital, universe=universe,
+                    )
+                    results.append(r)
+            else:
+                status.progress = f'running {len(configs)} agents in parallel'
+                results = _mar.run_multi(
+                    session_id=session_id, agent_configs=configs,
+                    start_date=start_date, end_date=end_date,
+                    initial_capital=initial_capital, universe=universe,
+                    on_event=_on_event,
+                    cancel_check=_cancel_check,
+                )
             status.agent_result_ids = [r.id for r in results]
 
             if include_baselines and not status.cancel_requested:

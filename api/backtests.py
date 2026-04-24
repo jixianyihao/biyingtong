@@ -115,7 +115,8 @@ def start_backtest():
       initial_capital: float,
       universe: [str, ...],
       include_baselines: bool (default True),
-      session_id: str (optional — generated if absent)
+      session_id: str (optional — generated if absent),
+      engine: 'legacy' | 'vnpy' (default 'legacy')
     }
 
     Returns 202 + {session_id, state}.
@@ -134,6 +135,10 @@ def start_backtest():
         return jsonify({'error': 'agent_ids, start_date, end_date, '
                                  'initial_capital, universe required'}), 400
 
+    engine = body.get('engine', 'legacy')
+    if engine not in ('legacy', 'vnpy'):
+        return jsonify({'error': f'unknown engine: {engine}'}), 400
+
     # Sanity: agents must exist
     import storage
     for aid in agent_ids:
@@ -149,6 +154,7 @@ def start_backtest():
         start_date=start_date, end_date=end_date,
         initial_capital=float(initial_capital), universe=universe,
         include_baselines=include_baselines,
+        engine=engine,
     )
     return jsonify({
         'session_id': session_id,
