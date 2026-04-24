@@ -14,6 +14,7 @@ import {
   useStrategies,
 } from '../api/hooks';
 import type {
+  BacktestEvent,
   BacktestResult,
   BaselineResult,
   JobStatus,
@@ -25,6 +26,7 @@ import { TradesTable } from '../components/TradesTable';
 import { ThinkingDrawer } from '../components/ThinkingDrawer';
 import { QualityGatePanel } from '../components/QualityGatePanel';
 import { StrategyRatingPanel } from '../components/StrategyRatingPanel';
+import { LiveEventLog } from '../components/LiveEventLog';
 
 // ─── form defaults ─────────────────────────────────────────────────────────
 const DEFAULT_UNIVERSE = '600519.SH, 601318.SH, 000858.SZ';
@@ -250,12 +252,14 @@ function BacktestForm({
 function JobPanel({
   sessionId,
   job,
+  events,
   session,
   error,
   startedAt,
 }: {
   sessionId: string | null;
   job: JobStatus | undefined;
+  events: BacktestEvent[];
   session: SessionComposite | undefined;
   error: string | null;
   startedAt: number | null;
@@ -355,8 +359,11 @@ function JobPanel({
       )}
 
       {(!job || job.state === 'queued' || job.state === 'running') && !error && (
-        <div className="text-text-faint text-sm italic">
-          正在实时推送状态（SSE）…
+        <div className="mt-3">
+          <div className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">
+            实时事件 · Live Events
+          </div>
+          <LiveEventLog events={events} />
         </div>
       )}
     </div>
@@ -1203,6 +1210,7 @@ export function BacktestLab() {
         <JobPanel
           sessionId={sessionId}
           job={ruleJobStatus ?? jobStream.status ?? undefined}
+          events={jobStream.events}
           session={session.data}
           error={pageError}
           startedAt={startedAt}
