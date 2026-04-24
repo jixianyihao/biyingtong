@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from .base import (
     Agent, AgentStore, AuditStore, BacktestResultStore, BaselineResultStore,
-    CalendarStore, FinancialStore, KlineStore, LLMDecisionCacheStore,
-    ModelInfo, ModelStore, Persona, PersonaStore, PromptVersion,
-    PromptVersionStore, RedLineStore, StockStatusStore,
+    CalendarStore, DeployedAgentStore, FinancialStore, KlineStore,
+    LLMDecisionCacheStore, ModelInfo, ModelStore, Persona, PersonaStore,
+    PromptVersion, PromptVersionStore, RedLineStore, StockStatusStore,
+    TradeProposalStore,
 )
 
 _kline: KlineStore | None = None
@@ -21,6 +22,8 @@ _audit: AuditStore | None = None
 _backtests: BacktestResultStore | None = None
 _llm_cache: LLMDecisionCacheStore | None = None
 _baselines: BaselineResultStore | None = None
+_proposals: TradeProposalStore | None = None
+_deployed_agents: DeployedAgentStore | None = None
 
 
 def kline() -> KlineStore:
@@ -127,6 +130,22 @@ def baselines() -> BaselineResultStore:
     return _baselines
 
 
+def proposals() -> TradeProposalStore:
+    global _proposals
+    if _proposals is None:
+        from .sqlite_proposals import SQLiteTradeProposalStore
+        _proposals = SQLiteTradeProposalStore()
+    return _proposals
+
+
+def deployed_agents() -> DeployedAgentStore:
+    global _deployed_agents
+    if _deployed_agents is None:
+        from .sqlite_deployed_agents import SQLiteDeployedAgentStore
+        _deployed_agents = SQLiteDeployedAgentStore()
+    return _deployed_agents
+
+
 def set_kline(impl: KlineStore) -> None:
     global _kline
     _kline = impl
@@ -192,11 +211,22 @@ def set_baselines(impl: BaselineResultStore) -> None:
     _baselines = impl
 
 
+def set_proposals(impl: TradeProposalStore) -> None:
+    global _proposals
+    _proposals = impl
+
+
+def set_deployed_agents(impl: DeployedAgentStore) -> None:
+    global _deployed_agents
+    _deployed_agents = impl
+
+
 def reset() -> None:
     global _kline, _financial, _models, _calendar
     global _personas, _agents, _prompt_versions
     global _redline, _stock_status, _audit
     global _backtests, _llm_cache, _baselines
+    global _proposals, _deployed_agents
     _kline = None
     _financial = None
     _models = None
@@ -210,3 +240,5 @@ def reset() -> None:
     _backtests = None
     _llm_cache = None
     _baselines = None
+    _proposals = None
+    _deployed_agents = None
