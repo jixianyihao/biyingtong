@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
-import type { JobStatus, UpdateAgentBody, UpdatePersonaBody } from './types';
+import type { BacktestEvent, JobStatus, UpdateAgentBody, UpdatePersonaBody } from './types';
 
 export const usePersonas = () =>
   useQuery({ queryKey: ['personas'], queryFn: api.personas });
@@ -54,19 +54,24 @@ export const useJobStatusStream = (
   enabled = true,
 ) => {
   const [status, setStatus] = useState<JobStatus | null>(null);
+  const [events, setEvents] = useState<BacktestEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!sessionId || !enabled) {
       setStatus(null);
+      setEvents([]);
       setError(null);
       return;
     }
     setStatus(null);
+    setEvents([]);
     setError(null);
+
     const es = new EventSource(`/api/backtests/jobs/${sessionId}/stream`);
     esRef.current = es;
+
     es.onmessage = (ev) => {
       try {
         setStatus(JSON.parse(ev.data) as JobStatus);
@@ -74,9 +79,23 @@ export const useJobStatusStream = (
         /* ignore bad payload */
       }
     };
-    es.addEventListener('done', () => {
-      es.close();
-    });
+
+    const eventKinds: BacktestEvent['kind'][] = [
+      'phase', 'progress', 'tool_call', 'decision',
+      'blocked', 'baseline_done',
+    ];
+    for (const kind of eventKinds) {
+      es.addEventListener(kind, (ev: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(ev.data) as BacktestEvent;
+          setEvents((prev) => [...prev, parsed]);
+        } catch {
+          /* ignore bad payload */
+        }
+      });
+    }
+
+    es.addEventListener('done', () => { es.close(); });
     es.addEventListener('notfound', () => {
       setError('job not found');
       es.close();
@@ -90,13 +109,14 @@ export const useJobStatusStream = (
       // received any status yet (likely endpoint down)
       setError((prev) => prev ?? 'stream error');
     };
+
     return () => {
       es.close();
       esRef.current = null;
     };
   }, [sessionId, enabled]);
 
-  return { status, error };
+  return { status, events, error };
 };
 
 export const useSession = (sid: string | undefined, enabled = true) =>
