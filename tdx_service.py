@@ -255,6 +255,20 @@ class TDXService:
             print(f"get_bkjy_value error: {e}")
             return {}
 
+    def get_gp_one_data(self, codes: list, fields: list) -> dict:
+        """Fetch per-stock one-shot GO fields (e.g. GO23/24/25 consensus forward PE).
+
+        Wraps tq.get_gp_one_data. Returns {code: {field: value}} or {} on error.
+        """
+        self.ensure_connected()
+        try:
+            return tq.get_gp_one_data(
+                stock_list=codes, field_list=fields,
+            ) or {}
+        except Exception as e:  # noqa: BLE001
+            print(f"get_gp_one_data error: {e}")
+            return {}
+
     def get_stock_list_in_sector(self, sector: str) -> list:
         self.ensure_connected()
         try:
