@@ -6,6 +6,7 @@ import type {
   CreatePersonaBody,
   DeployResponse,
   DeployStatus,
+  ExecutionMode,
   JobStatus,
   ModelInfo,
   MonthlyReturnsResponse,
@@ -153,6 +154,8 @@ export const api = {
   rejectProposal: (id: string) =>
     request<TradeProposal>(`/api/proposals/${id}/reject`,
       { method: 'POST' }),
+  executionMode: () =>
+    request<{ mode: ExecutionMode }>('/api/execution/mode'),
 };
 
 // Re-export types for convenience

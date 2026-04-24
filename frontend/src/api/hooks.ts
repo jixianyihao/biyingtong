@@ -362,3 +362,17 @@ export const useRejectProposal = () => {
     },
   });
 };
+
+// ─── P3-F Phase 2: execution mode ─────────────────────────────────────────
+
+/**
+ * Execution mode of the Flask server (dry_run vs live). Controlled by the
+ * BIYINGTONG_EXECUTION_MODE env var at server start-up. The value never
+ * changes without a server restart, so we cache indefinitely.
+ */
+export const useExecutionMode = () =>
+  useQuery({
+    queryKey: ['execution-mode'],
+    queryFn: api.executionMode,
+    staleTime: Infinity,
+  });

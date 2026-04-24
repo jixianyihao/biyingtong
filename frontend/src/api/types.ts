@@ -307,6 +307,8 @@ export type CancelJobResponse = {
   state: string;
 };
 
+export type ExecutionMode = 'dry_run' | 'live';
+
 export type TradeProposal = {
   id: string;
   agent_id: string;
@@ -321,6 +323,14 @@ export type TradeProposal = {
   status: 'pending' | 'approved' | 'rejected' | 'expired';
   decided_by: string | null;
   decided_at: string | null;
+  // Phase 2 execution fields — populated by approve endpoint after dispatching
+  // to ExecutionAdapter. Null on pending proposals and on Phase-1 rows pre-migration.
+  execution_mode?: ExecutionMode | null;
+  execution_order_id?: string | null;
+  execution_error?: string | null;
+  executed_at?: string | null;
+  filled_qty?: number | null;
+  filled_price?: number | null;
 };
 
 export type DeployStatus = {
