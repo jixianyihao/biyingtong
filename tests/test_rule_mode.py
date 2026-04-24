@@ -358,3 +358,87 @@ def test_rule_runner_creates_session_with_rule_prefix(observability_storage, mon
     s = next((x for x in sessions if x['session_id'] == 's-prefix'), None)
     assert s is not None
     assert any(aid.startswith('rule:') for aid in s['agent_ids'])
+
+
+def test_sqlite_backtests_roundtrips_kind_rule(observability_storage):
+    """insert(result with kind='rule') + get() preserves kind."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+
+    storage.backtests().create_session(
+        's-kind', '2025-01-01', '2025-01-10', ['rule:ma_crossover'])
+    r = BacktestResult(
+        id='r-kind', session_id='s-kind', agent_id='',
+        persona_id=None, model_id=None,
+        start_date='2025-01-01', end_date='2025-01-10',
+        initial_capital=100_000.0,
+        stats=BacktestStats(sharpe=0.5, max_drawdown_pct=-2.0,
+                            trade_count=4, win_rate=50.0,
+                            max_daily_loss_pct=-1.0, total_return_pct=3.0,
+                            final_equity=103_000.0),
+        zone_stats=[], quality_gate_label='pass',
+        quality_gate_criteria={},
+        kind='rule',
+    )
+    storage.backtests().insert(r)
+    fetched = storage.backtests().get('r-kind')
+    assert fetched is not None
+    assert fetched.kind == 'rule'
+
+
+def test_sqlite_backtests_default_kind_agent_on_raw_insert(observability_storage):
+    """Raw INSERT omitting kind_str → schema DEFAULT 'agent' → parses back as 'agent'."""
+    import sqlite3, json
+    from dataclasses import asdict
+    import storage
+    from backtest.base import BacktestStats
+
+    storage.backtests().create_session(
+        's-legacy', '2025-01-01', '2025-01-10', ['a1'])
+    stats = BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                          win_rate=0, max_daily_loss_pct=0,
+                          total_return_pct=0, final_equity=100_000)
+    store = storage.backtests()
+    db_path = store._db_path  # type: ignore[attr-defined]
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute(
+            '''INSERT INTO backtest_results
+               (id, session_id, agent_id, persona_id, model_id,
+                start_date, end_date, initial_capital, final_equity,
+                stats_json, zone_stats_json, quality_gate_label,
+                quality_gate_json)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            ('r-leg2', 's-legacy', 'a1', None, None,
+             '2025-01-01', '2025-01-10', 100_000.0, 100_000.0,
+             json.dumps(asdict(stats)), '[]', 'pass', '{}'),
+        )
+        con.commit()
+    finally:
+        con.close()
+    fetched = storage.backtests().get('r-leg2')
+    assert fetched is not None
+    assert fetched.kind == 'agent'
+
+
+def test_sqlite_backtests_roundtrips_kind_agent_explicit(observability_storage):
+    """insert(result) without setting kind → dataclass defaults to 'agent' → roundtrips."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    storage.backtests().create_session(
+        's-default', '2025-01-01', '2025-01-10', ['a1'])
+    r = BacktestResult(
+        id='r-default', session_id='s-default', agent_id='a1',
+        persona_id=None, model_id=None,
+        start_date='2025-01-01', end_date='2025-01-10',
+        initial_capital=100_000.0,
+        stats=BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                            win_rate=0, max_daily_loss_pct=0,
+                            total_return_pct=0, final_equity=100_000),
+        zone_stats=[], quality_gate_label='pass',
+        quality_gate_criteria={},
+        # kind omitted → dataclass default 'agent'
+    )
+    storage.backtests().insert(r)
+    fetched = storage.backtests().get('r-default')
+    assert fetched.kind == 'agent'
