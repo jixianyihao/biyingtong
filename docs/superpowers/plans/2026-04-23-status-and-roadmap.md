@@ -14,7 +14,7 @@
 | §3 TDX 集成 | tdx_service.py + scripts/setup/load_kline + load_index + load_financial + refresh_stock_status | ✅ |
 | §4 Agent 设计（persona×model×rules） | 6 personas + 10 models + AgentStore.create_from_persona | ✅ |
 | §5 LLM 集成（vendor-neutral） | 4 adapters: ClaudeLLM (含 base_url+auth_token) / OpenAILLM (含 extra_body) / GeminiLLM / MockLLM + factory.build_llm | ✅ |
-| §6.1-6.2 Backtest 引擎 (LLM 模式) | BacktestRunner + Book(T+1+commission) + multi_agent_runner | ✅ |
+| §6.1-6.2 Backtest 引擎 (LLM 模式) | Legacy BacktestRunner + **新 VnpyBacktestRunner (Batch B framework-first)** — `?engine=vnpy` 走 vnpy.BacktestingEngine + LLMPortfolioStrategy | ✅ |
 | §6.3 Backtest 引擎 (Rule 模式) | — | ❌ |
 | §6.4 Baselines | buy_and_hold + equal_weight + csi300 + 并行 run_all | ✅ |
 | §7 两层 Validation 规则 | RedLine + 4 handlers (position_max_pct/ban_st/max_holdings/daily_loss_limit_pct) + audit log | ✅ |
@@ -357,6 +357,10 @@ P3-F 等用户明确同意 + 独立排期。
 - `2026-04-23-p3d-sse-events.md` ✅ Done 2026-04-23
 - P3-E + quickwins (no dedicated plan — 3 parallel subagents on `feature/p3e-quickwins`) ✅ Done 2026-04-23
 - `2026-04-23-p3f-phase1-deploy-no-money.md` ✅ Done 2026-04-23（零真金险 infra）
+- **Framework-first 硬约束**（2026-04-24 用户 audit，memory/framework_first_principle.md）：
+  - Batch A ✅ Done：`get_technical` talib/numpy + `load_financial` 启动流程自动加载
+  - Batch B ✅ Done：VnpyBacktestRunner 并存路径 + `engine=legacy|vnpy` toggle + parity test
+  - Batch C 🟡 Pending：subscribe_hq 替代轮询 + 动态股池 + 资金流数据 + 5m bar BarGenerator
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
