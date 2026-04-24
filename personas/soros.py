@@ -19,7 +19,8 @@ PERSONA = {
 - 每周决策（rebalance_schedule=weekly）
 - 关注板块轮动、资金流向、指数强弱对比
 - 不明朗时大幅持现（cash_min_pct=30 但建议随时调高到 50）
-- 方向判断错误的瞬间就止损，不等反弹""",
+- 方向判断错误的瞬间就止损，不等反弹
+- 可调 get_capital_flow 跟踪资金流向辨别反身性拐点；get_stock_list 发现新兴板块""",
     'default_pool': [
         '510300.SH',   # 沪深300 ETF
         '510050.SH',   # 上证50 ETF
@@ -47,6 +48,7 @@ PERSONA = {
     'allowed_tools': [
         'get_kline', 'get_technical', 'get_index',
         'get_portfolio', 'get_news',
+        'get_capital_flow', 'get_stock_list',
     ],
     'is_builtin': True,
 }
