@@ -46,9 +46,22 @@ class AgentRunner:
         market_context: dict,
         mark_prices: dict,
         market_snapshot: dict | None = None,
+        on_event=None,
     ) -> list[dict]:
-        """Return list of executed (validated/modified) decisions."""
+        """Return list of executed (validated/modified) decisions.
+
+        If ``on_event`` is provided, it is called with event dicts of kind
+        ``tool_call``, ``decision``, or ``blocked`` as the daily loop runs.
+        Each event includes ``kind``, ``agent_id``, ``date``, and kind-specific
+        fields. See P3-D SSE plan.
+        """
         import storage
+
+        def _emit(kind: str, **kwargs):
+            if on_event is None:
+                return
+            on_event({'kind': kind, 'agent_id': agent_id,
+                      'date': date, **kwargs})
 
         agent = storage.agents().get(agent_id)
         if agent is None:
@@ -164,6 +177,24 @@ class AgentRunner:
                         'reasoning': decision.get('reason')
                                      or decision.get('reasoning'),
                     })
+                    if result.outcome == 'rejected':
+                        reason_text = '; '.join(
+                            v.reason for v in result.violations
+                        ) if result.violations else 'rejected by validation'
+                        _emit('blocked',
+                              decision_input={
+                                  'action': decision.get('action'),
+                                  'code': decision.get('code'),
+                                  'shares': decision.get('shares'),
+                              },
+                              reason=reason_text)
+                    else:
+                        _emit('decision',
+                              action=decision.get('action'),
+                              code=decision.get('code'),
+                              shares=decision.get('shares'),
+                              price=decision.get('price'),
+                              outcome=result.outcome)
                     if result.outcome != 'rejected' and result.decision_out:
                         decisions_executed.append(result.decision_out)
                     terminated = True
@@ -174,6 +205,8 @@ class AgentRunner:
                     'name': call.name,
                     'input': call.input or {},
                 })
+                _emit('tool_call', tool_name=call.name,
+                      tool_input=call.input or {})
                 # Execute the real tool via tools registry
                 entry = allowed.get(call.name)
                 if entry is None:
