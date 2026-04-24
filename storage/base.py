@@ -337,3 +337,65 @@ class BaselineResultStore(Protocol):
         ...
     def get(self, result_id: str): ...
     def list_for_session(self, session_id: str) -> list: ...
+
+
+# --- Added in P3-F Phase 1 ---
+
+
+@dataclass
+class TradeProposal:
+    """A trade proposal emitted by a deployed agent. Awaits user approval —
+    NEVER auto-executes in Phase 1."""
+    id: str
+    agent_id: str
+    decision_at: str          # ISO datetime when agent made the decision
+    action: str               # 'buy' | 'sell' | 'hold'
+    status: str               # 'pending' | 'approved' | 'rejected' | 'expired'
+    code: str | None = None
+    shares: int | None = None
+    price: float | None = None
+    reason: str | None = None
+    thinking: str | None = None
+    created_at: str | None = None
+    decided_by: str | None = None
+    decided_at: str | None = None
+
+
+@dataclass
+class DeployedAgent:
+    """An agent currently/previously running as a subprocess."""
+    agent_id: str
+    pid: int
+    started_at: str
+    status: str               # 'running' | 'stopped' | 'crashed'
+    schedule: str
+
+
+@runtime_checkable
+class TradeProposalStore(Protocol):
+    def init_schema(self) -> None: ...
+    def insert(self, proposal: TradeProposal) -> None: ...
+    def get(self, proposal_id: str) -> TradeProposal | None: ...
+    def list_pending(self, agent_id: str | None = None,
+                     limit: int = 100) -> list:
+        """Pending proposals only. Optionally filter by agent."""
+        ...
+    def list_for_agent(self, agent_id: str, limit: int = 100) -> list: ...
+    def update_status(self, proposal_id: str, status: str,
+                      decided_by: str | None = None) -> bool:
+        """Returns True if a row was updated. Sets decided_at to now."""
+        ...
+
+
+@runtime_checkable
+class DeployedAgentStore(Protocol):
+    def init_schema(self) -> None: ...
+    def upsert(self, agent_id: str, pid: int, schedule: str) -> None:
+        """Insert or replace. Always sets status='running'."""
+        ...
+    def get(self, agent_id: str) -> DeployedAgent | None: ...
+    def list_running(self) -> list:
+        """Currently-running deployments only."""
+        ...
+    def mark_stopped(self, agent_id: str) -> None: ...
+    def mark_crashed(self, agent_id: str) -> None: ...

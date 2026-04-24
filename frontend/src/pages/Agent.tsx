@@ -12,7 +12,9 @@ import {
 import type { Agent, ModelInfo, Persona } from '../api/types';
 import { AgentEditModal } from '../components/AgentEditModal';
 import { AgentDeleteDialog } from '../components/AgentDeleteDialog';
+import { DeployButton } from '../components/DeployButton';
 import { PersonaFormModal } from '../components/PersonaFormModal';
+import { ProposalsPanel } from '../components/ProposalsPanel';
 
 // ─── styling helpers ───────────────────────────────────────────────────────
 const inputCls =
@@ -520,6 +522,18 @@ function AgentDetail({
             </table>
           </div>
         )}
+      </div>
+
+      {/* deploy management */}
+      <div>
+        <div className={sectionLabelCls}>部署管理 · DEPLOY</div>
+        <DeployButton agentId={agent.id} />
+      </div>
+
+      {/* pending proposals — this agent only */}
+      <div>
+        <div className={sectionLabelCls}>待审批提议 · PENDING PROPOSALS</div>
+        <ProposalsPanel agentId={agent.id} />
       </div>
 
       {/* recent audit events */}

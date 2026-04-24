@@ -4,6 +4,8 @@ import type {
   BacktestResult,
   CancelJobResponse,
   CreatePersonaBody,
+  DeployResponse,
+  DeployStatus,
   JobStatus,
   ModelInfo,
   MonthlyReturnsResponse,
@@ -17,6 +19,7 @@ import type {
   StrategyDescriptor,
   StrategyRating,
   ThinkingResponse,
+  TradeProposal,
   TradesResponse,
   UpdateAgentBody,
   UpdatePersonaBody,
@@ -127,6 +130,28 @@ export const api = {
       { method: 'POST' }),
   deleteBacktest: (resultId: string) =>
     request<void>(`/api/backtests/${resultId}`, { method: 'DELETE' }),
+  deployAgent: (id: string, body?: { schedule?: string }) =>
+    request<DeployResponse>(`/api/agents/${id}/deploy`, {
+      method: 'POST', body: JSON.stringify(body ?? {}),
+    }),
+  stopAgent: (id: string) =>
+    request<{ agent_id: string; status: string }>(
+      `/api/agents/${id}/stop`, { method: 'POST' }),
+  deployStatus: (id: string) =>
+    request<DeployStatus>(`/api/agents/${id}/deploy_status`),
+  listProposals: (params: { status?: string; agent_id?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params.status) q.set('status', params.status);
+    if (params.agent_id) q.set('agent_id', params.agent_id);
+    if (params.limit != null) q.set('limit', String(params.limit));
+    return request<TradeProposal[]>(`/api/proposals?${q.toString()}`);
+  },
+  approveProposal: (id: string) =>
+    request<TradeProposal>(`/api/proposals/${id}/approve`,
+      { method: 'POST' }),
+  rejectProposal: (id: string) =>
+    request<TradeProposal>(`/api/proposals/${id}/reject`,
+      { method: 'POST' }),
 };
 
 // Re-export types for convenience

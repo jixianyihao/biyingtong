@@ -521,3 +521,49 @@ def test_sse_stream_notfound_for_unknown_session(observability_storage, client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'event: notfound' in body
+
+
+def test_blocked_event_reason_joins_multiple_violations(observability_storage):
+    """When two rules fire simultaneously, blocked.reason concatenates both
+    violation reasons with '; '."""
+    from agents.runner import AgentRunner
+    from llm.mock import MockLLM
+    import storage
+
+    # Configure redlines so BOTH position_max_pct and max_holdings reject.
+    #  - position_max_pct=0 → forbids any buy ("forbids any buy")
+    #  - max_holdings=0    → forbids opening any new position
+    current = storage.redline().get()
+    storage.redline().set({**current, 'position_max_pct': 0.0,
+                           'max_holdings': 0})
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-multi-violation', initial_capital=1_000_000.0,
+    )
+    script = [{
+        'text': 'trying',
+        'tool_calls': [{
+            'id': 'r1', 'name': 'place_decision',
+            'input': {'action': 'buy', 'code': '600519.SH', 'qty': 100,
+                      'reason': 'x', 'thinking': 'x'},
+        }],
+        'stop_reason': 'tool_use',
+    }]
+    events = []
+    AgentRunner(llm=MockLLM(script)).run_day(
+        agent_id=agent.id, date='2025-01-03',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'600519.SH': 100.0},
+        on_event=events.append,
+    )
+    blocked = [e for e in events if e['kind'] == 'blocked']
+    assert len(blocked) == 1
+    reason = blocked[0]['reason']
+    # Joiner between violations
+    assert '; ' in reason
+    # Verify both handler reasons are represented
+    assert 'forbids any buy' in reason          # from position_max_pct
+    assert 'cap' in reason                      # from max_holdings
+    # Double-check both rule ids are reflected (substring check)
+    assert len(reason.split('; ')) >= 2

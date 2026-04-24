@@ -468,3 +468,46 @@ def test_delete_persona_409_when_agent_references_it(observability_storage, clie
 def test_delete_persona_404_on_missing(observability_storage, client):
     resp = client.delete('/api/personas/nope')
     assert resp.status_code == 404
+
+
+def test_put_persona_system_prompt_cascade_bumps_ALL_referencing_agents(
+    observability_storage, client,
+):
+    """Changing a persona's system_prompt must bump every referencing agent's
+    current_prompt_version_id, not just one of them."""
+    import storage
+    from storage.base import Persona
+    storage.personas().upsert(Persona(
+        id='c-multi', name='multi', style_desc='x', system_prompt='v1',
+        default_pool=[], pool_filter=None, default_schedule='daily',
+        default_rules={}, allowed_tools=[], is_builtin=False,
+    ))
+    # Three agents referencing the same persona
+    agents = [
+        storage.agents().create_from_persona(
+            persona_id='c-multi', model_id='claude-opus-4-7',
+            display_name=f'agent-{i}', initial_capital=1_000_000.0,
+        )
+        for i in range(3)
+    ]
+    # Baseline: each has exactly one prompt_version row
+    for a in agents:
+        assert len(storage.prompt_versions().list_for_agent(a.id)) == 1
+    original_pv_ids = {a.id: storage.agents().get(a.id).current_prompt_version_id
+                       for a in agents}
+
+    resp = client.put('/api/personas/c-multi',
+                      json={'system_prompt': 'v2 cascade'})
+    assert resp.status_code == 200
+
+    # EVERY agent's current_prompt_version_id must now differ from before,
+    # AND each must have 2 versions (v1 + v2).
+    for a in agents:
+        versions = storage.prompt_versions().list_for_agent(a.id)
+        assert len(versions) == 2, (
+            f'agent {a.id}: expected 2 versions after cascade, got {len(versions)}'
+        )
+        assert versions[1].system_prompt == 'v2 cascade'
+        fresh = storage.agents().get(a.id)
+        assert fresh.current_prompt_version_id == versions[1].id
+        assert fresh.current_prompt_version_id != original_pv_ids[a.id]

@@ -306,3 +306,34 @@ export type CancelJobResponse = {
   session_id: string;
   state: string;
 };
+
+export type TradeProposal = {
+  id: string;
+  agent_id: string;
+  created_at: string | null;
+  decision_at: string;
+  action: 'buy' | 'sell' | 'hold';
+  code: string | null;
+  shares: number | null;
+  price: number | null;
+  reason: string | null;
+  thinking: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  decided_by: string | null;
+  decided_at: string | null;
+};
+
+export type DeployStatus = {
+  agent_id: string;
+  pid: number;
+  started_at: string;
+  status: 'running' | 'stopped' | 'crashed';
+  schedule: string;
+};
+
+export type DeployResponse = {
+  agent_id: string;
+  pid: number;
+  schedule: string;
+  status: string;
+};
