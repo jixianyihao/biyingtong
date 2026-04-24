@@ -105,3 +105,41 @@ def test_tdx_adapter_rejects_sell_action_with_zero_shares(monkeypatch):
     assert r.success is False
     assert r.error and 'shares' in r.error.lower()
     assert calls == []
+
+
+def test_get_adapter_default_is_dry_run(monkeypatch):
+    monkeypatch.delenv('BIYINGTONG_EXECUTION_MODE', raising=False)
+    import importlib
+    import execution
+    importlib.reload(execution)
+    adapter = execution.get_adapter()
+    assert adapter.mode == 'dry_run'
+
+
+def test_get_adapter_live_when_env_set(monkeypatch):
+    monkeypatch.setenv('BIYINGTONG_EXECUTION_MODE', 'live')
+    import importlib
+    import execution
+    importlib.reload(execution)
+    adapter = execution.get_adapter()
+    assert adapter.mode == 'live'
+
+
+def test_get_adapter_explicit_dry_run(monkeypatch):
+    monkeypatch.setenv('BIYINGTONG_EXECUTION_MODE', 'dry_run')
+    import importlib
+    import execution
+    importlib.reload(execution)
+    adapter = execution.get_adapter()
+    assert adapter.mode == 'dry_run'
+
+
+def test_get_adapter_unknown_mode_falls_back_to_dry_run_with_warning(monkeypatch, capsys):
+    monkeypatch.setenv('BIYINGTONG_EXECUTION_MODE', 'prod-yolo')
+    import importlib
+    import execution
+    importlib.reload(execution)
+    adapter = execution.get_adapter()
+    assert adapter.mode == 'dry_run'  # safe fallback — never silently go live on typo
+    captured = capsys.readouterr()
+    assert 'prod-yolo' in captured.out or 'prod-yolo' in captured.err
