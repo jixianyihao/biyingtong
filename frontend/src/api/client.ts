@@ -10,6 +10,9 @@ import type {
   PromptVersion,
   SessionComposite,
   SessionSummary,
+  StartRuleBacktestBody,
+  StartRuleBacktestResponse,
+  StrategyDescriptor,
   StrategyRating,
   ThinkingResponse,
   TradesResponse,
@@ -110,6 +113,11 @@ export const api = {
     }),
   deletePersona: (id: string) =>
     request<void>(`/api/personas/${id}`, { method: 'DELETE' }),
+  strategies: () => request<StrategyDescriptor[]>('/api/strategies'),
+  startRuleBacktest: (body: StartRuleBacktestBody) =>
+    request<StartRuleBacktestResponse>('/api/backtests/rule', {
+      method: 'POST', body: JSON.stringify(body),
+    }),
 };
 
 // Re-export types for convenience

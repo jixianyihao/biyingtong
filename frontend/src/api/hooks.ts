@@ -233,3 +233,19 @@ export const useDeletePersona = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['personas'] }),
   });
 };
+
+// ─── P3-C rule mode ───────────────────────────────────────────────────────
+
+export const useStrategies = () =>
+  useQuery({ queryKey: ['strategies'], queryFn: api.strategies });
+
+export const useStartRuleBacktest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.startRuleBacktest,
+    onSuccess: (data) => {
+      // Invalidate session query so ResultsTable picks up the new result row
+      qc.invalidateQueries({ queryKey: ['session', data.session_id] });
+    },
+  });
+};
