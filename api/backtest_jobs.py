@@ -53,9 +53,23 @@ def stream_backtest_job(session_id):
     Stream-level: notfound, timeout, done.
     """
     import json
-    import time
     from flask import Response
     from backtest.jobs import get_status
+
+    def _coop_sleep(s: float) -> None:
+        """Cooperative sleep that yields to eventlet/gevent/threading workers.
+
+        Lazy-import ``socketio`` from ``app`` to avoid an import cycle:
+        this blueprint is registered while ``app`` is still being built.
+        Falls back to ``time.sleep`` if ``app.socketio`` is unavailable
+        (e.g. in unit tests that spin up a bare Flask app).
+        """
+        try:
+            from app import socketio  # lazy to dodge import cycle
+            socketio.sleep(s)
+        except Exception:
+            import time as _time
+            _time.sleep(s)
 
     def _status_snapshot(status) -> str:
         payload = {
@@ -102,7 +116,7 @@ def stream_backtest_job(session_id):
                 yield 'event: done\ndata: {}\n\n'
                 return
 
-            time.sleep(0.5)
+            _coop_sleep(0.5)
             iterations += 1
         yield 'event: timeout\ndata: {}\n\n'
 

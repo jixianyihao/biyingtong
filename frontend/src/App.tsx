@@ -2,10 +2,9 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
-import { ComingSoon } from './pages/ComingSoon';
 
 // Lazy-loaded route pages — split each into its own chunk to reduce
-// initial bundle size. ComingSoon stays eager (tiny + reused).
+// initial bundle size.
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
 const Agent = lazy(() => import('./pages/Agent').then((m) => ({ default: m.Agent })));
 const PromptHistory = lazy(() => import('./pages/PromptHistory').then((m) => ({ default: m.PromptHistory })));
@@ -14,6 +13,7 @@ const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit
 const Screener = lazy(() => import('./pages/Screener').then((m) => ({ default: m.Screener })));
 const Editor = lazy(() => import('./pages/Editor').then((m) => ({ default: m.Editor })));
 const BacktestLab = lazy(() => import('./pages/BacktestLab').then((m) => ({ default: m.BacktestLab })));
+const Live = lazy(() => import('./pages/Live').then((m) => ({ default: m.Live })));
 
 function PageFallback() {
   return (
@@ -45,7 +45,7 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/agent" element={<Agent />} />
                 <Route path="/agent/:agentId/prompts" element={<PromptHistory />} />
-                <Route path="/live" element={<ComingSoon label="实盘交易" />} />
+                <Route path="/live" element={<Live />} />
                 <Route path="/risk" element={<Risk />} />
                 <Route path="/audit" element={<Audit />} />
                 <Route path="/screener" element={<Screener />} />
