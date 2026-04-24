@@ -227,7 +227,7 @@
 
 ---
 
-### 🟡 P3-C：Rule mode 回测对照（~2 天）
+### ✅ P3-C：Rule mode 回测对照 — Done 2026-04-23
 
 **问题：** 没法回答"LLM 真比硬编码 MA 金叉强吗"——所有回测都走 LLMStrategy。
 
@@ -240,7 +240,15 @@
 - 前端 BacktestLab 加 tab："Agent 模式 / 规则模式"
 - 同 session 可同时跑 agent + rule strategies + baselines，结果三方对比
 
-**完成判据：** 可在同一 session 里 head-to-head: linyuan agent vs MA crossover vs csi300 baseline。
+**完成判据：** 可在同一 session 里 head-to-head: linyuan agent vs MA crossover vs csi300 baseline。✅
+
+**交付（commits cded3ec..0137ed6 on feature/p3c-rule-mode，9 commits）：**
+- Backend: `backtest/strategies/` 新模块（Strategy Protocol + StrategyDescriptor + registry）+ 3 策略（MACrossover / RSIBreakout / MACDDivergence，state-based）+ `RuleRunner`（镜像 BacktestRunner 结构）+ schema 加 `kind_str` 列 + 2 endpoints（POST /rule、GET /strategies）+ `_result_to_dict` 加 `kind` 字段
+- Frontend: types + client + hooks + BacktestLab tab 切换（Agent / Rule）+ RuleBacktestForm + ResultsTable kind-aware pill
+- 偏离 spec §6.3：不使用 vnpy `CtaTemplate`/`BacktestingEngine`，自写 Strategy Protocol 复用 Book 使数据出口统一（可 head-to-head 对比）
+- MACD 语义调整：用 MACD 线 vs 零轴（非 histogram 符号）— 更贴合趋势跟随
+- 测试: 27 P3-C 新增（4 schema + 4 MA + 7 RSI/MACD/registry + 3 RuleRunner + 3 storage + 6 API）+ 0 新回归（`pytest -q` = 517 passed，2 pre-existing TDX 失败与 P3-C 无关；frontend build 清洁）
+- 详细 plan: `2026-04-23-p3c-rule-mode.md`
 
 ---
 
@@ -312,6 +320,7 @@ P3-F 等用户明确同意 + 独立排期。
 - `2026-04-22-p2e-speedup.md` ✅ Done
 - `2026-04-23-p3a-backtest-observability.md` ✅ Done 2026-04-23
 - `2026-04-23-p3b-crud.md` ✅ Done 2026-04-23
+- `2026-04-23-p3c-rule-mode.md` ✅ Done 2026-04-23
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
