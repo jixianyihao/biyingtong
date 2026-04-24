@@ -252,3 +252,39 @@ export type StartRuleBacktestResponse = {
   result_id: string;
   state: string;
 };
+
+export type BacktestEventPhase = {
+  kind: 'phase'; ts: number; phase: string; session_id?: string;
+};
+export type BacktestEventProgress = {
+  kind: 'progress'; ts: number; agent_id: string; date: string;
+  equity?: number; pnl_pct?: number;
+};
+export type BacktestEventToolCall = {
+  kind: 'tool_call'; ts: number; agent_id: string; date: string;
+  tool_name: string; tool_input: Record<string, unknown>;
+};
+export type BacktestEventDecision = {
+  kind: 'decision'; ts: number; agent_id: string; date: string;
+  action: string; code?: string; shares?: number; price?: number;
+  outcome: string;
+};
+export type BacktestEventBlocked = {
+  kind: 'blocked'; ts: number; agent_id: string; date: string;
+  decision_input: Record<string, unknown>; reason: string;
+};
+export type BacktestEventBaselineDone = {
+  kind: 'baseline_done'; ts: number; baseline_name: string; result_id: string;
+};
+export type BacktestEventDone = {
+  kind: 'done'; ts: number; session_id?: string;
+};
+
+export type BacktestEvent =
+  | BacktestEventPhase
+  | BacktestEventProgress
+  | BacktestEventToolCall
+  | BacktestEventDecision
+  | BacktestEventBlocked
+  | BacktestEventBaselineDone
+  | BacktestEventDone;

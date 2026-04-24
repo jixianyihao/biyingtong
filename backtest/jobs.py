@@ -25,6 +25,16 @@ class JobStatus:
     submitted_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
+    events: list = field(default_factory=list)
+
+
+def emit_event(status: JobStatus, event: dict) -> None:
+    """Append an event to the job's event log. Auto-populates ts if missing.
+    Thread-safety: caller must ensure single-writer-per-job (jobs.py's worker
+    thread already provides this)."""
+    if 'ts' not in event:
+        event['ts'] = time.time()
+    status.events.append(event)
 
 
 _pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='bt-job')
@@ -69,9 +79,11 @@ def submit_backtest(
         try:
             status.state = 'running'
             status.started_at = time.time()
+            emit_event(status, {'kind': 'phase', 'phase': 'data_loading',
+                                'session_id': session_id})
 
             from llm.factory import build_llm
-            from backtest.multi_agent_runner import run_multi
+            import backtest.multi_agent_runner as _mar
 
             status.progress = 'building LLM adapters'
             import storage
@@ -83,29 +95,45 @@ def submit_backtest(
                 llm = build_llm(a.model_id)
                 configs.append({'agent_id': aid, 'llm': llm})
 
+            emit_event(status, {'kind': 'phase', 'phase': 'running',
+                                'session_id': session_id})
             status.progress = f'running {len(configs)} agents in parallel'
-            results = run_multi(
+
+            def _on_event(ev):
+                emit_event(status, ev)
+
+            results = _mar.run_multi(
                 session_id=session_id, agent_configs=configs,
                 start_date=start_date, end_date=end_date,
                 initial_capital=initial_capital, universe=universe,
+                on_event=_on_event,
             )
             status.agent_result_ids = [r.id for r in results]
 
             if include_baselines:
+                emit_event(status, {'kind': 'phase', 'phase': 'baselines',
+                                    'session_id': session_id})
                 status.progress = 'running baselines'
-                from backtest.baselines.runner import run_all
-                baselines = run_all(
+                import backtest.baselines.runner as _bl_runner
+                baselines = _bl_runner.run_all(
                     session_id=session_id,
                     start_date=start_date, end_date=end_date,
                     initial_capital=initial_capital, universe=universe,
                 )
+                for b in baselines:
+                    emit_event(status, {'kind': 'baseline_done',
+                                        'baseline_name': getattr(b, 'name', None),
+                                        'result_id': getattr(b, 'id', None)})
                 status.baseline_result_ids = [b.id for b in baselines]
 
             status.progress = 'done'
             status.state = 'complete'
+            emit_event(status, {'kind': 'done', 'session_id': session_id})
         except Exception as e:  # noqa: BLE001
             status.state = 'failed'
             status.error = f'{type(e).__name__}: {e}\n{traceback.format_exc()[:500]}'
+            emit_event(status, {'kind': 'failed', 'session_id': session_id,
+                                'error': status.error})
         finally:
             status.finished_at = time.time()
 

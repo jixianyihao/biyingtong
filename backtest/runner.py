@@ -44,7 +44,8 @@ class BacktestRunner:
             start_date: str, end_date: str,
             initial_capital: float | None = None,
             universe: list[str],
-            notes: str | None = None) -> BacktestResult:
+            notes: str | None = None,
+            on_event=None) -> BacktestResult:
         import storage
 
         cap = float(initial_capital or self._default_capital)
@@ -101,6 +102,7 @@ class BacktestRunner:
                 portfolio=portfolio, market_context={},
                 mark_prices=mark_prices,
                 market_snapshot=snapshot,
+                on_event=on_event,
             )
             per_day_thinking.append({
                 'date': d.strftime('%Y-%m-%d'),
@@ -146,6 +148,13 @@ class BacktestRunner:
                 'cash': book.cash,
                 'trade_count': trade_count_today, 'won': wins_today,
             })
+
+            if on_event:
+                on_event({
+                    'kind': 'progress', 'agent_id': agent_id,
+                    'date': d.strftime('%Y-%m-%d'),
+                    'equity': equity, 'pnl_pct': pnl_pct,
+                })
 
         # Aggregate + quality gate
         cutoff = '2099-12-31'

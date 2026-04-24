@@ -252,7 +252,7 @@
 
 ---
 
-### 🟢 P3-D：SSE 细粒度事件（~1.5 天）
+### ✅ P3-D：SSE 细粒度事件 — Done 2026-04-23
 
 **问题：** 当前 SSE 只发 job 状态。spec §15.6 要 7 种事件 (phase / progress per-day / tool_call / decision / blocked / baseline_done / done)。
 
@@ -264,7 +264,13 @@
 - SSE endpoint 重写按 spec 7 种事件分发
 - 前端 BacktestLab 加"实时 thinking 流"区域，实时展示 agent 调了哪些工具、做了什么决策
 
-**完成判据：** 用户回测过程中能实时看到 agent 在干什么，不用等结束。
+**完成判据：** 用户回测过程中能实时看到 agent 在干什么，不用等结束。✅
+
+**交付（commits c30a9f0..4bea154 on feature/p3d-sse-events，8 commits）：**
+- Backend: `JobStatus.events` append-only list + `emit_event` helper；`on_event: callable` 贯穿 AgentRunner → BacktestRunner → multi_agent_runner → jobs.py 回调链；jobs.py 发 phase/baseline_done/done 等关键节点事件；SSE endpoint 重写 cursor 流式输出 spec §15.6 的 7 种事件
+- Frontend: `BacktestEvent` discriminated union 7 种 + `useJobStatusStream` 加 `events` 状态 + `LiveEventLog` 组件 + BacktestLab running 阶段实时事件流面板
+- 测试: 16 P3-D 新增（3 emit helper + 4 AgentRunner events + 3 BacktestRunner forward + 2 jobs.py phase/baseline_done + 2 SSE endpoint + manual UI smoke 待做）+ 0 回归（`pytest -q` = 533 passed；frontend build 清洁）
+- 详细 plan: `2026-04-23-p3d-sse-events.md`
 
 ---
 
@@ -321,6 +327,7 @@ P3-F 等用户明确同意 + 独立排期。
 - `2026-04-23-p3a-backtest-observability.md` ✅ Done 2026-04-23
 - `2026-04-23-p3b-crud.md` ✅ Done 2026-04-23
 - `2026-04-23-p3c-rule-mode.md` ✅ Done 2026-04-23
+- `2026-04-23-p3d-sse-events.md` ✅ Done 2026-04-23
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
