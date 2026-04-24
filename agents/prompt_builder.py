@@ -15,6 +15,7 @@ def build_messages(
     market_context: dict,
     default_pool: list[str],
     market_snapshot: dict | None = None,
+    model_cutoff: str | None = None,
 ) -> list[Message]:
     """Return [system Message, user Message]."""
     cash = portfolio.get('cash', 0)
@@ -73,8 +74,20 @@ def build_messages(
             'buy / sell / hold 三选一，含理由与完整思考）。'
         )
     user_msg = '\n'.join(lines)
+
+    # Append cutoff disclaimer if available (spec §11.5)
+    if model_cutoff:
+        final_system = (
+            system_prompt
+            + f'\n\n[元信息] 今天是 {date}，你的训练数据截止于 {model_cutoff}。'
+            f'{model_cutoff} 之后发生的事件不在你的训练数据里——避免引用'
+            f'任何未来信息或未来事后才知道的结果，仅基于截止前的知识 + 上面提供的研究数据决策。'
+        )
+    else:
+        final_system = system_prompt
+
     return [
-        Message(role='system', content=system_prompt),
+        Message(role='system', content=final_system),
         Message(role='user', content=user_msg),
     ]
 

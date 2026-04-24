@@ -72,6 +72,9 @@ class AgentRunner:
             raise RuntimeError(f'agent {agent_id} has no prompt version')
         system_prompt = pv.system_prompt
 
+        model = storage.models().get(agent.model_id) if agent.model_id else None
+        model_cutoff = model.training_cutoff if model else None
+
         messages = build_messages(
             system_prompt=system_prompt,
             date=date,
@@ -79,6 +82,7 @@ class AgentRunner:
             market_context=market_context,
             default_pool=persona.default_pool if persona else [],
             market_snapshot=market_snapshot,
+            model_cutoff=model_cutoff,
         )
         p_hash = prompt_hash(messages)
         port_hash = _portfolio_hash(portfolio)

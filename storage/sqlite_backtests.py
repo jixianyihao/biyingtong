@@ -161,6 +161,20 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.close()
         return [_row_to_result(r) for r in rows]
 
+    def list_all(self, limit: int = 50):
+        con = sqlite3.connect(self._db_path)
+        try:
+            rows = con.execute(
+                f'SELECT {self._select_cols()} FROM backtest_results '
+                f'ORDER BY created_at DESC, rowid DESC LIMIT ?',
+                (limit,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        finally:
+            con.close()
+        return [_row_to_result(r) for r in rows]
+
     def list_for_session(self, session_id: str):
         con = sqlite3.connect(self._db_path)
         try:

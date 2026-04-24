@@ -132,9 +132,11 @@ def test_agent_health_recomputes(client, agent):
     assert data['trust_rating'] == 'A+'
 
 
-def test_backtests_require_agent_id(client):
+def test_backtests_without_agent_id_returns_global_list(client):
+    """Spec §15.4: no agent_id -> global most-recent list (was 400 pre-P3-E)."""
     resp = client.get('/api/backtests')
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    assert isinstance(resp.get_json(), list)
 
 
 def test_backtests_list_by_agent(client, agent, wired):

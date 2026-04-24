@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { RedLineBar } from './RedLineBar';
 
 const TITLES: Record<string, [string, string]> = {
   '/': ['我的盈亏工作台', 'My P&L Dashboard'],
@@ -52,9 +53,11 @@ export function TopBar() {
 
       <div style={{ flex: 1 }} />
 
+      <RedLineBar />
+
       <div
         className="mono"
-        style={{ fontSize: 10.5, color: 'var(--text-faint)', letterSpacing: '0.06em' }}
+        style={{ fontSize: 10.5, color: 'var(--text-faint)', letterSpacing: '0.06em', marginLeft: 8 }}
       >
         Vite · React 19 · TS
       </div>
