@@ -25,6 +25,16 @@ class JobStatus:
     submitted_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
+    events: list = field(default_factory=list)
+
+
+def emit_event(status: JobStatus, event: dict) -> None:
+    """Append an event to the job's event log. Auto-populates ts if missing.
+    Thread-safety: caller must ensure single-writer-per-job (jobs.py's worker
+    thread already provides this)."""
+    if 'ts' not in event:
+        event['ts'] = time.time()
+    status.events.append(event)
 
 
 _pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='bt-job')
