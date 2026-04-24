@@ -209,6 +209,68 @@ class TDXService:
             print(f"Stock list error: {e}")
             return []
 
+    # ---- Realtime push subscription ----
+    def subscribe_hq(self, codes: list, callback):
+        """Wrap tq.subscribe_hq. Returns handle or None if disconnected."""
+        if not self._connected:
+            return None
+        try:
+            return tq.subscribe_hq(stock_list=codes, callback=callback)
+        except Exception as e:  # noqa: BLE001
+            print(f"subscribe_hq error: {e}")
+            return None
+
+    def unsubscribe_hq(self, handle) -> bool:
+        if not handle:
+            return False
+        try:
+            tq.unsubscribe_hq(handle)
+            return True
+        except Exception as e:  # noqa: BLE001
+            print(f"unsubscribe_hq error: {e}")
+            return False
+
+    # ---- Capital flow / sector data ----
+    def get_gpjy_value(self, codes: list, fields: list,
+                        start_time: str, end_time: str) -> dict:
+        self.ensure_connected()
+        try:
+            return tq.get_gpjy_value(
+                stock_list=codes, field_list=fields,
+                start_time=start_time, end_time=end_time,
+            ) or {}
+        except Exception as e:  # noqa: BLE001
+            print(f"get_gpjy_value error: {e}")
+            return {}
+
+    def get_bkjy_value(self, codes: list, fields: list,
+                        start_time: str, end_time: str) -> dict:
+        self.ensure_connected()
+        try:
+            return tq.get_bkjy_value(
+                stock_list=codes, field_list=fields,
+                start_time=start_time, end_time=end_time,
+            ) or {}
+        except Exception as e:  # noqa: BLE001
+            print(f"get_bkjy_value error: {e}")
+            return {}
+
+    def get_stock_list_in_sector(self, sector: str) -> list:
+        self.ensure_connected()
+        try:
+            return list(tq.get_stock_list_in_sector(sector) or [])
+        except Exception as e:  # noqa: BLE001
+            print(f"get_stock_list_in_sector error: {e}")
+            return []
+
+    def get_sector_list(self) -> list:
+        self.ensure_connected()
+        try:
+            return list(tq.get_sector_list() or [])
+        except Exception as e:  # noqa: BLE001
+            print(f"get_sector_list error: {e}")
+            return []
+
     def get_stock_info(self, stock_code):
         """Get basic stock information."""
         self.ensure_connected()
