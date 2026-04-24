@@ -299,3 +299,139 @@ def test_backtest_runner_on_event_none_is_noop(observability_storage, monkeypatc
         universe=['600519.SH'], initial_capital=1_000_000.0,
     )
     assert r is not None
+
+
+def test_submit_backtest_emits_phase_events(observability_storage, monkeypatch):
+    """jobs._run wires on_event into status.events; phase + done emitted."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    from backtest.jobs import submit_backtest, get_status
+    import time
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-jobs', initial_capital=1_000_000.0,
+    )
+
+    # Stub run_multi to be instant + verify on_event is passed through
+    def _fake_run_multi(*, session_id, agent_configs, start_date, end_date,
+                       initial_capital, universe, on_event=None, **_kw):
+        if on_event:
+            on_event({'kind': 'progress', 'agent_id': agent.id,
+                      'date': start_date, 'equity': initial_capital,
+                      'pnl_pct': 0.0})
+        stats = BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                              win_rate=0, max_daily_loss_pct=0,
+                              total_return_pct=0, final_equity=initial_capital)
+        r = BacktestResult(
+            id='r-fake-jobs', session_id=session_id, agent_id=agent.id,
+            persona_id=None, model_id=None,
+            start_date=start_date, end_date=end_date,
+            initial_capital=initial_capital, stats=stats, zone_stats=[],
+            quality_gate_label='pass', quality_gate_criteria={},
+        )
+        storage.backtests().insert(r)
+        return [r]
+
+    # Stub baselines to skip
+    import backtest.multi_agent_runner as mar
+    monkeypatch.setattr(mar, 'run_multi', _fake_run_multi)
+    import backtest.baselines.runner as bl_runner
+    monkeypatch.setattr(bl_runner, 'run_all', lambda *a, **kw: [])
+
+    submit_backtest(
+        session_id='s-jobs-evt', agent_ids=[agent.id],
+        start_date='2025-01-02', end_date='2025-01-08',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+        include_baselines=False,
+    )
+    # Wait for completion
+    for _ in range(100):
+        st = get_status('s-jobs-evt')
+        if st and st.state in ('complete', 'failed'):
+            break
+        time.sleep(0.1)
+    st = get_status('s-jobs-evt')
+    assert st.state == 'complete', f'state={st.state}, error={st.error}'
+
+    kinds = [e['kind'] for e in st.events]
+    # Must see at least phase events + the forwarded progress + done
+    assert 'phase' in kinds
+    assert 'done' in kinds
+    assert 'progress' in kinds  # forwarded from the stubbed run_multi
+    # Phase 'running' must be present
+    phase_events = [e for e in st.events if e['kind'] == 'phase']
+    assert any(p['phase'] == 'running' for p in phase_events)
+
+
+def test_submit_backtest_emits_baseline_done(observability_storage, monkeypatch):
+    """When include_baselines=True, each baseline emits a baseline_done event."""
+    import storage
+    from backtest.base import BacktestResult, BacktestStats
+    from backtest.baselines.base import BaselineResult
+    from backtest.jobs import submit_backtest, get_status
+    import time
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-bl', initial_capital=1_000_000.0,
+    )
+
+    def _fake_run_multi(*, session_id, agent_configs, start_date, end_date,
+                       initial_capital, universe, on_event=None, **_kw):
+        stats = BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                              win_rate=0, max_daily_loss_pct=0,
+                              total_return_pct=0, final_equity=initial_capital)
+        r = BacktestResult(
+            id='r-bl-fake', session_id=session_id, agent_id=agent.id,
+            persona_id=None, model_id=None,
+            start_date=start_date, end_date=end_date,
+            initial_capital=initial_capital, stats=stats, zone_stats=[],
+            quality_gate_label='pass', quality_gate_criteria={},
+        )
+        storage.backtests().insert(r)
+        return [r]
+
+    def _fake_run_all(*, session_id, start_date, end_date,
+                     initial_capital, universe, **_kw):
+        stats = BacktestStats(sharpe=0, max_drawdown_pct=0, trade_count=0,
+                              win_rate=0, max_daily_loss_pct=0,
+                              total_return_pct=0, final_equity=initial_capital)
+        return [
+            BaselineResult(
+                id='b-fake-1', session_id=session_id, name='buy_and_hold',
+                start_date=start_date, end_date=end_date,
+                initial_capital=initial_capital, stats=stats,
+                final_equity=initial_capital,
+            ),
+            BaselineResult(
+                id='b-fake-2', session_id=session_id, name='csi300',
+                start_date=start_date, end_date=end_date,
+                initial_capital=initial_capital, stats=stats,
+                final_equity=initial_capital,
+            ),
+        ]
+
+    import backtest.multi_agent_runner as mar
+    monkeypatch.setattr(mar, 'run_multi', _fake_run_multi)
+    import backtest.baselines.runner as bl_runner
+    monkeypatch.setattr(bl_runner, 'run_all', _fake_run_all)
+
+    submit_backtest(
+        session_id='s-bl-evt', agent_ids=[agent.id],
+        start_date='2025-01-02', end_date='2025-01-08',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+        include_baselines=True,
+    )
+    for _ in range(100):
+        st = get_status('s-bl-evt')
+        if st and st.state == 'complete':
+            break
+        time.sleep(0.1)
+    st = get_status('s-bl-evt')
+    assert st.state == 'complete'
+
+    bl_events = [e for e in st.events if e['kind'] == 'baseline_done']
+    assert len(bl_events) == 2
+    names = {e['baseline_name'] for e in bl_events}
+    assert names == {'buy_and_hold', 'csi300'}
