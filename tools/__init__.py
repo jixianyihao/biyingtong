@@ -6,6 +6,7 @@ from llm.base import ToolSpec
 from . import (
     get_financials, get_index, get_kline, get_news, get_portfolio,
     get_snapshot, get_technical, place_decision,
+    get_stock_list, get_capital_flow,
 )
 
 def _bind(mod):
@@ -28,6 +29,8 @@ ALL_TOOLS: dict = {
     'get_index': (get_index.SPEC, _bind(get_index)),
     'get_portfolio': (get_portfolio.SPEC, _bind(get_portfolio)),
     'get_news': (get_news.SPEC, _bind(get_news)),
+    'get_stock_list': (get_stock_list.SPEC, _bind(get_stock_list)),
+    'get_capital_flow': (get_capital_flow.SPEC, _bind(get_capital_flow)),
 }
 
 
