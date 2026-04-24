@@ -288,3 +288,20 @@ export type BacktestEvent =
   | BacktestEventBlocked
   | BacktestEventBaselineDone
   | BacktestEventDone;
+
+export type MonthlyReturn = {
+  year: number;
+  month: number;
+  return_pct: number;
+  days: number;
+};
+
+export type MonthlyReturnsResponse = {
+  result_id: string;
+  monthly_returns: MonthlyReturn[];
+};
+
+export type CancelJobResponse = {
+  session_id: string;
+  state: string;
+};
