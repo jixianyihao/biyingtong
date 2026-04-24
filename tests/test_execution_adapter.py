@@ -31,3 +31,28 @@ def test_execution_adapter_protocol_runtime_checkable():
             return 'dry_run'
 
     assert isinstance(Compliant(), ExecutionAdapter)
+
+
+def _make_proposal(action='buy', code='600519.SH', shares=100, price=237.5):
+    from storage.base import TradeProposal
+    return TradeProposal(
+        id='prop-1', agent_id='agent-1',
+        created_at=None, decision_at='2026-04-24T09:30:00',
+        action=action, code=code, shares=shares, price=price,
+        reason='test', thinking='t', status='pending',
+        decided_by=None, decided_at=None,
+    )
+
+
+def test_mock_adapter_always_succeeds():
+    from execution.mock import MockExecutionAdapter
+    adapter = MockExecutionAdapter()
+    assert adapter.mode == 'dry_run'
+    r = adapter.place_order(_make_proposal())
+    assert r.success is True
+    assert r.mode == 'dry_run'
+    assert r.order_id is not None and r.order_id.startswith('mock-')
+    assert r.filled_qty == 100
+    assert r.filled_price == 237.5
+    assert r.error is None
+    assert r.executed_at is not None
