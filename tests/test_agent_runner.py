@@ -170,3 +170,35 @@ def test_run_day_accepts_market_snapshot(wired, seeded_agent):
     first_call = llm.calls[0]
     user_msg = [m for m in first_call['messages'] if m.role == 'user'][0]
     assert '1600' in user_msg.content
+
+
+def test_agent_rules_override_reaches_validation(wired, seeded_agent):
+    """agents/runner.py must pass agent.rules_override to ValidationEngine.validate().
+
+    Regression guard for the 'rules_override 断链' bug: prior to fix, per-agent
+    rules were silently dropped and every agent ran under the global RedLine,
+    defeating persona-level 风控 differentiation.
+
+    Setup: global RedLine position_max_pct=15% (set in fixture). Override this
+    specific agent to 5%. A buy of 1000 shares @ 237 = 237k (23.7% of 1M equity)
+    must shrink based on the TIGHTER 5% cap, not the 15% global.
+    """
+    import storage
+    from agents.runner import AgentRunner
+    storage.agents().update(
+        seeded_agent.id, rules_override={'position_max_pct': 5.0},
+    )
+    llm = _mock_llm_with_decision(code='600519.SH', shares=1000, price=237.0)
+    runner = AgentRunner(llm=llm)
+    out = runner.run_day(
+        agent_id=seeded_agent.id, date='2024-03-15',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'600519.SH': 237.0},
+    )
+    # 5% cap → 50k → 50_000 / 237 ≈ 210.97 → lot-round down to 200 shares.
+    # Without the fix (15% global applied), result would be 600 shares.
+    assert len(out) == 1
+    assert out[0]['shares'] == 200, (
+        f"Expected 200 shares (5% override applied) but got {out[0]['shares']}. "
+        f"Got 600 means rules_override wasn't passed to validate()."
+    )

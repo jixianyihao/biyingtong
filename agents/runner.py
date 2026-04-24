@@ -167,6 +167,7 @@ class AgentRunner:
                         decision=decision,
                         portfolio=portfolio,
                         market_context=market_context,
+                        rules_override=agent.rules_override,
                         persona_id=agent.persona_id,
                         model_id=agent.model_id,
                     )
