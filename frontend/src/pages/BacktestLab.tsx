@@ -10,6 +10,8 @@ import {
   usePersonas,
   useSession,
   useStartBacktest,
+  useStartRuleBacktest,
+  useStrategies,
 } from '../api/hooks';
 import type {
   BacktestResult,
@@ -383,7 +385,7 @@ function ResultsTable({ session }: { session: SessionComposite }) {
   type Row = {
     key: string;
     name: string;
-    kind: 'agent' | 'baseline';
+    kind: 'agent' | 'baseline' | 'rule';
     persona?: string | null;
     totalReturn: number;
     trades: number;
@@ -395,8 +397,8 @@ function ResultsTable({ session }: { session: SessionComposite }) {
 
   const agentRows: Row[] = session.agents.map((a: BacktestResult) => ({
     key: `a:${a.id}`,
-    name: a.agent_id,
-    kind: 'agent',
+    name: a.kind === 'rule' ? '规则策略' : a.agent_id,
+    kind: a.kind === 'rule' ? 'rule' : 'agent',
     persona: a.persona_id,
     totalReturn: a.stats.total_return_pct,
     trades: a.stats.trade_count,
@@ -453,6 +455,17 @@ function ResultsTable({ session }: { session: SessionComposite }) {
                 {r.kind === 'agent' ? (
                   <span className="pill brand" style={{ fontSize: 10 }}>
                     Agent
+                  </span>
+                ) : r.kind === 'rule' ? (
+                  <span
+                    className="pill"
+                    style={{
+                      fontSize: 10,
+                      background: 'var(--bg-3)',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    Rule
                   </span>
                 ) : (
                   <span className="pill" style={{ fontSize: 10 }}>
@@ -796,10 +809,197 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
   );
 }
 
+// ─── rule mode (P3-C) ──────────────────────────────────────────────────────
+type RuleFormState = {
+  strategy_name: string;
+  params: Record<string, number>;
+  universe: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+};
+
+function coerceParams(raw: Record<string, number | string>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const n = typeof v === 'string' ? Number(v) : v;
+    if (!Number.isNaN(n)) out[k] = n;
+  }
+  return out;
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="btn"
+      style={{
+        padding: '6px 16px',
+        background: active ? 'var(--brand)' : 'transparent',
+        color: active ? 'var(--bg)' : 'var(--text-hi)',
+        borderColor: active ? 'var(--brand)' : 'var(--panel-border-soft)',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function RuleBacktestForm({
+  state,
+  setState,
+  strategies,
+  busy,
+  onSubmit,
+}: {
+  state: RuleFormState;
+  setState: (patch: Partial<RuleFormState>) => void;
+  strategies: ReturnType<typeof useStrategies>;
+  busy: boolean;
+  onSubmit: () => void;
+}) {
+  const list = strategies.data ?? [];
+  const selected = list.find((s) => s.name === state.strategy_name);
+
+  return (
+    <div className="panel p-5">
+      <div className="flex items-baseline gap-2 mb-4">
+        <h2 className="text-text-hi text-base font-semibold">规则模式回测</h2>
+        <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+          Rule Mode
+        </span>
+      </div>
+      <div className="grid gap-4">
+        <div>
+          <label className={fieldLabelCls}>策略 · Strategy</label>
+          <select
+            className={inputCls}
+            value={state.strategy_name}
+            onChange={(e) => {
+              const picked = list.find((s) => s.name === e.target.value);
+              setState({
+                strategy_name: e.target.value,
+                params: picked ? coerceParams(picked.default_params) : {},
+              });
+            }}
+            disabled={strategies.isLoading}
+          >
+            <option value="">
+              {strategies.isLoading ? '加载中…' : '请选择'}
+            </option>
+            {list.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.display_name} · {s.name}
+              </option>
+            ))}
+          </select>
+          {selected && (
+            <div className="text-[11px] text-text-faint mt-1">
+              {selected.description}
+            </div>
+          )}
+        </div>
+
+        {selected && Object.keys(state.params).length > 0 && (
+          <div>
+            <label className={fieldLabelCls}>参数 · Params</label>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(state.params).map(([k, v]) => (
+                <div key={k}>
+                  <div className="text-[10px] text-text-ghost uppercase tracking-wider mb-0.5">
+                    {k}
+                  </div>
+                  <input
+                    className={`${inputCls} mono text-xs`}
+                    type="number"
+                    value={v}
+                    step={Number.isInteger(v) ? 1 : 0.05}
+                    onChange={(e) =>
+                      setState({
+                        params: { ...state.params, [k]: Number(e.target.value) },
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className={fieldLabelCls}>股票池 · Universe</label>
+          <input
+            className={`${inputCls} mono`}
+            type="text"
+            value={state.universe}
+            onChange={(e) => setState({ universe: e.target.value })}
+            placeholder="600519.SH, 601318.SH"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={fieldLabelCls}>开始日期</label>
+            <input
+              className={`${inputCls} mono`}
+              type="date"
+              value={state.start_date}
+              onChange={(e) => setState({ start_date: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className={fieldLabelCls}>结束日期</label>
+            <input
+              className={`${inputCls} mono`}
+              type="date"
+              value={state.end_date}
+              onChange={(e) => setState({ end_date: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={fieldLabelCls}>初始资金 · Capital (¥)</label>
+          <input
+            className={`${inputCls} mono`}
+            type="number"
+            min={10000}
+            step={10000}
+            value={state.initial_capital}
+            onChange={(e) =>
+              setState({ initial_capital: Number(e.target.value) || 0 })
+            }
+          />
+        </div>
+
+        <button
+          onClick={onSubmit}
+          disabled={busy || !state.strategy_name}
+          className="btn primary mt-1"
+          style={{ justifyContent: 'center', padding: '10px 16px', fontSize: 13 }}
+        >
+          {busy ? '运行中…' : '运行规则回测'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── page ──────────────────────────────────────────────────────────────────
 export function BacktestLab() {
   const personas = usePersonas();
   const models = useModels();
+  const strategies = useStrategies();
+
+  const [mode, setMode] = useState<'agent' | 'rule'>('agent');
 
   const [form, setForm] = useState<FormState>(() => ({
     persona_id: '',
@@ -813,21 +1013,43 @@ export function BacktestLab() {
   }));
   const patch = (p: Partial<FormState>) => setForm((prev) => ({ ...prev, ...p }));
 
+  const [ruleForm, setRuleForm] = useState<RuleFormState>(() => ({
+    strategy_name: '',
+    params: {},
+    universe: DEFAULT_UNIVERSE,
+    start_date: DEFAULT_START,
+    end_date: DEFAULT_END,
+    initial_capital: DEFAULT_CAPITAL,
+  }));
+  const patchRule = (p: Partial<RuleFormState>) =>
+    setRuleForm((prev) => ({ ...prev, ...p }));
+
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
+  // Tracks which mode produced the current sessionId; controls whether we
+  // wait for the SSE job stream (agent) or fetch the session composite
+  // immediately (rule mode is synchronous).
+  const [sessionMode, setSessionMode] = useState<'agent' | 'rule'>('agent');
 
   const createAgent = useCreateAgent();
   const startBacktest = useStartBacktest();
+  const startRule = useStartRuleBacktest();
 
-  const jobStream = useJobStatusStream(sessionId ?? undefined);
-  const sessionEnabled = jobStream.status?.state === 'complete';
+  // Only stream SSE for agent-mode sessions; rule mode is synchronous.
+  const jobStream = useJobStatusStream(
+    sessionMode === 'agent' ? (sessionId ?? undefined) : undefined,
+  );
+  const sessionEnabled =
+    sessionMode === 'rule' || jobStream.status?.state === 'complete';
   const session = useSession(sessionId ?? undefined, sessionEnabled);
 
   const busy =
     createAgent.isPending ||
     startBacktest.isPending ||
+    startRule.isPending ||
     (!!sessionId &&
+      sessionMode === 'agent' &&
       (jobStream.status?.state === 'queued' ||
         jobStream.status?.state === 'running'));
 
@@ -876,6 +1098,43 @@ export function BacktestLab() {
         universe: tickers,
         include_baselines: form.include_baselines,
       });
+      setSessionMode('agent');
+      setSessionId(res.session_id);
+      setStartedAt(Date.now());
+    } catch (e) {
+      setUiError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function onSubmitRule() {
+    setUiError(null);
+    if (!ruleForm.strategy_name) {
+      setUiError('请选择策略。');
+      return;
+    }
+    const tickers = parseUniverse(ruleForm.universe);
+    if (tickers.length === 0) {
+      setUiError('股票池不能为空。');
+      return;
+    }
+    if (!ruleForm.start_date || !ruleForm.end_date) {
+      setUiError('请填写开始/结束日期。');
+      return;
+    }
+    if (ruleForm.initial_capital <= 0) {
+      setUiError('初始资金必须大于 0。');
+      return;
+    }
+    try {
+      const res = await startRule.mutateAsync({
+        strategy_name: ruleForm.strategy_name,
+        params: ruleForm.params,
+        universe: tickers,
+        start_date: ruleForm.start_date,
+        end_date: ruleForm.end_date,
+        initial_capital: ruleForm.initial_capital,
+      });
+      setSessionMode('rule');
       setSessionId(res.session_id);
       setStartedAt(Date.now());
     } catch (e) {
@@ -884,6 +1143,25 @@ export function BacktestLab() {
   }
 
   const pageError = uiError ?? jobStream.error;
+
+  // For rule mode, synthesize a "complete" job status so JobPanel renders
+  // the ResultsTable (which gates on job.state === 'complete'). The session
+  // composite is the source of truth; this shim just unlocks the render.
+  const ruleJobStatus: JobStatus | undefined =
+    sessionMode === 'rule' && sessionId
+      ? {
+          session_id: sessionId,
+          state: 'complete',
+          progress: 'done',
+          agent_ids: [],
+          agent_result_ids: session.data?.agents.map((a) => a.id) ?? [],
+          baseline_result_ids: [],
+          error: null,
+          submitted_at: startedAt ?? Date.now(),
+          started_at: startedAt,
+          finished_at: Date.now(),
+        }
+      : undefined;
 
   return (
     <div className="p-6">
@@ -894,18 +1172,37 @@ export function BacktestLab() {
         </div>
       </div>
 
+      <div className="panel p-2 mb-4 flex gap-1" style={{ width: 'fit-content' }}>
+        <TabButton active={mode === 'agent'} onClick={() => setMode('agent')}>
+          Agent 模式
+        </TabButton>
+        <TabButton active={mode === 'rule'} onClick={() => setMode('rule')}>
+          规则模式
+        </TabButton>
+      </div>
+
       <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(340px, 400px) 1fr' }}>
-        <BacktestForm
-          state={form}
-          setState={patch}
-          personas={personas}
-          models={models}
-          busy={busy}
-          onSubmit={onSubmit}
-        />
+        {mode === 'agent' ? (
+          <BacktestForm
+            state={form}
+            setState={patch}
+            personas={personas}
+            models={models}
+            busy={busy}
+            onSubmit={onSubmit}
+          />
+        ) : (
+          <RuleBacktestForm
+            state={ruleForm}
+            setState={patchRule}
+            strategies={strategies}
+            busy={busy}
+            onSubmit={onSubmitRule}
+          />
+        )}
         <JobPanel
           sessionId={sessionId}
-          job={jobStream.status ?? undefined}
+          job={ruleJobStatus ?? jobStream.status ?? undefined}
           session={session.data}
           error={pageError}
           startedAt={startedAt}
