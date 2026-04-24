@@ -4,7 +4,9 @@ import {
   useBacktestRating,
   useBacktestThinking,
   useBacktestTrades,
+  useCancelJob,
   useCreateAgent,
+  useDeleteBacktest,
   useJobStatusStream,
   useModels,
   usePersonas,
@@ -27,6 +29,7 @@ import { ThinkingDrawer } from '../components/ThinkingDrawer';
 import { QualityGatePanel } from '../components/QualityGatePanel';
 import { StrategyRatingPanel } from '../components/StrategyRatingPanel';
 import { LiveEventLog } from '../components/LiveEventLog';
+import { MonthlyHeatmap } from '../components/MonthlyHeatmap';
 
 // ─── form defaults ─────────────────────────────────────────────────────────
 const DEFAULT_UNIVERSE = '600519.SH, 601318.SH, 000858.SZ';
@@ -265,6 +268,7 @@ function JobPanel({
   startedAt: number | null;
 }) {
   const [, setTick] = useState(0);
+  const cancel = useCancelJob();
   useEffect(() => {
     if (!startedAt) return;
     if (job?.state === 'complete' || job?.state === 'failed') return;
@@ -360,8 +364,27 @@ function JobPanel({
 
       {(!job || job.state === 'queued' || job.state === 'running') && !error && (
         <div className="mt-3">
-          <div className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">
-            实时事件 · Live Events
+          <div className="flex items-baseline gap-2 mb-1">
+            <div className="text-[10px] text-text-ghost uppercase tracking-wider">
+              实时事件 · Live Events
+            </div>
+            <span style={{ flex: 1 }} />
+            {sessionId && job?.state === 'running' && (
+              <button
+                className="btn"
+                onClick={() => cancel.mutate(sessionId)}
+                disabled={cancel.isPending || !!job.cancel_requested}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: 10,
+                  background: 'var(--down)',
+                  color: 'var(--bg)',
+                  borderColor: 'var(--down)',
+                }}
+              >
+                {cancel.isPending || job.cancel_requested ? '取消中…' : '取消运行'}
+              </button>
+            )}
           </div>
           <LiveEventLog events={events} />
         </div>
@@ -391,6 +414,7 @@ function StatCell({ label, value }: { label: string; value: string }) {
 function ResultsTable({ session }: { session: SessionComposite }) {
   type Row = {
     key: string;
+    deletableId: string | null;  // backtest_results.id for agent/rule; null for baselines
     name: string;
     kind: 'agent' | 'baseline' | 'rule';
     persona?: string | null;
@@ -401,9 +425,11 @@ function ResultsTable({ session }: { session: SessionComposite }) {
     finalEquity: number | null;
     gate?: 'pass' | 'warn' | 'fail';
   };
+  const del = useDeleteBacktest();
 
   const agentRows: Row[] = session.agents.map((a: BacktestResult) => ({
     key: `a:${a.id}`,
+    deletableId: a.id,
     name: a.kind === 'rule' ? '规则策略' : a.agent_id,
     kind: a.kind === 'rule' ? 'rule' : 'agent',
     persona: a.persona_id,
@@ -417,6 +443,7 @@ function ResultsTable({ session }: { session: SessionComposite }) {
 
   const baselineRows: Row[] = session.baselines.map((b: BaselineResult) => ({
     key: `b:${b.id}`,
+    deletableId: null,
     name: b.name,
     kind: 'baseline',
     totalReturn: b.stats.total_return_pct,
@@ -445,6 +472,7 @@ function ResultsTable({ session }: { session: SessionComposite }) {
             <th className="num">最大回撤%</th>
             <th className="num">最终资产</th>
             <th>质量门</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -491,6 +519,29 @@ function ResultsTable({ session }: { session: SessionComposite }) {
                 {r.finalEquity != null ? `¥${fmtNum(r.finalEquity, 0)}` : '—'}
               </td>
               <td>{r.gate ? <GateChip label={r.gate} /> : <span className="text-text-faint">—</span>}</td>
+              <td>
+                {r.deletableId && (
+                  <button
+                    className="btn"
+                    title="删除此回测结果"
+                    onClick={() => {
+                      if (window.confirm(`删除 ${r.name} 的回测结果？此操作不可撤销。`)) {
+                        del.mutate(r.deletableId!);
+                      }
+                    }}
+                    disabled={del.isPending}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: 11,
+                      color: 'var(--down)',
+                      borderColor: 'var(--down-border)',
+                      background: 'transparent',
+                    }}
+                  >
+                    🗑
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -811,6 +862,17 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
           </span>
         </div>
         <TradesTable trades={trades.data?.trades ?? []} />
+      </div>
+
+      {/* Monthly heatmap */}
+      <div className="panel p-5">
+        <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+          <h2 className="text-text-hi text-base font-semibold">月度收益热力图</h2>
+          <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+            Monthly Returns
+          </span>
+        </div>
+        <MonthlyHeatmap resultId={result.id} />
       </div>
     </div>
   );

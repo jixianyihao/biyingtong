@@ -88,7 +88,7 @@ export type BaselineResult = {
 
 export type JobStatus = {
   session_id: string;
-  state: 'queued' | 'running' | 'complete' | 'failed';
+  state: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
   progress: string;
   agent_ids: string[];
   agent_result_ids: string[];
@@ -97,6 +97,7 @@ export type JobStatus = {
   submitted_at: number;
   started_at: number | null;
   finished_at: number | null;
+  cancel_requested?: boolean;
 };
 
 export type SessionComposite = {
