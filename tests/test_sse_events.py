@@ -185,3 +185,117 @@ def test_agent_runner_on_event_none_is_noop(observability_storage):
         portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
         market_context={}, mark_prices={'600519.SH': 100.0},
     )
+
+
+def test_backtest_runner_emits_progress_per_day(observability_storage, monkeypatch):
+    from datetime import date, timedelta
+    import storage
+    from backtest.runner import BacktestRunner
+    import backtest.runner as runner_mod
+    from llm.mock import MockLLM
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-prog', initial_capital=1_000_000.0,
+    )
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(5)]
+    bars = [(d, 100.0 + i * 0.1) for i, d in enumerate(days)]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    hold = {'tool_calls': [{'id': 'h', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'x', 'thinking': 'x'}}],
+            'stop_reason': 'tool_use'}
+    events = []
+    BacktestRunner(llm=MockLLM([hold]*5)).run(
+        session_id='s-prog', agent_id=agent.id,
+        start_date='2025-01-02', end_date='2025-01-06',
+        universe=['600519.SH'], initial_capital=1_000_000.0,
+        on_event=events.append,
+    )
+    progress = [e for e in events if e['kind'] == 'progress']
+    assert len(progress) == 5
+    assert progress[0]['date'] == '2025-01-02'
+    assert progress[0]['agent_id'] == agent.id
+    assert 'equity' in progress[0]
+    assert 'pnl_pct' in progress[0]
+
+
+def test_multi_agent_runner_forwards_on_event(observability_storage, monkeypatch):
+    """run_multi passes on_event into each BacktestRunner.run."""
+    from datetime import date, timedelta
+    import storage
+    from backtest.multi_agent_runner import run_multi
+    import backtest.runner as runner_mod
+    from llm.mock import MockLLM
+    from llm.factory import build_llm  # noqa: just to confirm import
+
+    a1 = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-multi-1', initial_capital=1_000_000.0,
+    )
+    a2 = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-multi-2', initial_capital=1_000_000.0,
+    )
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(3)]
+    bars = [(d, 100.0 + i * 0.1) for i, d in enumerate(days)]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    hold = {'tool_calls': [{'id': 'h', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'x', 'thinking': 'x'}}],
+            'stop_reason': 'tool_use'}
+    events = []
+    run_multi(
+        session_id='s-multi',
+        agent_configs=[
+            {'agent_id': a1.id, 'llm': MockLLM([hold]*3)},
+            {'agent_id': a2.id, 'llm': MockLLM([hold]*3)},
+        ],
+        start_date='2025-01-02', end_date='2025-01-04',
+        initial_capital=1_000_000.0, universe=['600519.SH'],
+        on_event=events.append,
+    )
+    progress = [e for e in events if e['kind'] == 'progress']
+    # 2 agents × 3 days = 6 progress events
+    assert len(progress) == 6
+    agent_ids_in_events = {e['agent_id'] for e in progress}
+    assert agent_ids_in_events == {a1.id, a2.id}
+
+
+def test_backtest_runner_on_event_none_is_noop(observability_storage, monkeypatch):
+    """Default on_event=None should not break existing flow."""
+    from datetime import date, timedelta
+    import storage
+    from backtest.runner import BacktestRunner
+    import backtest.runner as runner_mod
+    from llm.mock import MockLLM
+
+    agent = storage.agents().create_from_persona(
+        persona_id='linyuan', model_id='claude-opus-4-7',
+        display_name='t-noop', initial_capital=1_000_000.0,
+    )
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(3)]
+    bars = [(d, 100.0) for d in days]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+    hold = {'tool_calls': [{'id': 'h', 'name': 'place_decision',
+                            'input': {'action': 'hold',
+                                      'reason': 'x', 'thinking': 'x'}}],
+            'stop_reason': 'tool_use'}
+    # No on_event passed — should not raise
+    r = BacktestRunner(llm=MockLLM([hold]*3)).run(
+        session_id='s-noop', agent_id=agent.id,
+        start_date='2025-01-02', end_date='2025-01-04',
+        universe=['600519.SH'], initial_capital=1_000_000.0,
+    )
+    assert r is not None
