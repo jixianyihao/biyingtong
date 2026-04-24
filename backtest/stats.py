@@ -3,9 +3,62 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from datetime import date as _date_cls, datetime as _dt_cls
 
 from .base import BacktestStats, ZoneStats
 from .cutoff import classify_date
+
+
+def compute_monthly_returns(daily_records: list) -> list:
+    """Aggregate per-day equity into monthly returns.
+
+    Input: daily_records like [{date: 'YYYY-MM-DD' or date, equity: float, ...}]
+    Output: [{year: int, month: int, return_pct: float, days: int}, ...]
+            sorted by (year, month) ascending.
+
+    Monthly return = (last_equity_of_month / first_equity_of_month - 1) * 100.
+    Empty input returns [].
+    """
+    if not daily_records:
+        return []
+
+    def _to_ym(d):
+        if isinstance(d, _dt_cls):
+            return d.year, d.month
+        if isinstance(d, _date_cls):
+            return d.year, d.month
+        # assume string 'YYYY-MM-DD'
+        s = str(d)
+        return int(s[0:4]), int(s[5:7])
+
+    buckets: dict = {}
+    order: list = []  # preserves first-insert order per (year, month)
+    for rec in daily_records:
+        y, m = _to_ym(rec.get('date'))
+        key = (y, m)
+        eq = rec.get('equity')
+        if eq is None:
+            continue
+        if key not in buckets:
+            buckets[key] = {'first': float(eq), 'last': float(eq), 'days': 1}
+            order.append(key)
+        else:
+            buckets[key]['last'] = float(eq)
+            buckets[key]['days'] += 1
+
+    out = []
+    for key in sorted(buckets.keys()):
+        b = buckets[key]
+        first = b['first']
+        last = b['last']
+        ret = (last / first - 1.0) * 100.0 if first else 0.0
+        out.append({
+            'year': key[0],
+            'month': key[1],
+            'return_pct': ret,
+            'days': b['days'],
+        })
+    return out
 
 
 def _sharpe(pnls: list[float]) -> float:

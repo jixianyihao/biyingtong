@@ -2,9 +2,11 @@ import type {
   Agent,
   AuditRow,
   BacktestResult,
+  CancelJobResponse,
   CreatePersonaBody,
   JobStatus,
   ModelInfo,
+  MonthlyReturnsResponse,
   NavResponse,
   Persona,
   PromptVersion,
@@ -118,6 +120,13 @@ export const api = {
     request<StartRuleBacktestResponse>('/api/backtests/rule', {
       method: 'POST', body: JSON.stringify(body),
     }),
+  monthlyReturns: (resultId: string) =>
+    request<MonthlyReturnsResponse>(`/api/backtests/${resultId}/monthly_returns`),
+  cancelJob: (sessionId: string) =>
+    request<CancelJobResponse>(`/api/backtests/jobs/${sessionId}/cancel`,
+      { method: 'POST' }),
+  deleteBacktest: (resultId: string) =>
+    request<void>(`/api/backtests/${resultId}`, { method: 'DELETE' }),
 };
 
 // Re-export types for convenience

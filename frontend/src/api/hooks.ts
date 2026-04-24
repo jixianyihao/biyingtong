@@ -269,3 +269,33 @@ export const useStartRuleBacktest = () => {
     },
   });
 };
+
+export const useMonthlyReturns = (resultId: string | undefined) =>
+  useQuery({
+    queryKey: ['monthly-returns', resultId],
+    queryFn: () => api.monthlyReturns(resultId!),
+    enabled: !!resultId,
+  });
+
+export const useCancelJob = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => api.cancelJob(sessionId),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['session', data.session_id] });
+      qc.invalidateQueries({ queryKey: ['job', data.session_id] });
+    },
+  });
+};
+
+export const useDeleteBacktest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (resultId: string) => api.deleteBacktest(resultId),
+    onSuccess: () => {
+      // The session composite query may need refetch — invalidate broadly
+      qc.invalidateQueries({ queryKey: ['session'] });
+      qc.invalidateQueries({ queryKey: ['sessions'] });
+    },
+  });
+};

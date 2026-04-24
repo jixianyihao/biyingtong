@@ -17,7 +17,8 @@ def run_multi(*, session_id: str,
               initial_capital: float,
               universe: list[str],
               max_workers: int = 4,
-              on_event=None) -> list:
+              on_event=None,
+              cancel_check=None) -> list:
     """agent_configs: [{'agent_id': str, 'llm': LLMBase}, ...]
 
     Returns list of BacktestResult in the order the futures complete.
@@ -35,6 +36,7 @@ def run_multi(*, session_id: str,
             start_date=start_date, end_date=end_date,
             initial_capital=initial_capital, universe=universe,
             on_event=on_event,
+            cancel_check=cancel_check,
         )
 
     with ThreadPoolExecutor(max_workers=min(max_workers, len(agent_configs))) as pool:

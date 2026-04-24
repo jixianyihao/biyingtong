@@ -88,7 +88,7 @@ export type BaselineResult = {
 
 export type JobStatus = {
   session_id: string;
-  state: 'queued' | 'running' | 'complete' | 'failed';
+  state: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
   progress: string;
   agent_ids: string[];
   agent_result_ids: string[];
@@ -97,6 +97,7 @@ export type JobStatus = {
   submitted_at: number;
   started_at: number | null;
   finished_at: number | null;
+  cancel_requested?: boolean;
 };
 
 export type SessionComposite = {
@@ -288,3 +289,20 @@ export type BacktestEvent =
   | BacktestEventBlocked
   | BacktestEventBaselineDone
   | BacktestEventDone;
+
+export type MonthlyReturn = {
+  year: number;
+  month: number;
+  return_pct: number;
+  days: number;
+};
+
+export type MonthlyReturnsResponse = {
+  result_id: string;
+  monthly_returns: MonthlyReturn[];
+};
+
+export type CancelJobResponse = {
+  session_id: string;
+  state: string;
+};

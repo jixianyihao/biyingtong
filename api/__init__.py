@@ -17,6 +17,8 @@ from . import personas      # noqa: F401,E402  side-effect: register routes
 from . import models         # noqa: F401,E402
 from . import agents         # noqa: F401,E402
 from . import backtests      # noqa: F401,E402
+from . import backtest_jobs  # noqa: F401,E402
+from . import rating         # noqa: F401,E402
 from . import baselines      # noqa: F401,E402
 from . import redlines       # noqa: F401,E402
 from . import audit          # noqa: F401,E402

@@ -190,6 +190,17 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.close()
         return [_row_to_result(r) for r in rows]
 
+    def delete(self, result_id: str) -> bool:
+        con = sqlite3.connect(self._db_path)
+        try:
+            cur = con.execute(
+                'DELETE FROM backtest_results WHERE id = ?', (result_id,),
+            )
+            con.commit()
+            return cur.rowcount > 0
+        finally:
+            con.close()
+
     def list_sessions(self, limit: int = 50) -> list:
         import json as _json
         con = sqlite3.connect(self._db_path)

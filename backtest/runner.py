@@ -45,7 +45,8 @@ class BacktestRunner:
             initial_capital: float | None = None,
             universe: list[str],
             notes: str | None = None,
-            on_event=None) -> BacktestResult:
+            on_event=None,
+            cancel_check=None) -> BacktestResult:
         import storage
 
         cap = float(initial_capital or self._default_capital)
@@ -155,6 +156,9 @@ class BacktestRunner:
                     'date': d.strftime('%Y-%m-%d'),
                     'equity': equity, 'pnl_pct': pnl_pct,
                 })
+
+            if cancel_check and cancel_check():
+                break
 
         # Aggregate + quality gate
         cutoff = '2099-12-31'
