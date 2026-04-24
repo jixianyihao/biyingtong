@@ -20,3 +20,4 @@ from . import backtests      # noqa: F401,E402
 from . import baselines      # noqa: F401,E402
 from . import redlines       # noqa: F401,E402
 from . import audit          # noqa: F401,E402
+from . import strategies     # noqa: F401,E402

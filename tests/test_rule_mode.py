@@ -442,3 +442,128 @@ def test_sqlite_backtests_roundtrips_kind_agent_explicit(observability_storage):
     storage.backtests().insert(r)
     fetched = storage.backtests().get('r-default')
     assert fetched.kind == 'agent'
+
+
+# ---------------------------------------------------------------------------
+# Task 6: REST endpoints — GET /api/strategies + POST /api/backtests/rule
+# ---------------------------------------------------------------------------
+
+def _fresh_flask_app():
+    from flask import Flask
+    from api import api_bp
+    app = Flask(__name__)
+    app.register_blueprint(api_bp)
+    app.config['TESTING'] = True
+    return app
+
+
+@pytest.fixture
+def client(observability_storage):
+    app = _fresh_flask_app()
+    with app.test_client() as c:
+        yield c
+
+
+def test_get_strategies_lists_builtins(observability_storage, client):
+    resp = client.get('/api/strategies')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    names = [s['name'] for s in data]
+    assert 'ma_crossover' in names
+    assert 'rsi_breakout' in names
+    assert 'macd_divergence' in names
+    # Each descriptor has display_name, description, default_params
+    ma = next(s for s in data if s['name'] == 'ma_crossover')
+    assert 'display_name' in ma
+    assert 'description' in ma
+    assert 'default_params' in ma
+    assert ma['default_params']['fast'] == 10
+
+
+def test_post_rule_backtest_runs_synchronously(observability_storage, client, monkeypatch):
+    from datetime import date, timedelta
+    import backtest.rule_runner as runner_mod
+
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(15)]
+    bars = [(d, 100.0 + i * 0.3) for i, d in enumerate(days)]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    resp = client.post('/api/backtests/rule', json={
+        'strategy_name': 'ma_crossover',
+        'params': {'fast': 3, 'slow': 5},
+        'start_date': '2025-01-02',
+        'end_date': '2025-01-20',
+        'universe': ['600519.SH'],
+        'initial_capital': 1_000_000,
+    })
+    assert resp.status_code == 202
+    data = resp.get_json()
+    assert data['state'] == 'complete'
+    assert 'session_id' in data
+    assert 'result_id' in data
+
+
+def test_post_rule_backtest_joins_existing_session(observability_storage, client, monkeypatch):
+    from datetime import date, timedelta
+    import storage
+    import backtest.rule_runner as runner_mod
+
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(15)]
+    bars = [(d, 100.0 + i * 0.3) for i, d in enumerate(days)]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+
+    resp = client.post('/api/backtests/rule', json={
+        'strategy_name': 'ma_crossover',
+        'params': {'fast': 3, 'slow': 5},
+        'session_id': 'pre-existing',
+        'start_date': '2025-01-02', 'end_date': '2025-01-20',
+        'universe': ['600519.SH'], 'initial_capital': 1_000_000,
+    })
+    assert resp.status_code == 202
+    assert resp.get_json()['session_id'] == 'pre-existing'
+    results = storage.backtests().list_for_session('pre-existing')
+    assert len(results) == 1
+    assert results[0].kind == 'rule'
+
+
+def test_post_rule_backtest_400_on_unknown_strategy(observability_storage, client):
+    resp = client.post('/api/backtests/rule', json={
+        'strategy_name': 'nope',
+        'start_date': '2025-01-02', 'end_date': '2025-01-10',
+        'universe': ['600519.SH'], 'initial_capital': 1_000_000,
+    })
+    assert resp.status_code == 400
+
+
+def test_post_rule_backtest_400_on_missing_fields(observability_storage, client):
+    resp = client.post('/api/backtests/rule', json={'strategy_name': 'ma_crossover'})
+    assert resp.status_code == 400
+
+
+def test_backtest_detail_response_includes_kind(observability_storage, client, monkeypatch):
+    """GET /api/backtests/:id response must include 'kind' for frontend tab UI."""
+    from datetime import date, timedelta
+    import backtest.rule_runner as runner_mod
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(15)]
+    bars = [(d, 100.0 + i * 0.3) for i, d in enumerate(days)]
+    monkeypatch.setattr(runner_mod, '_load_daily_closes',
+                        lambda code, start, end: bars)
+    monkeypatch.setattr(runner_mod, '_trading_days',
+                        lambda start, end: days)
+    from backtest.rule_runner import RuleRunner
+    from backtest.strategies import build
+    r = RuleRunner(strategy=build('ma_crossover',
+                                  params={'fast': 3, 'slow': 5})).run(
+        session_id='s-kind-api', start_date='2025-01-02',
+        end_date='2025-01-20', universe=['600519.SH'],
+        initial_capital=1_000_000.0,
+    )
+    resp = client.get(f'/api/backtests/{r.id}')
+    assert resp.status_code == 200
+    assert resp.get_json().get('kind') == 'rule'
