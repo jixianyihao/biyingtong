@@ -67,7 +67,7 @@
 | `GET /api/backtest/{task_id}/thinking` | — | ❌ |
 | `GET /api/backtest/{task_id}/nav` (每日权益曲线) | — | ❌ |
 | `POST /api/backtest/{task_id}/cancel` | — | ❌ |
-| `GET /api/backtest/results` (跨 agent 全列) | 仅 `?agent_id=` 过滤 | ⚠ |
+| `GET /api/backtest/results` (跨 agent 全列) | ✅ `GET /api/backtests` 不带 agent_id 返全局列表（commit `5e12dd5`） | ✅ |
 
 ### §15.5 Models + RedLine
 
@@ -141,7 +141,7 @@
 | **Trade log** (`/trades`) | ❌ |
 | Strategy rating A+/A/B/C + 5 子分数 | ✅ rating/ 已实现，但前端无聚焦展示面板 |
 | **Quality gate panel** (per criterion) | ⚠ 数据有，缺聚焦 UI |
-| **RedLineBar** (顶部实时用量) | ❌ |
+| **RedLineBar** (顶部实时用量) | ✅ TopBar 显示限值 chips（实时用量待 LiveTrading 接入） |
 | RedLineConfigModal | ✅ |
 | RiskMonitor → 健康度 | ✅ |
 | RiskMonitor → 三层防护 | ✅ |
@@ -274,7 +274,20 @@
 
 ---
 
-### 🟢 P3-E：In-prompt disclaimer + Quality gate UI 闭环 (~0.5 天小修)
+### ✅ P3-E + Quickwins — Done 2026-04-23
+
+**包含 3 个并行 deliverable（commits ac00263 + 5e12dd5 + 9519696 on feature/p3e-quickwins）：**
+- **P3-E in-prompt disclaimer (spec §11.5)**：`prompt_builder.build_messages` 加 `model_cutoff` 参数，AgentRunner 自动传 model.training_cutoff，system_prompt 末尾追加 "今天是 X，你的训练截止于 Y..."。会使 LLMDecisionCache 旧条目失效（intended）。
+- **GET /api/backtests 全局列表**：不带 `?agent_id=` 现在返回最近全部 backtest（spec §15.4 gap 关闭）。`BacktestResultStore.list_all(limit)` Protocol + SQLite impl。
+- **RedLineBar 顶部 widget**：所有页面 TopBar 显示当前 RedLine 配置 chips（位置上限/最大持仓/止损/禁ST 等）。实时用量值待 P3-F LiveTrading 接入。
+
+**测试**: 9 新（4 disclaimer + 5 global list）+ 1 obsolete test 改写 + 0 回归（`pytest -q` = 542 passed；frontend build 清洁）
+
+**剩余 P3-E："Quality gate UI 闭环"** — P3-A QualityGatePanel 已经做了，无独立工作。
+
+---
+
+### 🟢 P3-E archived row (旧描述，仅供参考)：In-prompt disclaimer + Quality gate UI 闭环 (~0.5 天小修)
 
 - Spec §11.5 — prompt_builder 在 system_prompt 末尾加："今天是 X，你的训练截止是 Y" 让 LLM 自我警觉
 - BacktestLab 加 Quality gate 面板（7 criteria 通过/失败/数值）—— P3-A 包含中可合并
@@ -328,6 +341,7 @@ P3-F 等用户明确同意 + 独立排期。
 - `2026-04-23-p3b-crud.md` ✅ Done 2026-04-23
 - `2026-04-23-p3c-rule-mode.md` ✅ Done 2026-04-23
 - `2026-04-23-p3d-sse-events.md` ✅ Done 2026-04-23
+- P3-E + quickwins (no dedicated plan — 3 parallel subagents on `feature/p3e-quickwins`) ✅ Done 2026-04-23
 
 P2e-prep / P2e-api / P2e-api-mutations / P2e-ui-scaffold / P2e-ui-phase2 / P2e-tauri / P2f-quick-wins / P2f-rating-zone-sse 共 8 个分支**未事先写 plan，直接编码 + 事后 review**。这是节奏权衡：分支小、确定性高时跳过 plan 加速；本文是它们的事后总账。
 
