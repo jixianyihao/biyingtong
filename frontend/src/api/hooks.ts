@@ -299,3 +299,66 @@ export const useDeleteBacktest = () => {
     },
   });
 };
+
+// ─── P3-F Phase 1: deploy + proposals ─────────────────────────────────────
+
+export const useDeployAgent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, schedule }: { id: string; schedule?: string }) =>
+      api.deployAgent(id, schedule ? { schedule } : undefined),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['deploy-status', vars.id] });
+    },
+  });
+};
+
+export const useStopAgent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.stopAgent(id),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['deploy-status', id] });
+    },
+  });
+};
+
+export const useDeployStatus = (id: string | undefined) =>
+  useQuery({
+    queryKey: ['deploy-status', id],
+    queryFn: () => api.deployStatus(id!),
+    enabled: !!id,
+    refetchInterval: 5000,  // poll every 5s to reflect status changes
+    retry: false,
+  });
+
+export const useProposals = (params: {
+  status?: string;
+  agent_id?: string;
+  limit?: number;
+}) =>
+  useQuery({
+    queryKey: ['proposals', params],
+    queryFn: () => api.listProposals(params),
+    refetchInterval: 5000,  // keep pending list fresh
+  });
+
+export const useApproveProposal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.approveProposal(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proposals'] });
+    },
+  });
+};
+
+export const useRejectProposal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rejectProposal(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proposals'] });
+    },
+  });
+};
