@@ -159,3 +159,120 @@ def test_strategies_registry_has_ma_crossover():
     # Default params are populated
     assert 'fast' in instance.params
     assert 'slow' in instance.params
+
+
+def test_rsi_breakout_buys_when_rsi_below_30():
+    from datetime import date
+    from backtest.strategies.rsi_breakout import RSIBreakout
+
+    s = RSIBreakout(params={'period': 14, 'oversold': 30, 'overbought': 70,
+                            'position_pct': 0.3})
+    # 15-day continuously falling price → Wilder's RSI ~0 (all losses, no gains)
+    dates = [date(2025, 1, d) for d in range(2, 17)]
+    series = list(zip(dates, [100.0 - i * 2 for i in range(15)]))
+    portfolio = {'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}}
+    decisions = s.on_day(
+        date=dates[-1], close_history={'600519.SH': series},
+        portfolio=portfolio,
+    )
+    assert any(d['action'] == 'buy' for d in decisions)
+
+
+def test_rsi_breakout_sells_when_rsi_above_70():
+    from datetime import date
+    from backtest.strategies.rsi_breakout import RSIBreakout
+
+    s = RSIBreakout(params={'period': 14, 'oversold': 30, 'overbought': 70})
+    dates = [date(2025, 1, d) for d in range(2, 17)]
+    series = list(zip(dates, [100.0 + i * 2 for i in range(15)]))
+    portfolio = {
+        'cash': 500_000, 'equity': 500_000 + 100 * 128,
+        'positions': {'600519.SH': {'shares': 100, 'avg_price': 100.0}},
+    }
+    decisions = s.on_day(
+        date=dates[-1], close_history={'600519.SH': series},
+        portfolio=portfolio,
+    )
+    assert any(d['action'] == 'sell' for d in decisions)
+
+
+def test_rsi_breakout_insufficient_history_returns_empty():
+    from datetime import date
+    from backtest.strategies.rsi_breakout import RSIBreakout
+    s = RSIBreakout(params={'period': 14})
+    decisions = s.on_day(
+        date=date(2025, 1, 3),
+        close_history={'600519.SH': [(date(2025, 1, 2), 100.0)]},
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+    )
+    assert decisions == []
+
+
+def test_macd_divergence_buys_on_bullish_cross():
+    from datetime import date, timedelta
+    from backtest.strategies.macd_divergence import MACDDivergence
+
+    s = MACDDivergence(params={'fast': 12, 'slow': 26, 'signal': 9,
+                               'position_pct': 0.3})
+    # 40-day uptrend — in steady uptrend MACD line stays above signal → histogram > 0
+    d = date(2025, 1, 2)
+    dates = []
+    for _ in range(40):
+        dates.append(d)
+        d = d + timedelta(days=1)
+    prices = [100.0]
+    for _ in range(39):
+        prices.append(prices[-1] * 1.02)
+    series = list(zip(dates, prices))
+    portfolio = {'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}}
+    decisions = s.on_day(
+        date=dates[-1], close_history={'600519.SH': series},
+        portfolio=portfolio,
+    )
+    assert any(d['action'] == 'buy' for d in decisions)
+
+
+def test_macd_divergence_sells_on_bearish_cross():
+    """Downtrend → histogram < 0 → sell."""
+    from datetime import date, timedelta
+    from backtest.strategies.macd_divergence import MACDDivergence
+
+    s = MACDDivergence(params={'fast': 12, 'slow': 26, 'signal': 9})
+    d = date(2025, 1, 2)
+    dates = []
+    for _ in range(40):
+        dates.append(d)
+        d = d + timedelta(days=1)
+    prices = [100.0]
+    for _ in range(39):
+        prices.append(prices[-1] * 0.98)
+    series = list(zip(dates, prices))
+    portfolio = {
+        'cash': 500_000, 'equity': 500_000 + 100 * prices[-1],
+        'positions': {'600519.SH': {'shares': 100, 'avg_price': 100.0}},
+    }
+    decisions = s.on_day(
+        date=dates[-1], close_history={'600519.SH': series},
+        portfolio=portfolio,
+    )
+    assert any(d['action'] == 'sell' for d in decisions)
+
+
+def test_macd_divergence_insufficient_history_returns_empty():
+    from datetime import date
+    from backtest.strategies.macd_divergence import MACDDivergence
+    s = MACDDivergence()
+    decisions = s.on_day(
+        date=date(2025, 1, 3),
+        close_history={'600519.SH': [(date(2025, 1, 2), 100.0)]},
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+    )
+    assert decisions == []
+
+
+def test_strategies_registry_lists_all_three():
+    from backtest.strategies import list_all
+    names = [d.name for d in list_all()]
+    assert 'ma_crossover' in names
+    assert 'rsi_breakout' in names
+    assert 'macd_divergence' in names
