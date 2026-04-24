@@ -56,3 +56,52 @@ def test_mock_adapter_always_succeeds():
     assert r.filled_price == 237.5
     assert r.error is None
     assert r.executed_at is not None
+
+
+def test_tdx_adapter_maps_buy_to_tdx_place_order(monkeypatch):
+    from execution.tdx import TDXExecutionAdapter
+    import tdx_service
+
+    captured = {}
+    def fake_place(stock_code, side, qty, price, price_type=0):
+        captured.update({'stock_code': stock_code, 'side': side,
+                         'qty': qty, 'price': price})
+        return {'order_id': 'tdx-12345'}
+    monkeypatch.setattr(tdx_service.tdx, 'place_order', fake_place)
+
+    adapter = TDXExecutionAdapter()
+    assert adapter.mode == 'live'
+    r = adapter.place_order(_make_proposal(action='buy', code='600519.SH',
+                                            shares=100, price=237.5))
+    assert captured == {'stock_code': '600519.SH', 'side': 'buy',
+                        'qty': 100, 'price': 237.5}
+    assert r.success is True
+    assert r.mode == 'live'
+    assert r.order_id == 'tdx-12345'
+
+
+def test_tdx_adapter_handles_error_response(monkeypatch):
+    from execution.tdx import TDXExecutionAdapter
+    import tdx_service
+    monkeypatch.setattr(tdx_service.tdx, 'place_order',
+                        lambda *a, **kw: {'error': 'insufficient funds'})
+    adapter = TDXExecutionAdapter()
+    r = adapter.place_order(_make_proposal())
+    assert r.success is False
+    assert r.mode == 'live'
+    assert r.error == 'insufficient funds'
+    assert r.filled_qty == 0
+
+
+def test_tdx_adapter_rejects_sell_action_with_zero_shares(monkeypatch):
+    from execution.tdx import TDXExecutionAdapter
+    calls = []
+    import tdx_service
+    monkeypatch.setattr(tdx_service.tdx, 'place_order',
+                        lambda *a, **kw: calls.append((a, kw)) or {'order_id': 'x'})
+    adapter = TDXExecutionAdapter()
+    # shares=0 should be short-circuited without hitting TDX
+    r = adapter.place_order(_make_proposal(action='buy', shares=0, price=237.5))
+    assert r.success is False
+    assert r.error and 'shares' in r.error.lower()
+    assert calls == []
