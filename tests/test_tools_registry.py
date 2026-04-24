@@ -1,8 +1,9 @@
-def test_all_8_tools_registered():
+def test_all_tools_registered():
     from tools import ALL_TOOLS
     assert set(ALL_TOOLS.keys()) == {
         'place_decision', 'get_kline', 'get_snapshot', 'get_financials',
         'get_technical', 'get_index', 'get_portfolio', 'get_news',
+        'get_stock_list', 'get_capital_flow',
     }
 
 
