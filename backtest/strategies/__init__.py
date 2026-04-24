@@ -50,7 +50,7 @@ register(RSIBreakout, StrategyDescriptor(
 
 register(MACDDivergence, StrategyDescriptor(
     name='macd_divergence',
-    display_name='MACD 线交叉',
-    description='MACD 线高于信号线买入（histogram>0），低于则卖出',
+    display_name='MACD 趋势',
+    description='MACD 线高于零轴买入（强势），低于零轴卖出（弱势）',
     default_params={'fast': 12, 'slow': 26, 'signal': 9, 'position_pct': 0.3},
 ))
