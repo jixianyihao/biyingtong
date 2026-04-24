@@ -56,6 +56,88 @@ def _recover_deployed_agents() -> int:
     return crashed
 
 
+# ---- Startup auto-load of fundamentals (financial data) ----
+
+def _gather_persona_symbols() -> list[str]:
+    """Union of every persona's default_pool."""
+    import storage
+    seen: set[str] = set()
+    try:
+        rows = storage.personas().list_all()
+    except Exception:  # noqa: BLE001
+        return []
+    for p in rows:
+        for s in (p.default_pool or []):
+            seen.add(s)
+    return sorted(seen)
+
+
+def _should_load_financial() -> tuple[bool, str]:
+    """Decide whether to run load_financial. Returns (do_run, reason).
+
+    Skip conditions (in priority order):
+    - Env BIYINGTONG_AUTO_LOAD_FINANCIAL=0 (testing)
+    - TDX not connected (tdx_service unavailable)
+    - Already loaded today (any persona symbol has a financial row dated today)
+    """
+    import os
+    from datetime import date
+
+    if os.environ.get('BIYINGTONG_AUTO_LOAD_FINANCIAL', '1') == '0':
+        return False, 'disabled via env'
+
+    try:
+        from tdx_service import tdx as _tdx
+    except ImportError:
+        return False, 'tdx_service not importable'
+    try:
+        if not _tdx.is_connected():
+            return False, 'TDX not connected'
+    except Exception as exc:  # noqa: BLE001
+        return False, f'TDX check failed: {exc}'
+
+    import storage
+    # Probe freshness: check any one symbol from personas has a row
+    symbols = _gather_persona_symbols()
+    if not symbols:
+        return False, 'no personas / symbols'
+    try:
+        latest = storage.financial().get_latest(symbols[0])
+    except Exception:  # noqa: BLE001
+        latest = None
+    today_iso = date.today().isoformat()
+    if latest and latest.get('date') == today_iso:
+        return False, 'already loaded today'
+    return True, f'{len(symbols)} symbols pending'
+
+
+def _startup_load_financial_async() -> None:
+    """Kick off load_financial in a background thread — never blocks Flask startup."""
+    import threading
+    import logging
+
+    log = logging.getLogger('startup.financial')
+
+    do_run, reason = _should_load_financial()
+    if not do_run:
+        log.info('load_financial skipped: %s', reason)
+        return
+
+    def _worker():
+        try:
+            from scripts.setup.load_financial import load_financial
+            symbols = _gather_persona_symbols()
+            log.info('load_financial: fetching %d symbols', len(symbols))
+            n = load_financial(symbols)
+            log.info('load_financial: wrote %d rows', n)
+        except Exception as exc:  # noqa: BLE001
+            log.error('load_financial background failed: %s', exc)
+
+    t = threading.Thread(target=_worker, daemon=True,
+                         name='startup-load-financial')
+    t.start()
+
+
 # ---- Serve Frontend ----
 
 @app.route('/')
@@ -252,6 +334,15 @@ try:
         print(f'[startup] marked {_crashed_count} deployed agent(s) as crashed')
 except Exception as e:  # noqa: BLE001
     print(f'[startup] crash recovery skipped: {e}')
+
+# Auto-load fundamentals (PE/PB/ROE/...) so value-investor personas
+# have data on first run instead of relying on a manual pre-run script.
+# Background-threaded to keep Flask startup responsive even if the TDX
+# fetch takes ~30s. Disable with BIYINGTONG_AUTO_LOAD_FINANCIAL=0.
+try:
+    _startup_load_financial_async()
+except Exception as e:  # noqa: BLE001
+    print(f'[startup] financial auto-load skipped: {e}')
 
 
 if __name__ == '__main__':
