@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
-import type { BacktestEvent, JobStatus, UpdateAgentBody, UpdatePersonaBody } from './types';
+import type {
+  BacktestEvent, JobStatus, ScreenerFilter,
+  UpdateAgentBody, UpdatePersonaBody,
+} from './types';
 
 export const usePersonas = () =>
   useQuery({ queryKey: ['personas'], queryFn: api.personas });
@@ -467,5 +470,15 @@ export function usePositions() {
     queryFn: api.positions,
     staleTime: 5_000,
     refetchInterval: 10_000,
+  });
+}
+
+// ─── Screener ─────────────────────────────────────────────────────────────
+
+/** POST /api/screener mutation. Caller passes the full filter list (incl.
+ *  disabled rows); the backend skips disabled and unsupported factors. */
+export function useScreener() {
+  return useMutation({
+    mutationFn: (filters: ScreenerFilter[]) => api.runScreener(filters),
   });
 }
