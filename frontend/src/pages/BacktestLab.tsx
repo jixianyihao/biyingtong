@@ -1147,6 +1147,7 @@ export function BacktestLab() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
+  const [showFormModal, setShowFormModal] = useState<boolean>(false);
   // Tracks which mode produced the current sessionId; controls whether we
   // wait for the SSE job stream (agent) or fetch the session composite
   // immediately (rule mode is synchronous).
@@ -1229,6 +1230,7 @@ export function BacktestLab() {
       setSessionMode('agent');
       setSessionId(res.session_id);
       setStartedAt(Date.now());
+      setShowFormModal(false);
     } catch (e) {
       setUiError(e instanceof Error ? e.message : String(e));
     }
@@ -1265,6 +1267,7 @@ export function BacktestLab() {
       setSessionMode('rule');
       setSessionId(res.session_id);
       setStartedAt(Date.now());
+      setShowFormModal(false);
     } catch (e) {
       setUiError(e instanceof Error ? e.message : String(e));
     }
@@ -1302,26 +1305,29 @@ export function BacktestLab() {
       </div>
 
       <div className="flex items-center gap-3 mb-4">
-        <div className="panel p-2 flex gap-1" style={{ width: 'fit-content' }}>
-          <TabButton active={mode === 'agent'} onClick={() => setMode('agent')}>
-            Agent 模式
-          </TabButton>
-          <TabButton active={mode === 'rule'} onClick={() => setMode('rule')}>
-            规则模式
-          </TabButton>
-        </div>
+        <button
+          className="btn primary"
+          onClick={() => {
+            setUiError(null);
+            setShowFormModal(true);
+          }}
+          style={{ padding: '6px 16px', fontSize: 13, fontWeight: 600 }}
+          title="打开新建回测表单"
+        >
+          + 新建回测
+        </button>
         {isHistoric && (
           <button
-            className="btn primary"
+            className="btn"
             onClick={() => {
               setSessionId(null);
               setStartedAt(null);
               setUiError(null);
             }}
             style={{ padding: '4px 12px', fontSize: 12 }}
-            title="清空当前历史 session 视图，回到新建回测"
+            title="清空当前历史 session 视图"
           >
-            + 新建回测
+            清空
           </button>
         )}
       </div>
@@ -1329,9 +1335,7 @@ export function BacktestLab() {
       <div
         className="grid gap-5"
         style={{
-          gridTemplateColumns: isHistoric
-            ? 'minmax(220px, 240px) 1fr'
-            : 'minmax(220px, 240px) minmax(340px, 400px) 1fr',
+          gridTemplateColumns: 'minmax(220px, 260px) 1fr',
         }}
       >
         <div className="panel p-3" style={{ alignSelf: 'start', position: 'sticky', top: 16 }}>
@@ -1351,25 +1355,6 @@ export function BacktestLab() {
             }}
           />
         </div>
-        {!isHistoric &&
-          (mode === 'agent' ? (
-            <BacktestForm
-              state={form}
-              setState={patch}
-              personas={personas}
-              models={models}
-              busy={busy}
-              onSubmit={onSubmit}
-            />
-          ) : (
-            <RuleBacktestForm
-              state={ruleForm}
-              setState={patchRule}
-              strategies={strategies}
-              busy={busy}
-              onSubmit={onSubmitRule}
-            />
-          ))}
         <JobPanel
           sessionId={sessionId}
           job={syntheticJobStatus ?? jobStream.status ?? undefined}
@@ -1379,6 +1364,58 @@ export function BacktestLab() {
           startedAt={startedAt}
         />
       </div>
+
+      {showFormModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center"
+          style={{ background: 'rgba(0,0,0,0.6)', paddingTop: 60, overflowY: 'auto' }}
+          onClick={() => setShowFormModal(false)}
+        >
+          <div
+            className="panel panel-border-soft p-4"
+            style={{ minWidth: 460, maxWidth: 600, width: '90%', marginBottom: 60 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-text-hi text-lg font-semibold">新建回测</h2>
+              <button
+                className="btn"
+                onClick={() => setShowFormModal(false)}
+                style={{ padding: '2px 10px', fontSize: 14 }}
+                title="关闭"
+              >
+                ×
+              </button>
+            </div>
+            <div className="panel p-2 mb-4 flex gap-1" style={{ width: 'fit-content' }}>
+              <TabButton active={mode === 'agent'} onClick={() => setMode('agent')}>
+                Agent 模式
+              </TabButton>
+              <TabButton active={mode === 'rule'} onClick={() => setMode('rule')}>
+                规则模式
+              </TabButton>
+            </div>
+            {mode === 'agent' ? (
+              <BacktestForm
+                state={form}
+                setState={patch}
+                personas={personas}
+                models={models}
+                busy={busy}
+                onSubmit={onSubmit}
+              />
+            ) : (
+              <RuleBacktestForm
+                state={ruleForm}
+                setState={patchRule}
+                strategies={strategies}
+                busy={busy}
+                onSubmit={onSubmitRule}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
