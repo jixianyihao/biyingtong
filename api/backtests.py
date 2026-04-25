@@ -266,6 +266,96 @@ def get_backtest_thinking(result_id):
     })
 
 
+@api_bp.route('/backtests/<result_id>/ledger')
+def get_backtest_ledger(result_id):
+    """Joined per-decision audit trail: thinking → validation → fill.
+
+    Returns a flat list ordered by date ascending. Each entry covers ONE
+    LLM decision (one place_decision call) with its complete lineage.
+
+    Response: {
+      result_id, ledger: [{
+        date,                       # 'YYYY-MM-DD'
+        action,                     # 'buy'/'sell'/'hold'
+        code,                       # may be null for 'hold'
+        requested_shares,           # what LLM asked for
+        requested_price,            # at decision time
+        outcome,                    # 'ok' | 'modified' | 'rejected' | 'cached' | 'hold'
+        rejection_reasons,          # list[str], empty unless rejected
+        executed_shares,            # what actually filled, 0 if rejected/hold
+        executed_price,             # actual fill price
+        executed_fee,               # commission
+        reasoning,                  # short reason from the LLM
+        tool_calls_count,           # how many tools the LLM used that day
+      }, ...]
+    }
+    """
+    import storage
+    r = storage.backtests().get(result_id)
+    if r is None:
+        return jsonify({'error': 'not_found'}), 404
+
+    # Index trades by (date, code, action) for O(1) lookup. We only keep the
+    # FIRST fill per key — multiple fills for the same key in the same day are
+    # rare in this codebase and would imply two LLM decisions hitting the same
+    # bucket. v1 collapses; future extension can list-of-fills.
+    trades_by_key: dict[tuple, dict] = {}
+    for t in (r.trades or []):
+        key = (t.get('date'), t.get('code'), t.get('action'))
+        trades_by_key.setdefault(key, t)
+
+    out: list[dict] = []
+    for day in (r.thinking or []):
+        date = day.get('date')
+        tc_count = len(day.get('tool_calls') or [])
+        decisions = day.get('decisions') or []
+        if not decisions:
+            # Day with no place_decision call — represent as a "hold" row so
+            # the analyst can see the LLM ran but produced no actionable
+            # output (often: only screening tool_calls).
+            out.append({
+                'date': date, 'action': 'hold', 'code': None,
+                'requested_shares': None, 'requested_price': None,
+                'outcome': 'hold', 'rejection_reasons': [],
+                'executed_shares': 0, 'executed_price': None, 'executed_fee': None,
+                'reasoning': day.get('reasoning') or '',
+                'tool_calls_count': tc_count,
+            })
+            continue
+        for dec in decisions:
+            action = dec.get('action')
+            code = dec.get('code')
+            req_shares_raw = dec.get('shares')
+            requested_shares = (
+                int(req_shares_raw) if req_shares_raw not in (None, '') else None
+            )
+            req_price = dec.get('price')
+            outcome = dec.get('outcome') or 'ok'
+            reasoning = dec.get('reasoning') or ''
+            # Match fill (only buy/sell — 'hold' decisions never produce fills)
+            t = trades_by_key.get((date, code, action)) if code else None
+            executed_shares = int(t['shares']) if t else 0
+            executed_price = t.get('price') if t else None
+            executed_fee = t.get('fee') if t else None
+            # Rejection reasons — for v1 we have outcome but not the violation
+            # strings in the thinking record; leave a placeholder. Future
+            # extension can join the audit log for full reasons.
+            rejection_reasons = (
+                [] if outcome != 'rejected' else ['rejected by validation']
+            )
+            out.append({
+                'date': date, 'action': action, 'code': code,
+                'requested_shares': requested_shares,
+                'requested_price': req_price,
+                'outcome': outcome, 'rejection_reasons': rejection_reasons,
+                'executed_shares': executed_shares,
+                'executed_price': executed_price,
+                'executed_fee': executed_fee,
+                'reasoning': reasoning, 'tool_calls_count': tc_count,
+            })
+    return jsonify({'result_id': result_id, 'ledger': out})
+
+
 @api_bp.route('/backtests/rule', methods=['POST'])
 def start_rule_backtest():
     """Synchronous rule-strategy backtest. Can join an existing session."""

@@ -387,3 +387,37 @@ export type DataCoverage = {
   last_date: string | null;
   count: number;
 };
+
+/** One row of the joined decision ledger from GET /api/backtests/<id>/ledger.
+ *  Each row is ONE LLM decision (one place_decision call) with its full
+ *  lineage: what the LLM asked for → validation outcome → actual fill.
+ *  Days with zero decisions are emitted as a single 'hold' row so the
+ *  analyst can still see tool_calls_count for that day.
+ */
+export type LedgerOutcome =
+  | 'ok'
+  | 'approved'   // legacy alias for 'ok' — pre-P3-D thinking records
+  | 'modified'
+  | 'rejected'
+  | 'cached'
+  | 'hold';
+
+export type LedgerEntry = {
+  date: string;
+  action: 'buy' | 'sell' | 'hold';
+  code: string | null;
+  requested_shares: number | null;
+  requested_price: number | null;
+  outcome: LedgerOutcome;
+  rejection_reasons: string[];
+  executed_shares: number;
+  executed_price: number | null;
+  executed_fee: number | null;
+  reasoning: string;
+  tool_calls_count: number;
+};
+
+export type BacktestLedger = {
+  result_id: string;
+  ledger: LedgerEntry[];
+};

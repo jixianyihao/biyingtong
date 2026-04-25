@@ -1,6 +1,7 @@
 import type {
   Agent,
   AuditRow,
+  BacktestLedger,
   BacktestResult,
   CancelJobResponse,
   CreatePersonaBody,
@@ -122,6 +123,7 @@ export const api = {
   backtestNav: (id: string) => request<NavResponse>(`/api/backtests/${id}/nav`),
   backtestTrades: (id: string) => request<TradesResponse>(`/api/backtests/${id}/trades`),
   backtestThinking: (id: string) => request<ThinkingResponse>(`/api/backtests/${id}/thinking`),
+  backtestLedger: (id: string) => request<BacktestLedger>(`/api/backtests/${id}/ledger`),
   backtestRating: (id: string) => request<StrategyRating>(`/api/backtests/${id}/rating`),
   updateAgent: (id: string, body: UpdateAgentBody) =>
     request<Agent>(`/api/agents/${id}`, {

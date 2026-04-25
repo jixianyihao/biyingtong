@@ -220,6 +220,17 @@ export const useBacktestThinking = (resultId: string | undefined) =>
     enabled: !!resultId,
   });
 
+/** Joined decision ledger (thinking + validation outcome + actual fill).
+ *  staleTime is generous because backtest results are immutable once written.
+ */
+export const useBacktestLedger = (resultId: string | undefined) =>
+  useQuery({
+    queryKey: ['backtest-ledger', resultId],
+    queryFn: () => api.backtestLedger(resultId!),
+    enabled: !!resultId,
+    staleTime: 60_000,
+  });
+
 export const useBacktestRating = (resultId: string | undefined) =>
   useQuery({
     queryKey: ['backtest-rating', resultId],

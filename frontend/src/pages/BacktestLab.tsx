@@ -34,6 +34,8 @@ import { LiveEventLog } from '../components/LiveEventLog';
 import { MonthlyHeatmap } from '../components/MonthlyHeatmap';
 import { SessionsHistoryList } from '../components/SessionsHistoryList';
 import { UniverseKLineGrid } from '../components/UniverseKLineGrid';
+import { DecisionLedger } from '../components/DecisionLedger';
+import { BacktestWindowBanner } from '../components/BacktestWindowBanner';
 
 // ─── form defaults ─────────────────────────────────────────────────────────
 const DEFAULT_UNIVERSE = '600519.SH, 601318.SH, 000858.SZ';
@@ -445,6 +447,29 @@ function BacktestForm({
   );
 }
 
+/**
+ * Pulls the first agent's nav curve to learn the actual trading-day count
+ * (daily_records.length is the source of truth — calendar diff would
+ * over-count weekends). Falls back to 0 while loading; banner still renders
+ * with the known dates so the alignment confirmation appears immediately.
+ */
+function SessionWindowBanner({ session }: { session: SessionComposite }) {
+  const firstAgentId = session.agents[0]?.id;
+  const nav = useBacktestNav(firstAgentId);
+  if (session.agents.length === 0) return null;
+  const first = session.agents[0];
+  const tradingDays = nav.data?.agent.length ?? 0;
+  return (
+    <BacktestWindowBanner
+      startDate={first.start_date}
+      endDate={first.end_date}
+      tradingDays={tradingDays}
+      agentCount={session.agents.length}
+      baselineCount={session.baselines.length}
+    />
+  );
+}
+
 function JobPanel({
   sessionId,
   job,
@@ -547,6 +572,7 @@ function JobPanel({
 
       {job?.state === 'complete' && session && (
         <>
+          <SessionWindowBanner session={session} />
           <ResultsTable session={session} />
           <ZoneMetricsPanel session={session} />
           {session.agents.map((a) => (
@@ -1079,6 +1105,17 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
           </span>
         </div>
         <TradesTable trades={trades.data?.trades ?? []} />
+      </div>
+
+      {/* Joined per-decision ledger: thinking → validation → fill */}
+      <div className="panel p-5">
+        <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+          <h2 className="text-text-hi text-base font-semibold">决策日志</h2>
+          <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+            Decision Ledger · {result.agent_id}
+          </span>
+        </div>
+        <DecisionLedger resultId={result.id} />
       </div>
 
       {/* Monthly heatmap */}
