@@ -341,6 +341,21 @@ export type DeployStatus = {
   schedule: string;
 };
 
+export type Position = {
+  code: string;
+  name: string;
+  shares: number;
+  avg_price: number;
+  last_price: number;
+  pnl_pct: number;
+};
+
+export type PositionsResponse = {
+  mode: ExecutionMode;
+  positions: Position[];
+  hint?: string;
+};
+
 export type DeployResponse = {
   agent_id: string;
   pid: number;

@@ -12,6 +12,7 @@ import type {
   MonthlyReturnsResponse,
   NavResponse,
   Persona,
+  PositionsResponse,
   PromptVersion,
   SessionComposite,
   SessionSummary,
@@ -156,6 +157,7 @@ export const api = {
       { method: 'POST' }),
   executionMode: () =>
     request<{ mode: ExecutionMode }>('/api/execution/mode'),
+  positions: () => request<PositionsResponse>('/api/positions'),
 };
 
 // Re-export types for convenience
