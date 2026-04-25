@@ -11,6 +11,7 @@ import type {
   ModelInfo,
   MonthlyReturnsResponse,
   NavResponse,
+  OHLCBar,
   Persona,
   PositionsResponse,
   PromptVersion,
@@ -74,6 +75,23 @@ export const api = {
     request<Agent>('/api/agents', { method: 'POST', body: JSON.stringify(body) }),
   backtestsForAgent: (agentId: string, limit = 50) =>
     request<BacktestResult[]>(`/api/backtests?agent_id=${agentId}&limit=${limit}`),
+  listBacktests: (agentId?: string, limit = 50) => {
+    const q = new URLSearchParams();
+    if (agentId) q.set('agent_id', agentId);
+    q.set('limit', String(limit));
+    return request<BacktestResult[]>(`/api/backtests?${q.toString()}`);
+  },
+  kline: (code: string, period = '1d', start?: string, end?: string) => {
+    // Date-range kline backed by local SQLite cache (storage.kline()).
+    // No TDX dependency, works offline for any window seeded into vnpy_sqlite.
+    if (start && end) {
+      const q = new URLSearchParams({ code, period, start, end });
+      return request<OHLCBar[]>(`/api/data/kline?${q.toString()}`);
+    }
+    // Fallback: count-based live TDX endpoint for callers that don't have a window.
+    const q = new URLSearchParams({ code, period, count: '250' });
+    return request<OHLCBar[]>(`/api/market/kline?${q.toString()}`);
+  },
   backtestDetail: (id: string) => request<BacktestResult>(`/api/backtests/${id}`),
   session: (id: string) => request<SessionComposite>(`/api/backtests/session/${id}`),
   startBacktest: (body: StartBacktestBody) =>

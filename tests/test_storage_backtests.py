@@ -79,3 +79,88 @@ def test_zone_stats_roundtrips(tmp_path):
     got = s.get(r.id)
     assert len(got.zone_stats) == 2
     assert got.zone_stats[0].zone == 'pollution'
+
+
+def test_backtest_result_persists_persona_and_model_ids(tmp_path):
+    """Phase 2.5 regression — persona_id + model_id must round-trip cleanly.
+
+    Earlier production rows had NULL persona_id/model_id even though the
+    runner passed them through; lock the storage layer down here so silent
+    NULL persistence cannot recur.
+    """
+    from storage.sqlite_backtests import SQLiteBacktestResultStore
+    s = SQLiteBacktestResultStore(tmp_path=tmp_path)
+    s.init_schema()
+    s.create_session('s-pm', '2024-01-01', '2024-03-01', ['ag-1'])
+
+    result = _result(
+        id='r-pm-1', session_id='s-pm', agent_id='ag-1',
+        persona_id='linyuan', model_id='hunyuan-hy3',
+    )
+    s.insert(result)
+
+    got = s.get('r-pm-1')
+    assert got is not None
+    assert got.persona_id == 'linyuan'
+    assert got.model_id == 'hunyuan-hy3'
+
+    # list_for_agent / list_all should also surface the IDs.
+    for row in s.list_for_agent('ag-1'):
+        if row.id == 'r-pm-1':
+            assert row.persona_id == 'linyuan'
+            assert row.model_id == 'hunyuan-hy3'
+            break
+    else:
+        raise AssertionError('result missing from list_for_agent')
+
+    for row in s.list_all():
+        if row.id == 'r-pm-1':
+            assert row.persona_id == 'linyuan'
+            assert row.model_id == 'hunyuan-hy3'
+            break
+    else:
+        raise AssertionError('result missing from list_all')
+
+
+def test_legacy_table_missing_persona_model_columns_is_repaired(tmp_path):
+    """Pre-P2c databases lack persona_id/model_id columns. init_schema must
+    add them via idempotent ALTER so subsequent inserts persist the IDs."""
+    import sqlite3
+    from pathlib import Path
+    from storage.sqlite_backtests import SQLiteBacktestResultStore
+
+    # Hand-roll a legacy-shape table without persona_id/model_id columns.
+    db_path = Path(tmp_path) / 'agent_state.db'
+    con = sqlite3.connect(db_path)
+    try:
+        con.execute('''
+            CREATE TABLE backtest_results (
+                id                   TEXT PRIMARY KEY,
+                session_id           TEXT NOT NULL,
+                agent_id             TEXT NOT NULL,
+                start_date           TEXT NOT NULL,
+                end_date             TEXT NOT NULL,
+                initial_capital      REAL NOT NULL,
+                final_equity         REAL,
+                stats_json           TEXT NOT NULL,
+                zone_stats_json      TEXT NOT NULL,
+                quality_gate_label   TEXT NOT NULL,
+                quality_gate_json    TEXT NOT NULL,
+                created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        con.commit()
+    finally:
+        con.close()
+
+    s = SQLiteBacktestResultStore(tmp_path=tmp_path)
+    s.init_schema()  # must repair the legacy table.
+
+    s.create_session('s-legacy', '2024-01-01', '2024-03-01', ['ag-1'])
+    s.insert(_result(
+        id='r-legacy-1', session_id='s-legacy', agent_id='ag-1',
+        persona_id='buffet', model_id='claude-opus-4-7',
+    ))
+    got = s.get('r-legacy-1')
+    assert got.persona_id == 'buffet'
+    assert got.model_id == 'claude-opus-4-7'

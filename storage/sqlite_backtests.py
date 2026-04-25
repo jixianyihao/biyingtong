@@ -61,7 +61,9 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.executescript(SCHEMA_BACKTEST_RESULTS)
             from data_schema.backtest_state import (
                 ensure_observability_columns, ensure_kind_column,
+                ensure_persona_model_columns,
             )
+            ensure_persona_model_columns(con)
             ensure_observability_columns(con)
             ensure_kind_column(con)
             con.commit()
@@ -90,7 +92,9 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.executescript(SCHEMA_BACKTEST_RESULTS)
             from data_schema.backtest_state import (
                 ensure_observability_columns, ensure_kind_column,
+                ensure_persona_model_columns,
             )
+            ensure_persona_model_columns(con)
             ensure_observability_columns(con)
             ensure_kind_column(con)
             zone_serial = json.dumps(

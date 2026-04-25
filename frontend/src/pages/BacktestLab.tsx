@@ -30,6 +30,8 @@ import { QualityGatePanel } from '../components/QualityGatePanel';
 import { StrategyRatingPanel } from '../components/StrategyRatingPanel';
 import { LiveEventLog } from '../components/LiveEventLog';
 import { MonthlyHeatmap } from '../components/MonthlyHeatmap';
+import { SessionsHistoryList } from '../components/SessionsHistoryList';
+import { UniverseKLineGrid } from '../components/UniverseKLineGrid';
 
 // ─── form defaults ─────────────────────────────────────────────────────────
 const DEFAULT_UNIVERSE = '600519.SH, 601318.SH, 000858.SZ';
@@ -847,6 +849,13 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
   const thinking = useBacktestThinking(result.id);
   const rating = useBacktestRating(result.id);
 
+  // Derive universe from trades — the codes the agent actually touched.
+  // (Session row doesn't persist the input universe; trades are the source
+  // of truth for "what was in play during this run".)
+  const universeCodes = Array.from(
+    new Set((trades.data?.trades ?? []).map((t) => t.code)),
+  );
+
   return (
     <div className="grid gap-4 mt-4">
       {/* NAV curve */}
@@ -859,6 +868,23 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
         </div>
         <NavChart data={nav.data} />
       </div>
+
+      {/* Universe K-lines — one OHLC chart per traded code over the window */}
+      {universeCodes.length > 0 && (
+        <div className="panel p-5">
+          <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+            <h2 className="text-text-hi text-base font-semibold">股票池 K 线</h2>
+            <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+              Universe K-Lines · {universeCodes.length} stocks
+            </span>
+          </div>
+          <UniverseKLineGrid
+            codes={universeCodes}
+            start={result.start_date}
+            end={result.end_date}
+          />
+        </div>
+      )}
 
       {/* Two-column: rating+gate | thinking */}
       <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
@@ -1130,12 +1156,19 @@ export function BacktestLab() {
   const startBacktest = useStartBacktest();
   const startRule = useStartRuleBacktest();
 
-  // Only stream SSE for agent-mode sessions; rule mode is synchronous.
+  // Historic = a session loaded from the history list (no live job to stream).
+  // We bypass the SSE entirely and load the session composite straight away.
+  const isHistoric = !!sessionId && startedAt === null;
+
+  // Only stream SSE for live agent-mode sessions; rule mode is synchronous,
+  // historic sessions have no running job.
   const jobStream = useJobStatusStream(
-    sessionMode === 'agent' ? (sessionId ?? undefined) : undefined,
+    sessionMode === 'agent' && !isHistoric ? (sessionId ?? undefined) : undefined,
   );
   const sessionEnabled =
-    sessionMode === 'rule' || jobStream.status?.state === 'complete';
+    sessionMode === 'rule' ||
+    isHistoric ||
+    jobStream.status?.state === 'complete';
   const session = useSession(sessionId ?? undefined, sessionEnabled);
 
   const busy =
@@ -1239,18 +1272,19 @@ export function BacktestLab() {
 
   const pageError = uiError ?? jobStream.error;
 
-  // For rule mode, synthesize a "complete" job status so JobPanel renders
-  // the ResultsTable (which gates on job.state === 'complete'). The session
-  // composite is the source of truth; this shim just unlocks the render.
-  const ruleJobStatus: JobStatus | undefined =
-    sessionMode === 'rule' && sessionId
+  // For rule mode and historic sessions (no live SSE), synthesize a "complete"
+  // job status so JobPanel renders the ResultsTable (which gates on
+  // job.state === 'complete'). The session composite is the source of truth;
+  // this shim just unlocks the render.
+  const syntheticJobStatus: JobStatus | undefined =
+    (sessionMode === 'rule' || isHistoric) && sessionId
       ? {
           session_id: sessionId,
           state: 'complete',
           progress: 'done',
-          agent_ids: [],
+          agent_ids: session.data?.agents.map((a) => a.agent_id) ?? [],
           agent_result_ids: session.data?.agents.map((a) => a.id) ?? [],
-          baseline_result_ids: [],
+          baseline_result_ids: session.data?.baselines.map((b) => b.id) ?? [],
           error: null,
           submitted_at: startedAt ?? Date.now(),
           started_at: startedAt,
@@ -1276,7 +1310,29 @@ export function BacktestLab() {
         </TabButton>
       </div>
 
-      <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(340px, 400px) 1fr' }}>
+      <div
+        className="grid gap-5"
+        style={{
+          gridTemplateColumns: 'minmax(220px, 240px) minmax(340px, 400px) 1fr',
+        }}
+      >
+        <div className="panel p-3" style={{ alignSelf: 'start', position: 'sticky', top: 16 }}>
+          <div className="flex items-baseline gap-2 mb-2">
+            <h3 className="text-text-hi text-sm font-semibold">历史回测</h3>
+            <span className="mono text-[9.5px] text-text-ghost uppercase tracking-wider">
+              History
+            </span>
+          </div>
+          <SessionsHistoryList
+            selectedSessionId={sessionId}
+            onSelect={(sid, kind) => {
+              setUiError(null);
+              setSessionMode(kind);
+              setSessionId(sid);
+              setStartedAt(null);
+            }}
+          />
+        </div>
         {mode === 'agent' ? (
           <BacktestForm
             state={form}
@@ -1297,7 +1353,7 @@ export function BacktestLab() {
         )}
         <JobPanel
           sessionId={sessionId}
-          job={ruleJobStatus ?? jobStream.status ?? undefined}
+          job={syntheticJobStatus ?? jobStream.status ?? undefined}
           events={jobStream.events}
           session={session.data}
           error={pageError}

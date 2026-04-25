@@ -154,6 +154,31 @@ export const useAuditQuery = (
 export const useSessions = (limit = 50) =>
   useQuery({ queryKey: ['sessions', limit], queryFn: () => api.listSessions(limit) });
 
+/** Recent backtests across all agents (no filter) for the history side-list. */
+export const useBacktestList = (limit = 20) =>
+  useQuery({
+    queryKey: ['backtests', 'list', limit],
+    queryFn: () => api.listBacktests(undefined, limit),
+    staleTime: 10_000,
+  });
+
+/** Daily K-line for one stock over a date range, backed by the local
+ *  SQLite cache (storage.kline()). No TDX live dependency.
+ */
+export const useKline = (
+  code: string | undefined,
+  period: string,
+  start: string | undefined,
+  end: string | undefined,
+) =>
+  useQuery({
+    queryKey: ['kline', code, period, start, end],
+    queryFn: () => api.kline(code!, period, start!, end!),
+    enabled: !!code && !!start && !!end,
+    staleTime: 60_000,
+    retry: false,
+  });
+
 export const useAgentPromptVersions = (id: string | undefined) =>
   useQuery({
     queryKey: ['agent-prompts', id],

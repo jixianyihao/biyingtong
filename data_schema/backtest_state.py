@@ -72,3 +72,19 @@ def ensure_kind_column(con):
     if 'kind_str' not in cols:
         con.execute("ALTER TABLE backtest_results ADD COLUMN "
                     "kind_str TEXT NOT NULL DEFAULT 'agent'")
+
+
+def ensure_persona_model_columns(con):
+    """Add persona_id + model_id to legacy backtest_results tables.
+
+    Phase 2.5 regression guard: pre-P2c databases were created without these
+    columns, so even though SCHEMA_BACKTEST_RESULTS now declares them,
+    `CREATE TABLE IF NOT EXISTS` is a no-op on the existing table and
+    INSERTs would silently drop the values. Idempotent.
+    """
+    cols = {row[1] for row in con.execute(
+        'PRAGMA table_info(backtest_results)').fetchall()}
+    if 'persona_id' not in cols:
+        con.execute('ALTER TABLE backtest_results ADD COLUMN persona_id TEXT')
+    if 'model_id' not in cols:
+        con.execute('ALTER TABLE backtest_results ADD COLUMN model_id TEXT')
