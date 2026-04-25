@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useApproveProposal,
   useExecutionMode,
@@ -7,6 +7,61 @@ import {
 } from '../api/hooks';
 import type { TradeProposal } from '../api/types';
 import { LiveApproveModal } from './LiveApproveModal';
+
+const RESULT_BANNER_MS = 6000;
+
+function ExecutionResultBanner({ p, onDismiss }: { p: TradeProposal; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, RESULT_BANNER_MS);
+    return () => clearTimeout(t);
+  }, [p.id, onDismiss]);
+
+  const isLive = p.execution_mode === 'live';
+  const isError = !!p.execution_error;
+  const tag = isError ? '❌ ERROR' : isLive ? '✓ LIVE' : '✓ DRY-RUN';
+  const tagColor = isError ? 'var(--down)' : isLive ? '#ef4444' : 'var(--text-dim)';
+  const code = p.code ?? '';
+  const action = p.action ?? '';
+  const filled = p.filled_qty ?? p.shares ?? 0;
+  const price = p.filled_price ?? p.price ?? 0;
+  const orderId = p.execution_order_id ?? '—';
+
+  return (
+    <div
+      style={{
+        padding: '8px 10px',
+        background: 'var(--bg-2)',
+        border: `1px solid ${isError ? 'var(--down-border)' : 'var(--panel-border-soft)'}`,
+        borderRadius: 4,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+      }}
+    >
+      <span className="mono text-[10px] uppercase tracking-wider" style={{ color: tagColor }}>
+        {tag}
+      </span>
+      <span className="mono text-xs text-text-hi">
+        {action} {code} {filled.toLocaleString()}@¥{price.toFixed(2)}
+      </span>
+      <span className="mono text-[10px] text-text-faint">order: {orderId}</span>
+      {isError && (
+        <span className="text-xs" style={{ color: 'var(--down)' }}>
+          {p.execution_error}
+        </span>
+      )}
+      <span style={{ flex: 1 }} />
+      <button
+        className="btn"
+        onClick={onDismiss}
+        style={{ padding: '1px 6px', fontSize: 10, background: 'transparent' }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
 
 function fmtNum(v: number | null | undefined, digits = 2): string {
   if (v == null || Number.isNaN(v)) return '—';
@@ -20,10 +75,12 @@ function ProposalRow({
   p,
   isLive,
   onRequestLiveApprove,
+  onApproved,
 }: {
   p: TradeProposal;
   isLive: boolean;
   onRequestLiveApprove: (p: TradeProposal) => void;
+  onApproved: (result: TradeProposal) => void;
 }) {
   const approve = useApproveProposal();
   const reject = useRejectProposal();
@@ -40,7 +97,9 @@ function ProposalRow({
     if (isLive) {
       onRequestLiveApprove(p);
     } else {
-      approve.mutate(p.id);
+      approve.mutate(p.id, {
+        onSuccess: (data) => onApproved(data),
+      });
     }
   };
 
@@ -175,12 +234,18 @@ export function ProposalsPanel({ agentId }: { agentId?: string }) {
   // Modal state lives here (not in ProposalRow) so only one modal exists
   // at a time regardless of how many proposal rows are on screen.
   const [modalFor, setModalFor] = useState<TradeProposal | null>(null);
+  // Last approve result — surfaced as a transient banner so the user gets
+  // feedback even after the row disappears from the pending list on refetch.
+  const [lastResult, setLastResult] = useState<TradeProposal | null>(null);
 
   const closeModal = () => setModalFor(null);
   const confirmLiveApprove = () => {
     if (!modalFor) return;
     approve.mutate(modalFor.id, {
-      onSuccess: () => closeModal(),
+      onSuccess: (data) => {
+        setLastResult(data);
+        closeModal();
+      },
       onError: () => closeModal(),
     });
   };
@@ -212,12 +277,19 @@ export function ProposalsPanel({ agentId }: { agentId?: string }) {
             ? '⚠ LIVE：批准将向通达信提交真实订单（需二次确认）。'
             : '⚠ DRY-RUN：批准仅改数据库状态，不会真实下单到 TDX。'}
         </div>
+        {lastResult && (
+          <ExecutionResultBanner
+            p={lastResult}
+            onDismiss={() => setLastResult(null)}
+          />
+        )}
         {rows.map((p) => (
           <ProposalRow
             key={p.id}
             p={p}
             isLive={isLive}
             onRequestLiveApprove={setModalFor}
+            onApproved={setLastResult}
           />
         ))}
       </div>

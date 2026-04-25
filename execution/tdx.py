@@ -7,7 +7,7 @@ is the only way real money moves.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .adapter import ExecutionAdapter, ExecutionResult
 
@@ -22,7 +22,7 @@ class TDXExecutionAdapter(ExecutionAdapter):
         price = float(proposal.price or 0.0)
         action = (proposal.action or '').lower()
         code = proposal.code or ''
-        ts = datetime.utcnow().isoformat(timespec='seconds')
+        ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds')
 
         if shares <= 0:
             return ExecutionResult(

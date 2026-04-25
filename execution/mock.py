@@ -6,7 +6,7 @@ Generates a UUID-based mock order id so DB rows can carry the value through.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .adapter import ExecutionAdapter, ExecutionResult
 
@@ -24,5 +24,5 @@ class MockExecutionAdapter(ExecutionAdapter):
             order_id=f'mock-{uuid.uuid4().hex[:12]}',
             filled_qty=shares, filled_price=price,
             error=None,
-            executed_at=datetime.utcnow().isoformat(timespec='seconds'),
+            executed_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds'),
         )
