@@ -162,6 +162,19 @@ export const useBacktestList = (limit = 20) =>
     staleTime: 10_000,
   });
 
+/** Coverage of locally-cached k-line data for one stock. Returns
+ *  {first_date, last_date, count} so the backtest form can warn when the
+ *  requested window has no underlying data. staleTime is generous because
+ *  coverage only changes when the operator re-ingests bars.
+ */
+export const useDataCoverage = (code: string | undefined) =>
+  useQuery({
+    queryKey: ['data-coverage', code],
+    queryFn: () => api.dataCoverage(code!),
+    enabled: !!code,
+    staleTime: 60_000,
+  });
+
 /** Daily K-line for one stock over a date range, backed by the local
  *  SQLite cache (storage.kline()). No TDX live dependency.
  */

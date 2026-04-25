@@ -373,3 +373,17 @@ export type OHLCBar = {
   close: number;
   vol: number;
 };
+
+/** Data coverage for one stock from GET /api/data/coverage.
+ *  Used by BacktestLab pre-submit validation to warn when the requested
+ *  window falls outside the locally-cached k-line range.
+ *  When the cache has no bars for the code, first_date/last_date are null
+ *  and count is 0.
+ */
+export type DataCoverage = {
+  code: string;
+  period: string;
+  first_date: string | null;
+  last_date: string | null;
+  count: number;
+};

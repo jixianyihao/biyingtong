@@ -4,6 +4,7 @@ import type {
   BacktestResult,
   CancelJobResponse,
   CreatePersonaBody,
+  DataCoverage,
   DeployResponse,
   DeployStatus,
   ExecutionMode,
@@ -80,6 +81,10 @@ export const api = {
     if (agentId) q.set('agent_id', agentId);
     q.set('limit', String(limit));
     return request<BacktestResult[]>(`/api/backtests?${q.toString()}`);
+  },
+  dataCoverage: (code: string, period = '1d') => {
+    const q = new URLSearchParams({ code, period });
+    return request<DataCoverage>(`/api/data/coverage?${q.toString()}`);
   },
   kline: (code: string, period = '1d', start?: string, end?: string) => {
     // Date-range kline backed by local SQLite cache (storage.kline()).

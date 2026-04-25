@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useBacktestNav,
   useBacktestRating,
@@ -6,6 +6,7 @@ import {
   useBacktestTrades,
   useCancelJob,
   useCreateAgent,
+  useDataCoverage,
   useDeleteBacktest,
   useJobStatusStream,
   useModels,
@@ -19,6 +20,7 @@ import type {
   BacktestEvent,
   BacktestResult,
   BaselineResult,
+  DataCoverage,
   JobStatus,
   SessionComposite,
   ZoneStats,
@@ -56,6 +58,166 @@ function parseUniverse(raw: string): string[] {
     .split(/[,;\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+// ─── data-coverage validation helpers ──────────────────────────────────────
+/**
+ * v1: probes coverage for the FIRST ticker in the universe and treats it as a
+ * proxy for the whole list. Justified because the local cache today is single-
+ * source HS300 (all tickers ingested in the same window). When per-stock
+ * windows diverge, upgrade to useQueries() over the full list and intersect
+ * the ranges; the rest of the validation logic already accepts a single
+ * {first_date,last_date} pair.
+ */
+function useUniverseCoverage(universeStr: string) {
+  const codes = useMemo(() => parseUniverse(universeStr), [universeStr]);
+  const firstCode = codes[0];
+  const q = useDataCoverage(firstCode);
+  return {
+    firstCode,
+    coverage: q.data,
+    isLoading: q.isLoading,
+    isError: q.isError,
+  };
+}
+
+type DateValidation =
+  | { kind: 'ok'; coverage: DataCoverage; codeUsed: string }
+  | { kind: 'no-data'; codeUsed: string }
+  | { kind: 'loading' }
+  | { kind: 'inverted' }   // start > end
+  | { kind: 'outside'; coverage: DataCoverage; codeUsed: string }   // entirely outside
+  | { kind: 'partial'; coverage: DataCoverage; codeUsed: string }   // overlaps but spills
+  | { kind: 'covered'; coverage: DataCoverage; codeUsed: string };  // fully inside
+
+function classifyDateRange(
+  start: string,
+  end: string,
+  coverage: DataCoverage | undefined,
+  codeUsed: string | undefined,
+  isLoading: boolean,
+): DateValidation {
+  if (!start || !end) return { kind: 'loading' };
+  if (start > end) return { kind: 'inverted' };
+  if (isLoading) return { kind: 'loading' };
+  if (!coverage || !codeUsed) return { kind: 'loading' };
+  if (!coverage.first_date || !coverage.last_date || coverage.count === 0) {
+    return { kind: 'no-data', codeUsed };
+  }
+  // Entirely outside coverage in either direction.
+  if (start > coverage.last_date || end < coverage.first_date) {
+    return { kind: 'outside', coverage, codeUsed };
+  }
+  // Spills off either edge but at least overlaps.
+  if (start < coverage.first_date || end > coverage.last_date) {
+    return { kind: 'partial', coverage, codeUsed };
+  }
+  return { kind: 'covered', coverage, codeUsed };
+}
+
+/** Subtract `days` from an ISO YYYY-MM-DD date string and return ISO. */
+function subtractDays(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Render coverage status under the date-row inputs. */
+function CoverageStatus({ v }: { v: DateValidation }) {
+  const baseStyle: React.CSSProperties = {
+    padding: '6px 10px',
+    fontSize: 11,
+    borderRadius: 4,
+    marginTop: 6,
+    lineHeight: 1.5,
+  };
+  if (v.kind === 'loading') {
+    return (
+      <div
+        style={{
+          ...baseStyle,
+          color: 'var(--text-faint)',
+          background: 'var(--bg-3)',
+          border: '1px dashed var(--panel-border-soft)',
+        }}
+      >
+        正在查询数据覆盖范围…
+      </div>
+    );
+  }
+  if (v.kind === 'inverted') {
+    return (
+      <div
+        style={{
+          ...baseStyle,
+          color: 'var(--down)',
+          background: 'var(--down-bg)',
+          border: '1px solid var(--down-border)',
+        }}
+      >
+        ✗ 开始日期晚于结束日期
+      </div>
+    );
+  }
+  if (v.kind === 'no-data') {
+    return (
+      <div
+        style={{
+          ...baseStyle,
+          color: 'var(--down)',
+          background: 'var(--down-bg)',
+          border: '1px solid var(--down-border)',
+        }}
+      >
+        ✗ 本地缓存中没有 {v.codeUsed} 的数据，无法进行回测
+      </div>
+    );
+  }
+  if (v.kind === 'outside') {
+    return (
+      <div
+        style={{
+          ...baseStyle,
+          color: 'var(--down)',
+          background: 'var(--down-bg)',
+          border: '1px solid var(--down-border)',
+        }}
+      >
+        ✗ 整个窗口在数据覆盖之外（{v.coverage.code} 仅有
+        {' '}{v.coverage.first_date} → {v.coverage.last_date}）
+      </div>
+    );
+  }
+  if (v.kind === 'partial') {
+    return (
+      <div
+        style={{
+          ...baseStyle,
+          color: 'var(--warn)',
+          background: 'var(--warn-bg, rgba(234,179,8,0.08))',
+          border: '1px solid var(--warn)',
+        }}
+      >
+        ⚠ 部分窗口缺数据：{v.coverage.code} 仅有
+        {' '}{v.coverage.first_date} → {v.coverage.last_date}
+        （共 {v.coverage.count} 个交易日）。建议调整起止日期。
+      </div>
+    );
+  }
+  // covered
+  return (
+    <div
+      style={{
+        ...baseStyle,
+        color: 'var(--text-dim)',
+        background: 'var(--bg-3)',
+        border: '1px solid var(--panel-border-soft)',
+      }}
+    >
+      ✓ 数据覆盖：{v.coverage.code} 有 {v.coverage.count} 个交易日
+      （{v.coverage.first_date} → {v.coverage.last_date}）
+    </div>
+  );
 }
 
 // ─── styling helpers ───────────────────────────────────────────────────────
@@ -110,6 +272,7 @@ function BacktestForm({
   models,
   busy,
   onSubmit,
+  coverageValidation,
 }: {
   state: FormState;
   setState: (patch: Partial<FormState>) => void;
@@ -117,6 +280,7 @@ function BacktestForm({
   models: ReturnType<typeof useModels>;
   busy: boolean;
   onSubmit: () => void;
+  coverageValidation: DateValidation;
 }) {
   const personaList = personas.data ?? [];
   const modelList = models.data ?? [];
@@ -219,25 +383,28 @@ function BacktestForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={fieldLabelCls}>开始日期</label>
-            <input
-              className={`${inputCls} mono`}
-              type="date"
-              value={state.start_date}
-              onChange={(e) => setState({ start_date: e.target.value })}
-            />
+        <div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={fieldLabelCls}>开始日期</label>
+              <input
+                className={`${inputCls} mono`}
+                type="date"
+                value={state.start_date}
+                onChange={(e) => setState({ start_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className={fieldLabelCls}>结束日期</label>
+              <input
+                className={`${inputCls} mono`}
+                type="date"
+                value={state.end_date}
+                onChange={(e) => setState({ end_date: e.target.value })}
+              />
+            </div>
           </div>
-          <div>
-            <label className={fieldLabelCls}>结束日期</label>
-            <input
-              className={`${inputCls} mono`}
-              type="date"
-              value={state.end_date}
-              onChange={(e) => setState({ end_date: e.target.value })}
-            />
-          </div>
+          <CoverageStatus v={coverageValidation} />
         </div>
 
         <div>
@@ -978,12 +1145,14 @@ function RuleBacktestForm({
   strategies,
   busy,
   onSubmit,
+  coverageValidation,
 }: {
   state: RuleFormState;
   setState: (patch: Partial<RuleFormState>) => void;
   strategies: ReturnType<typeof useStrategies>;
   busy: boolean;
   onSubmit: () => void;
+  coverageValidation: DateValidation;
 }) {
   const list = strategies.data ?? [];
   const selected = list.find((s) => s.name === state.strategy_name);
@@ -1064,25 +1233,28 @@ function RuleBacktestForm({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={fieldLabelCls}>开始日期</label>
-            <input
-              className={`${inputCls} mono`}
-              type="date"
-              value={state.start_date}
-              onChange={(e) => setState({ start_date: e.target.value })}
-            />
+        <div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={fieldLabelCls}>开始日期</label>
+              <input
+                className={`${inputCls} mono`}
+                type="date"
+                value={state.start_date}
+                onChange={(e) => setState({ start_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className={fieldLabelCls}>结束日期</label>
+              <input
+                className={`${inputCls} mono`}
+                type="date"
+                value={state.end_date}
+                onChange={(e) => setState({ end_date: e.target.value })}
+              />
+            </div>
           </div>
-          <div>
-            <label className={fieldLabelCls}>结束日期</label>
-            <input
-              className={`${inputCls} mono`}
-              type="date"
-              value={state.end_date}
-              onChange={(e) => setState({ end_date: e.target.value })}
-            />
-          </div>
+          <CoverageStatus v={coverageValidation} />
         </div>
 
         <div>
@@ -1143,6 +1315,58 @@ export function BacktestLab() {
   }));
   const patchRule = (p: Partial<RuleFormState>) =>
     setRuleForm((prev) => ({ ...prev, ...p }));
+
+  // Coverage probes (one per form). Each follows the FIRST ticker — see
+  // useUniverseCoverage docstring for the single-source justification.
+  const agentCoverage = useUniverseCoverage(form.universe);
+  const ruleCoverage = useUniverseCoverage(ruleForm.universe);
+
+  const agentValidation = useMemo(
+    () => classifyDateRange(
+      form.start_date,
+      form.end_date,
+      agentCoverage.coverage,
+      agentCoverage.firstCode,
+      agentCoverage.isLoading,
+    ),
+    [form.start_date, form.end_date, agentCoverage.coverage,
+      agentCoverage.firstCode, agentCoverage.isLoading],
+  );
+  const ruleValidation = useMemo(
+    () => classifyDateRange(
+      ruleForm.start_date,
+      ruleForm.end_date,
+      ruleCoverage.coverage,
+      ruleCoverage.firstCode,
+      ruleCoverage.isLoading,
+    ),
+    [ruleForm.start_date, ruleForm.end_date, ruleCoverage.coverage,
+      ruleCoverage.firstCode, ruleCoverage.isLoading],
+  );
+
+  // Smart defaults: once coverage for the first ticker arrives AND the form
+  // dates are still the hardcoded DEFAULT_START/DEFAULT_END, snap the window
+  // to (last - 30d, last) clamped to [first, last]. Runs at most once per
+  // form because subsequent edits move the dates off the hardcoded sentinels.
+  useEffect(() => {
+    const cov = agentCoverage.coverage;
+    if (!cov || !cov.first_date || !cov.last_date) return;
+    if (form.start_date !== DEFAULT_START || form.end_date !== DEFAULT_END) return;
+    const desiredStart = subtractDays(cov.last_date, 30);
+    const clampedStart = desiredStart < cov.first_date ? cov.first_date : desiredStart;
+    patch({ start_date: clampedStart, end_date: cov.last_date });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentCoverage.coverage]);
+
+  useEffect(() => {
+    const cov = ruleCoverage.coverage;
+    if (!cov || !cov.first_date || !cov.last_date) return;
+    if (ruleForm.start_date !== DEFAULT_START || ruleForm.end_date !== DEFAULT_END) return;
+    const desiredStart = subtractDays(cov.last_date, 30);
+    const clampedStart = desiredStart < cov.first_date ? cov.first_date : desiredStart;
+    patchRule({ start_date: clampedStart, end_date: cov.last_date });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ruleCoverage.coverage]);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -1403,6 +1627,7 @@ export function BacktestLab() {
                 models={models}
                 busy={busy}
                 onSubmit={onSubmit}
+                coverageValidation={agentValidation}
               />
             ) : (
               <RuleBacktestForm
@@ -1411,6 +1636,7 @@ export function BacktestLab() {
                 strategies={strategies}
                 busy={busy}
                 onSubmit={onSubmitRule}
+                coverageValidation={ruleValidation}
               />
             )}
           </div>
