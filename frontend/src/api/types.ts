@@ -60,6 +60,7 @@ export type BacktestResult = {
   id: string;
   session_id: string;
   agent_id: string;
+  agent_display_name: string | null;
   persona_id: string | null;
   model_id: string | null;
   start_date: string;

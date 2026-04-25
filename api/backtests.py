@@ -11,10 +11,22 @@ from . import api_bp
 def _result_to_dict(r) -> dict:
     from backtest.divergence import compute_divergence
     flag, metric = compute_divergence(r.zone_stats)
+    # Agent display_name lookup — keeps SessionsHistoryList readable
+    # ("林园-Hunyuan" instead of "linyuan_3780f689"). None if agent has
+    # been deleted; UI falls back to agent_id.
+    display_name = None
+    if r.agent_id:
+        try:
+            import storage
+            ag = storage.agents().get(r.agent_id)
+            display_name = ag.display_name if ag else None
+        except Exception:  # noqa: BLE001
+            display_name = None
     return {
         'id': r.id,
         'session_id': r.session_id,
         'agent_id': r.agent_id,
+        'agent_display_name': display_name,
         'persona_id': r.persona_id,
         'model_id': r.model_id,
         'start_date': r.start_date,

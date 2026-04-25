@@ -43,6 +43,17 @@ export function SessionsHistoryList({
             : r.quality_gate_label === 'fail'
               ? 'var(--down)'
               : 'var(--text-faint)';
+        // Friendly title: prefer user-given display_name, then persona+model
+        // pair, then last-resort agent_id / session_id slice.
+        const primary =
+          r.agent_display_name?.trim() ||
+          (r.persona_id && r.model_id
+            ? `${r.persona_id} · ${r.model_id}`
+            : r.persona_id || r.agent_id || r.session_id.slice(0, 18));
+        const subtitle =
+          r.agent_display_name && (r.persona_id || r.model_id)
+            ? [r.persona_id, r.model_id].filter(Boolean).join(' · ')
+            : null;
         return (
           <button
             key={r.id}
@@ -63,10 +74,10 @@ export function SessionsHistoryList({
                 {kindLabel}
               </span>
               <span
-                className="mono text-[11px] flex-1 truncate"
+                className="text-[12px] font-semibold flex-1 truncate"
                 style={{ color: 'var(--text-hi)' }}
               >
-                {r.agent_id || r.session_id.slice(0, 18)}
+                {primary}
               </span>
               <span
                 className="num mono text-[11px]"
@@ -76,6 +87,14 @@ export function SessionsHistoryList({
                 {ret.toFixed(2)}%
               </span>
             </div>
+            {subtitle && (
+              <div
+                className="mono text-[10px] mt-0.5 truncate"
+                style={{ color: 'var(--text-dim)' }}
+              >
+                {subtitle}
+              </div>
+            )}
             <div
               className="mono text-[10px] mt-0.5"
               style={{ color: 'var(--text-faint)' }}
