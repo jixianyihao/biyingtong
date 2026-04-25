@@ -1301,19 +1301,37 @@ export function BacktestLab() {
         </div>
       </div>
 
-      <div className="panel p-2 mb-4 flex gap-1" style={{ width: 'fit-content' }}>
-        <TabButton active={mode === 'agent'} onClick={() => setMode('agent')}>
-          Agent 模式
-        </TabButton>
-        <TabButton active={mode === 'rule'} onClick={() => setMode('rule')}>
-          规则模式
-        </TabButton>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="panel p-2 flex gap-1" style={{ width: 'fit-content' }}>
+          <TabButton active={mode === 'agent'} onClick={() => setMode('agent')}>
+            Agent 模式
+          </TabButton>
+          <TabButton active={mode === 'rule'} onClick={() => setMode('rule')}>
+            规则模式
+          </TabButton>
+        </div>
+        {isHistoric && (
+          <button
+            className="btn primary"
+            onClick={() => {
+              setSessionId(null);
+              setStartedAt(null);
+              setUiError(null);
+            }}
+            style={{ padding: '4px 12px', fontSize: 12 }}
+            title="清空当前历史 session 视图，回到新建回测"
+          >
+            + 新建回测
+          </button>
+        )}
       </div>
 
       <div
         className="grid gap-5"
         style={{
-          gridTemplateColumns: 'minmax(220px, 240px) minmax(340px, 400px) 1fr',
+          gridTemplateColumns: isHistoric
+            ? 'minmax(220px, 240px) 1fr'
+            : 'minmax(220px, 240px) minmax(340px, 400px) 1fr',
         }}
       >
         <div className="panel p-3" style={{ alignSelf: 'start', position: 'sticky', top: 16 }}>
@@ -1333,24 +1351,25 @@ export function BacktestLab() {
             }}
           />
         </div>
-        {mode === 'agent' ? (
-          <BacktestForm
-            state={form}
-            setState={patch}
-            personas={personas}
-            models={models}
-            busy={busy}
-            onSubmit={onSubmit}
-          />
-        ) : (
-          <RuleBacktestForm
-            state={ruleForm}
-            setState={patchRule}
-            strategies={strategies}
-            busy={busy}
-            onSubmit={onSubmitRule}
-          />
-        )}
+        {!isHistoric &&
+          (mode === 'agent' ? (
+            <BacktestForm
+              state={form}
+              setState={patch}
+              personas={personas}
+              models={models}
+              busy={busy}
+              onSubmit={onSubmit}
+            />
+          ) : (
+            <RuleBacktestForm
+              state={ruleForm}
+              setState={patchRule}
+              strategies={strategies}
+              busy={busy}
+              onSubmit={onSubmitRule}
+            />
+          ))}
         <JobPanel
           sessionId={sessionId}
           job={syntheticJobStatus ?? jobStream.status ?? undefined}
