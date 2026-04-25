@@ -36,7 +36,8 @@ def test_seed_inserts_all_personas(tmp_path):
     import storage
     all_seeded = storage.personas().list_all()
     assert {p.id for p in all_seeded} == {
-        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral', 'intraday_t0',
+        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral',
+        'intraday_t0', 'quant_sentiment',
     }
 
 

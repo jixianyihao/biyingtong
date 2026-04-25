@@ -4,8 +4,30 @@
 def test_all_personas_registered():
     from personas import ALL_PERSONAS
     assert set(ALL_PERSONAS.keys()) == {
-        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral', 'intraday_t0',
+        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral',
+        'intraday_t0', 'quant_sentiment',
     }
+
+
+def test_quant_sentiment_persona_shape():
+    """Regression — 量化情绪短线中性 must have capital_flow + stock_list tools and
+    a strict cash floor (≥ 70%) per its market-neutral mandate."""
+    from personas import ALL_PERSONAS
+    p = ALL_PERSONAS['quant_sentiment']
+    assert p['name'] == '量化情绪短线中性'
+    assert p['default_schedule'] == 'daily'
+    # Sentiment data inputs
+    assert 'get_capital_flow' in p['allowed_tools']
+    assert 'get_stock_list' in p['allowed_tools']
+    assert 'get_technical' in p['allowed_tools']
+    # Market-neutral risk envelope
+    assert p['default_rules']['cash_min_pct'] >= 70
+    assert p['default_rules']['max_holdings'] <= 6
+    assert p['default_rules']['position_max_pct'] <= 8
+    # Universe is non-empty + valid
+    assert len(p['default_pool']) >= 5
+    for code in p['default_pool']:
+        assert code.endswith(('.SH', '.SZ'))
 
 
 def test_every_persona_has_required_keys():

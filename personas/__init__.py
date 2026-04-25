@@ -7,6 +7,7 @@ from .buffet import PERSONA as BUFFET
 from .soros import PERSONA as SOROS
 from .quant_neutral import PERSONA as QUANT_NEUTRAL
 from .intraday_t0 import PERSONA as INTRADAY_T0
+from .quant_sentiment import PERSONA as QUANT_SENTIMENT
 
 
 ALL_PERSONAS: dict[str, dict] = {
@@ -16,6 +17,7 @@ ALL_PERSONAS: dict[str, dict] = {
     'soros': SOROS,
     'quant_neutral': QUANT_NEUTRAL,
     'intraday_t0': INTRADAY_T0,
+    'quant_sentiment': QUANT_SENTIMENT,
 }
 
 
