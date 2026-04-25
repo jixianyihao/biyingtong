@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def emit_proposal(flask_url: str, agent_id: str, decision: dict) -> dict:
@@ -16,7 +16,7 @@ def emit_proposal(flask_url: str, agent_id: str, decision: dict) -> dict:
     payload = {
         'id': str(uuid.uuid4()),
         'agent_id': agent_id,
-        'decision_at': datetime.utcnow().isoformat(timespec='seconds'),
+        'decision_at': datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds'),
         'action': decision.get('action', 'hold'),
         'code': decision.get('code'),
         'shares': decision.get('shares'),
