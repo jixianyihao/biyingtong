@@ -25,3 +25,4 @@ from . import audit          # noqa: F401,E402
 from . import strategies     # noqa: F401,E402
 from . import deploy         # noqa: F401,E402  P3-F Phase 1
 from . import proposals      # noqa: F401,E402  P3-F Phase 1
+from . import execution      # noqa: F401,E402  P3-F Phase 2

@@ -33,6 +33,13 @@ def _proposal_to_dict(p) -> dict:
         'status': p.status,
         'decided_by': p.decided_by,
         'decided_at': p.decided_at,
+        # Phase 2 execution fields — None for pending / rejected / expired.
+        'execution_mode': p.execution_mode,
+        'execution_order_id': p.execution_order_id,
+        'execution_error': p.execution_error,
+        'executed_at': p.executed_at,
+        'filled_qty': p.filled_qty,
+        'filled_price': p.filled_price,
     }
 
 
@@ -107,20 +114,43 @@ def get_proposal(proposal_id):
 
 @api_bp.route('/proposals/<proposal_id>/approve', methods=['POST'])
 def approve_proposal(proposal_id):
-    """Phase 1: flip status to 'approved' in DB. NO TDX CALL.
+    """Phase 2: flip status → approved AND dispatch to ExecutionAdapter.
 
-    Phase 2 (a separate plan, not this task) will wire actual TDX
-    execution here. For now we only record intent — user must manually
-    execute any approved trade.
+    Adapter is selected via BIYINGTONG_EXECUTION_MODE:
+      dry_run (default) → MockExecutionAdapter (no TDX call)
+      live              → TDXExecutionAdapter (real order via tdx_service)
+
+    Execution failures do NOT revert the approval. The proposal stays
+    'approved' with execution_error populated; the HTTP response is still
+    200 and the UI surfaces the error. This matches user intent: they
+    clicked approve, and we recorded that decision regardless of the
+    downstream outcome.
     """
     import storage
+    from execution import get_adapter
+
     p = storage.proposals().get(proposal_id)
     if p is None:
         return jsonify({'error': 'not_found'}), 404
     if p.status != 'pending':
         return jsonify({'error': f'already {p.status}'}), 409
+
     storage.proposals().update_status(proposal_id, 'approved',
                                       decided_by='user')
+    # Re-read so decided_at/decided_by are fresh before dispatch.
+    p = storage.proposals().get(proposal_id)
+
+    adapter = get_adapter()
+    exec_result = adapter.place_order(p)
+    storage.proposals().update_execution(
+        proposal_id,
+        execution_mode=exec_result.mode,
+        execution_order_id=exec_result.order_id,
+        execution_error=exec_result.error,
+        filled_qty=exec_result.filled_qty,
+        filled_price=exec_result.filled_price,
+        executed_at=exec_result.executed_at,
+    )
     return jsonify(_proposal_to_dict(storage.proposals().get(proposal_id)))
 
 

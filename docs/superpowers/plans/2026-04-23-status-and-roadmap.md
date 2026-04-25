@@ -122,7 +122,7 @@
 | `/editor` 策略研发 | ✅ stub 迭代轨迹 + 指标卡 + agent 工作流 |
 | `/backtest` 回测实验室 | ✅ 表单 + agent vs 3 baselines + zones 区间 + divergence banner |
 | `/agent/:id/prompts` Prompt 历史 | ✅ list + diff |
-| `/live` 实盘交易 | ⚠ Phase 1 UI scaffold 落地（warning banner + PositionsPanel stub + ProposalsPanel 挂载），Phase 2 真单仍 gated |
+| `/live` 实盘交易 | ✅ Phase 1 UI scaffold + Phase 2 真单通路落地（ExecutionAdapter + `BIYINGTONG_EXECUTION_MODE` env 切换 + 2 步 "确认下单" Modal） |
 
 ### Spec §16 表格元素覆盖
 
@@ -308,18 +308,27 @@
 
 ---
 
-### 🔴 P3-F Phase 2 — LiveTrading 真单（待用户独立明确同意）
+### ✅ P3-F Phase 2 — Done 2026-04-24（用户明确授权真金险 + 多层 guardrail）
 
-**前置：** Subprocess 架构（被延后）+ 真金白银上链需用户明确同意。
+**交付（10 commits on `feature/p3f-phase2-execution`，commit 范围 `ca9ab47..1748fce`）：**
+- **Backend execution 抽象层**（commits `7263c1f..b8c9f07`）：`execution/` 新 package = `ExecutionAdapter` Protocol + `ExecutionResult` dataclass + `MockExecutionAdapter` (dry_run) + `TDXExecutionAdapter` (live, 包 `tdx_service.place_order`) + `get_adapter()` 工厂读 `BIYINGTONG_EXECUTION_MODE`
+- **Schema + approve endpoint**（commits `aec250f` + `1748fce`）：`trade_proposals` 加 6 列 (`execution_mode`/`execution_order_id`/`execution_error`/`executed_at`/`filled_qty`/`filled_price`) + idempotent `ALTER TABLE`；`POST /api/proposals/:id/approve` 现在调 adapter.place_order 并持久化结果；新 endpoint `GET /api/execution/mode`
+- **Frontend**（commits `8bd76de` + `dad60da` + `133c121`）：`useExecutionMode` hook + `ExecutionModeBadge` (TopBar, dry-run 灰 / LIVE 红脉冲) + `LiveApproveModal` 要求输入 `确认下单` 字符串才能 enable 提交按钮
+- **多层安全 guardrail：**
+  1. 默认 `dry_run`，env 不设就走 Mock
+  2. Typo（如 `prod-yolo`）fall back dry_run + stderr warning，绝不 silent live
+  3. `tdx_service.place_order` 只在 `execution/tdx.py` 一处被调用（grep-verify），单点审计
+  4. Live 模式下 approve 按钮打开 Modal，必须精准输入 `确认下单`（`===` strict，无 trim/case-fold）才能 enable
+  5. TopBar 全时显示脉冲红 `● LIVE` badge
+  6. 执行失败不回滚 approved 状态；`execution_error` 暴露给 UI
+- **测试：** `pytest -q` = 685 passed（+20 本批新增：10 execution core + 4 schema + 5 api + 1 Protocol compliance）；frontend build 清洁
+- **详细 plan：** `2026-04-24-p3f-phase2-execution.md`
 
-**包含：**
-- runner/agent_process.py（agent 独立进程）
-- runner/message_router.py (Flask MQ hub)
-- 交易提议 → WebSocket → 用户确认 → tdx_service.place_order
-- 崩溃恢复
-- LiveTrading 页 + 待审批面板
-
-**当前不动。** 你说"短期没 live 打算"。
+**Phase 2.5 / 后续 polish（非本批）：**
+- Order status 轮询 / fill tracking over time
+- Partial-fill handling
+- Cancel-order UI
+- 真实持仓同步（现在 approve 乐观记 `filled_qty=shares`）
 
 ---
 

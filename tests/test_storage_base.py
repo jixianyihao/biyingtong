@@ -189,3 +189,23 @@ def test_llm_decision_cache_store_protocol_exists():
     from storage.base import LLMDecisionCacheStore
     for m in ('init_schema', 'get', 'put', 'has'):
         assert hasattr(LLMDecisionCacheStore, m), f'missing {m}'
+
+
+def test_trade_proposal_store_protocol_runtime_checkable():
+    """Phase 2: compliant impl must include update_execution."""
+    from storage.base import TradeProposalStore
+
+    class Compliant:
+        def init_schema(self): pass
+        def insert(self, proposal): pass
+        def get(self, proposal_id): return None
+        def list_pending(self, agent_id=None, limit=100): return []
+        def list_for_agent(self, agent_id, limit=100): return []
+        def update_status(self, proposal_id, status, decided_by=None):
+            return False
+        def update_execution(self, proposal_id, *, execution_mode,
+                             execution_order_id, execution_error,
+                             filled_qty, filled_price, executed_at):
+            return False
+
+    assert isinstance(Compliant(), TradeProposalStore)

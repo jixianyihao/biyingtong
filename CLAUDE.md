@@ -93,6 +93,6 @@ Delivered so far:
   - Batch B: `VnpyBacktestRunner` as a parallel path (`?engine=vnpy` toggle); parity test vs legacy runner.
   - Batch C: `tq.subscribe_hq` push replaces 3-sec polling; `get_stock_list` + `get_capital_flow` tools; 5m bar storage support (fallback to `MINUTE` since local vnpy lacks `MINUTE_5`).
 
-Current totals (approx): ~660 pytest passing; 10+ tools in `ALL_TOOLS`; 6 built-in personas; 4 LLM adapters; dual-engine backtest runners; subprocess-based agent deployment with UI-gated approval flow.
+Current totals (approx): ~685 pytest passing; 11+ tools in `ALL_TOOLS`; 6 built-in personas; 4 LLM adapters; dual-engine backtest runners; subprocess-based agent deployment with UI-gated approval flow; `execution/` abstraction for dry-run + live TDX order submission.
 
-**Phase 2** (real TDX order execution on proposal approval) is gated on explicit user sign-off and is currently deferred.
+**Phase 2** (real TDX order execution on proposal approval) is delivered behind `BIYINGTONG_EXECUTION_MODE` env var (default `dry_run` → `MockExecutionAdapter`; set to `live` → `TDXExecutionAdapter`). In live mode the UI additionally requires typing `确认下单` in a confirmation modal before each order is submitted. See `execution/` package and `docs/superpowers/plans/2026-04-24-p3f-phase2-execution.md`.
