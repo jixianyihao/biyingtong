@@ -154,6 +154,14 @@ export const useAuditQuery = (
 export const useSessions = (limit = 50) =>
   useQuery({ queryKey: ['sessions', limit], queryFn: () => api.listSessions(limit) });
 
+/** Recent backtests across all agents (no filter) for the history side-list. */
+export const useBacktestList = (limit = 20) =>
+  useQuery({
+    queryKey: ['backtests', 'list', limit],
+    queryFn: () => api.listBacktests(undefined, limit),
+    staleTime: 10_000,
+  });
+
 export const useAgentPromptVersions = (id: string | undefined) =>
   useQuery({
     queryKey: ['agent-prompts', id],

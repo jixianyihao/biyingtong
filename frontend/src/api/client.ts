@@ -74,6 +74,12 @@ export const api = {
     request<Agent>('/api/agents', { method: 'POST', body: JSON.stringify(body) }),
   backtestsForAgent: (agentId: string, limit = 50) =>
     request<BacktestResult[]>(`/api/backtests?agent_id=${agentId}&limit=${limit}`),
+  listBacktests: (agentId?: string, limit = 50) => {
+    const q = new URLSearchParams();
+    if (agentId) q.set('agent_id', agentId);
+    q.set('limit', String(limit));
+    return request<BacktestResult[]>(`/api/backtests?${q.toString()}`);
+  },
   backtestDetail: (id: string) => request<BacktestResult>(`/api/backtests/${id}`),
   session: (id: string) => request<SessionComposite>(`/api/backtests/session/${id}`),
   startBacktest: (body: StartBacktestBody) =>
