@@ -27,3 +27,4 @@ from . import deploy         # noqa: F401,E402  P3-F Phase 1
 from . import proposals      # noqa: F401,E402  P3-F Phase 1
 from . import execution      # noqa: F401,E402  P3-F Phase 2
 from . import positions      # noqa: F401,E402  Phase 25 polish
+from . import data           # noqa: F401,E402  Phase 2.5 — kline coverage
