@@ -26,3 +26,4 @@ from . import strategies     # noqa: F401,E402
 from . import deploy         # noqa: F401,E402  P3-F Phase 1
 from . import proposals      # noqa: F401,E402  P3-F Phase 1
 from . import execution      # noqa: F401,E402  P3-F Phase 2
+from . import positions      # noqa: F401,E402  Phase 25 polish
