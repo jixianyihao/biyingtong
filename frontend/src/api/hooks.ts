@@ -162,6 +162,39 @@ export const useBacktestList = (limit = 20) =>
     staleTime: 10_000,
   });
 
+/** Daily K-line for one stock. Bar count is derived from the window length.
+ *  Backend `/api/market/kline` uses `count` (not start/end); we filter the
+ *  window client-side after fetch.
+ */
+export const useKline = (
+  code: string | undefined,
+  period: string,
+  start: string | undefined,
+  end: string | undefined,
+) => {
+  // ~1 calendar day per bar (overestimate vs trading days is fine — extra
+  // bars before `start` are trimmed in the chart). Cap at 1000 to bound TDX.
+  const days = start && end
+    ? Math.min(
+        1000,
+        Math.max(
+          20,
+          Math.ceil(
+            (new Date(end).getTime() - new Date(start).getTime())
+              / (1000 * 60 * 60 * 24),
+          ) + 10,
+        ),
+      )
+    : 80;
+  return useQuery({
+    queryKey: ['kline', code, period, days],
+    queryFn: () => api.kline(code!, period, days),
+    enabled: !!code && !!start && !!end,
+    staleTime: 60_000,
+    retry: false,
+  });
+};
+
 export const useAgentPromptVersions = (id: string | undefined) =>
   useQuery({
     queryKey: ['agent-prompts', id],

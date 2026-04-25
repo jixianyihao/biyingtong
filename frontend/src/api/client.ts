@@ -11,6 +11,7 @@ import type {
   ModelInfo,
   MonthlyReturnsResponse,
   NavResponse,
+  OHLCBar,
   Persona,
   PositionsResponse,
   PromptVersion,
@@ -79,6 +80,12 @@ export const api = {
     if (agentId) q.set('agent_id', agentId);
     q.set('limit', String(limit));
     return request<BacktestResult[]>(`/api/backtests?${q.toString()}`);
+  },
+  kline: (code: string, period = '1d', count = 250) => {
+    // Backend `/api/market/kline` uses `count` rather than start/end. Caller
+    // computes count from window length (~daily bars). Returns OHLC bars.
+    const q = new URLSearchParams({ code, period, count: String(count) });
+    return request<OHLCBar[]>(`/api/market/kline?${q.toString()}`);
   },
   backtestDetail: (id: string) => request<BacktestResult>(`/api/backtests/${id}`),
   session: (id: string) => request<SessionComposite>(`/api/backtests/session/${id}`),

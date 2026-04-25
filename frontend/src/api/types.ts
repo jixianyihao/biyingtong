@@ -362,3 +362,13 @@ export type DeployResponse = {
   schedule: string;
   status: string;
 };
+
+/** One OHLC bar returned by GET /api/market/kline. Mirrors tdx_service.get_kline(). */
+export type OHLCBar = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  vol: number;
+};

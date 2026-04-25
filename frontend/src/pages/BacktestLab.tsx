@@ -31,6 +31,7 @@ import { StrategyRatingPanel } from '../components/StrategyRatingPanel';
 import { LiveEventLog } from '../components/LiveEventLog';
 import { MonthlyHeatmap } from '../components/MonthlyHeatmap';
 import { SessionsHistoryList } from '../components/SessionsHistoryList';
+import { UniverseKLineGrid } from '../components/UniverseKLineGrid';
 
 // ─── form defaults ─────────────────────────────────────────────────────────
 const DEFAULT_UNIVERSE = '600519.SH, 601318.SH, 000858.SZ';
@@ -848,6 +849,13 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
   const thinking = useBacktestThinking(result.id);
   const rating = useBacktestRating(result.id);
 
+  // Derive universe from trades — the codes the agent actually touched.
+  // (Session row doesn't persist the input universe; trades are the source
+  // of truth for "what was in play during this run".)
+  const universeCodes = Array.from(
+    new Set((trades.data?.trades ?? []).map((t) => t.code)),
+  );
+
   return (
     <div className="grid gap-4 mt-4">
       {/* NAV curve */}
@@ -860,6 +868,23 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
         </div>
         <NavChart data={nav.data} />
       </div>
+
+      {/* Universe K-lines — one OHLC chart per traded code over the window */}
+      {universeCodes.length > 0 && (
+        <div className="panel p-5">
+          <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+            <h2 className="text-text-hi text-base font-semibold">股票池 K 线</h2>
+            <span className="mono text-[10px] text-text-ghost uppercase tracking-wider">
+              Universe K-Lines · {universeCodes.length} stocks
+            </span>
+          </div>
+          <UniverseKLineGrid
+            codes={universeCodes}
+            start={result.start_date}
+            end={result.end_date}
+          />
+        </div>
+      )}
 
       {/* Two-column: rating+gate | thinking */}
       <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
