@@ -5,6 +5,11 @@ __pycache__/
 !docs/screenshots/*.png
 .claude/
 
+# Local secrets (OPENROUTER_API_KEY, ANTHROPIC_AUTH_TOKEN, etc.)
+.env
+.env.local
+.env.*.local
+
 # Runtime databases (added in P0)
 data/
 *.db
