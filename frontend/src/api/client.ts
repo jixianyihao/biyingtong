@@ -1,9 +1,11 @@
 import type {
   Agent,
   AuditRow,
+  BacktestLedger,
   BacktestResult,
   CancelJobResponse,
   CreatePersonaBody,
+  DataCoverage,
   DeployResponse,
   DeployStatus,
   ExecutionMode,
@@ -81,6 +83,10 @@ export const api = {
     q.set('limit', String(limit));
     return request<BacktestResult[]>(`/api/backtests?${q.toString()}`);
   },
+  dataCoverage: (code: string, period = '1d') => {
+    const q = new URLSearchParams({ code, period });
+    return request<DataCoverage>(`/api/data/coverage?${q.toString()}`);
+  },
   kline: (code: string, period = '1d', start?: string, end?: string) => {
     // Date-range kline backed by local SQLite cache (storage.kline()).
     // No TDX dependency, works offline for any window seeded into vnpy_sqlite.
@@ -117,6 +123,7 @@ export const api = {
   backtestNav: (id: string) => request<NavResponse>(`/api/backtests/${id}/nav`),
   backtestTrades: (id: string) => request<TradesResponse>(`/api/backtests/${id}/trades`),
   backtestThinking: (id: string) => request<ThinkingResponse>(`/api/backtests/${id}/thinking`),
+  backtestLedger: (id: string) => request<BacktestLedger>(`/api/backtests/${id}/ledger`),
   backtestRating: (id: string) => request<StrategyRating>(`/api/backtests/${id}/rating`),
   updateAgent: (id: string, body: UpdateAgentBody) =>
     request<Agent>(`/api/agents/${id}`, {

@@ -6,7 +6,11 @@ import {
   useRejectProposal,
 } from '../api/hooks';
 import type { TradeProposal } from '../api/types';
-import { LiveApproveModal } from './LiveApproveModal';
+
+// LiveApproveModal removed 2026-04-25: per-trade human confirmation contradicts
+// the quant-analyst workflow. Validation engine + RedLine framework IS the
+// safety; if a decision passes those + execution mode is 'live', it executes.
+// The TopBar pulsing red `LIVE` badge is the standing reminder of mode.
 
 const RESULT_BANNER_MS = 6000;
 
@@ -74,12 +78,10 @@ function fmtNum(v: number | null | undefined, digits = 2): string {
 function ProposalRow({
   p,
   isLive,
-  onRequestLiveApprove,
   onApproved,
 }: {
   p: TradeProposal;
   isLive: boolean;
-  onRequestLiveApprove: (p: TradeProposal) => void;
   onApproved: (result: TradeProposal) => void;
 }) {
   const approve = useApproveProposal();
@@ -90,17 +92,12 @@ function ProposalRow({
     : p.action === 'sell' ? 'pill down'
     : 'pill';
 
-  // Dry-run: click fires mutation directly (Phase-1 behaviour).
-  // Live: click opens the LiveApproveModal — the parent owns the modal
-  // state and, on confirm, triggers the mutation there.
+  // Both modes: click fires the mutation directly. Validation framework
+  // (RedLine + agent rules_override) is the gate, not human per-trade approval.
   const handleApproveClick = () => {
-    if (isLive) {
-      onRequestLiveApprove(p);
-    } else {
-      approve.mutate(p.id, {
-        onSuccess: (data) => onApproved(data),
-      });
-    }
+    approve.mutate(p.id, {
+      onSuccess: (data) => onApproved(data),
+    });
   };
 
   return (
@@ -191,11 +188,11 @@ function ProposalRow({
           style={{ padding: '3px 12px', fontSize: 11 }}
           title={
             isLive
-              ? '⚠ LIVE: 点击后需在弹窗输入“确认下单”方能提交真实订单'
+              ? '⚠ LIVE: 点击立即向通达信下真单（已经过 RedLine + persona 规则验证）'
               : 'DRY-RUN: 批准仅改数据库状态，不会真实下单'
           }
         >
-          {approve.isPending ? '批准中…' : isLive ? '批准 (LIVE)' : '批准'}
+          {approve.isPending ? '批准中…' : isLive ? '批准 (LIVE 直发)' : '批准'}
         </button>
       </div>
 
@@ -211,12 +208,11 @@ function ProposalRow({
 /**
  * ProposalsPanel — list pending trade proposals with approve/reject actions.
  *
- * Phase-2 behaviour:
- *   - DRY-RUN mode (default, BIYINGTONG_EXECUTION_MODE unset/dry_run):
- *     approve fires directly, adapter returns mock fill, no TDX call.
- *   - LIVE mode (BIYINGTONG_EXECUTION_MODE=live): approve opens
- *     <LiveApproveModal/> which requires typed "确认下单" confirmation
- *     BEFORE dispatching the mutation. Backdrop/cancel dismisses.
+ * Phase-2 behaviour (post 2026-04-25 quant-analyst pivot):
+ *   - DRY-RUN mode: approve fires directly, MockExecutionAdapter returns mock fill.
+ *   - LIVE mode: approve fires directly, TDXExecutionAdapter places real order.
+ *     Validation engine + RedLine framework is the safety, not human per-trade
+ *     confirmation. The TopBar pulsing red `LIVE` badge is the standing reminder.
  *
  * Props:
  *   agentId (optional) — filter to a specific agent; omit for global inbox.
@@ -228,27 +224,11 @@ export function ProposalsPanel({ agentId }: { agentId?: string }) {
     limit: 100,
   });
   const executionMode = useExecutionMode();
-  const approve = useApproveProposal();
   const isLive = executionMode.data?.mode === 'live';
 
-  // Modal state lives here (not in ProposalRow) so only one modal exists
-  // at a time regardless of how many proposal rows are on screen.
-  const [modalFor, setModalFor] = useState<TradeProposal | null>(null);
   // Last approve result — surfaced as a transient banner so the user gets
   // feedback even after the row disappears from the pending list on refetch.
   const [lastResult, setLastResult] = useState<TradeProposal | null>(null);
-
-  const closeModal = () => setModalFor(null);
-  const confirmLiveApprove = () => {
-    if (!modalFor) return;
-    approve.mutate(modalFor.id, {
-      onSuccess: (data) => {
-        setLastResult(data);
-        closeModal();
-      },
-      onError: () => closeModal(),
-    });
-  };
 
   if (proposals.isLoading) {
     return <div className="text-text-faint text-sm">加载中…</div>;
@@ -270,37 +250,26 @@ export function ProposalsPanel({ agentId }: { agentId?: string }) {
   }
 
   return (
-    <>
-      <div className="grid gap-2">
-        <div className="text-[10px] text-text-ghost uppercase tracking-wider">
-          {isLive
-            ? '⚠ LIVE：批准将向通达信提交真实订单（需二次确认）。'
-            : '⚠ DRY-RUN：批准仅改数据库状态，不会真实下单到 TDX。'}
-        </div>
-        {lastResult && (
-          <ExecutionResultBanner
-            p={lastResult}
-            onDismiss={() => setLastResult(null)}
-          />
-        )}
-        {rows.map((p) => (
-          <ProposalRow
-            key={p.id}
-            p={p}
-            isLive={isLive}
-            onRequestLiveApprove={setModalFor}
-            onApproved={setLastResult}
-          />
-        ))}
+    <div className="grid gap-2">
+      <div className="text-[10px] text-text-ghost uppercase tracking-wider">
+        {isLive
+          ? '⚠ LIVE：批准 = 立即向通达信下真单（已通过 RedLine 验证）。'
+          : '⚠ DRY-RUN：批准仅改数据库状态，不会真实下单到 TDX。'}
       </div>
-      {modalFor && (
-        <LiveApproveModal
-          proposal={modalFor}
-          onConfirm={confirmLiveApprove}
-          onCancel={closeModal}
-          isSubmitting={approve.isPending}
+      {lastResult && (
+        <ExecutionResultBanner
+          p={lastResult}
+          onDismiss={() => setLastResult(null)}
         />
       )}
-    </>
+      {rows.map((p) => (
+        <ProposalRow
+          key={p.id}
+          p={p}
+          isLive={isLive}
+          onApproved={setLastResult}
+        />
+      ))}
+    </div>
   );
 }

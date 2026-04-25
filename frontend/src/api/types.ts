@@ -373,3 +373,51 @@ export type OHLCBar = {
   close: number;
   vol: number;
 };
+
+/** Data coverage for one stock from GET /api/data/coverage.
+ *  Used by BacktestLab pre-submit validation to warn when the requested
+ *  window falls outside the locally-cached k-line range.
+ *  When the cache has no bars for the code, first_date/last_date are null
+ *  and count is 0.
+ */
+export type DataCoverage = {
+  code: string;
+  period: string;
+  first_date: string | null;
+  last_date: string | null;
+  count: number;
+};
+
+/** One row of the joined decision ledger from GET /api/backtests/<id>/ledger.
+ *  Each row is ONE LLM decision (one place_decision call) with its full
+ *  lineage: what the LLM asked for → validation outcome → actual fill.
+ *  Days with zero decisions are emitted as a single 'hold' row so the
+ *  analyst can still see tool_calls_count for that day.
+ */
+export type LedgerOutcome =
+  | 'ok'
+  | 'approved'   // legacy alias for 'ok' — pre-P3-D thinking records
+  | 'modified'
+  | 'rejected'
+  | 'cached'
+  | 'hold';
+
+export type LedgerEntry = {
+  date: string;
+  action: 'buy' | 'sell' | 'hold';
+  code: string | null;
+  requested_shares: number | null;
+  requested_price: number | null;
+  outcome: LedgerOutcome;
+  rejection_reasons: string[];
+  executed_shares: number;
+  executed_price: number | null;
+  executed_fee: number | null;
+  reasoning: string;
+  tool_calls_count: number;
+};
+
+export type BacktestLedger = {
+  result_id: string;
+  ledger: LedgerEntry[];
+};
