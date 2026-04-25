@@ -17,6 +17,8 @@ import type {
   Persona,
   PositionsResponse,
   PromptVersion,
+  ScreenerFilter,
+  ScreenerResponse,
   SessionComposite,
   SessionSummary,
   StartRuleBacktestBody,
@@ -189,6 +191,11 @@ export const api = {
   executionMode: () =>
     request<{ mode: ExecutionMode }>('/api/execution/mode'),
   positions: () => request<PositionsResponse>('/api/positions'),
+  runScreener: (filters: ScreenerFilter[]) =>
+    request<ScreenerResponse>('/api/screener', {
+      method: 'POST',
+      body: JSON.stringify({ filters }),
+    }),
 };
 
 // Re-export types for convenience

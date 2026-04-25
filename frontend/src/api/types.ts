@@ -421,3 +421,45 @@ export type BacktestLedger = {
   result_id: string;
   ledger: LedgerEntry[];
 };
+
+// ─── Screener (POST /api/screener) ────────────────────────────────────────
+
+/** Factor names the backend currently supports. Frontend may show more
+ *  factors in the UI shell (e.g. 5日均量) but those are disabled until
+ *  量价/技术 data lands — they must NOT appear in the request payload.
+ */
+export type ScreenerFactor =
+  | 'pe'
+  | 'pb'
+  | 'roe'
+  | 'revenue_growth'
+  | 'net_profit_growth'
+  | 'gross_margin';
+
+export type ScreenerOp = '<' | '>' | '=';
+
+export type ScreenerFilter = {
+  factor: ScreenerFactor;
+  op: ScreenerOp;
+  value: number;
+  enabled: boolean;
+};
+
+export type ScreenerStock = {
+  code: string;
+  as_of_date: string;
+  pe: number | null;
+  pb: number | null;
+  roe: number | null;
+  gross_margin: number | null;
+  revenue_growth: number | null;
+  net_profit_growth: number | null;
+};
+
+export type ScreenerResponse = {
+  total_universe: number;
+  matched: number;
+  stocks: ScreenerStock[];
+  /** Set when the local financial cache is missing — UI shows a hint. */
+  note?: string;
+};
