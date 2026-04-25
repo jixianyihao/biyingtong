@@ -49,9 +49,21 @@ def create_proposal():
 
     Auth: when BIYINGTONG_PROPOSAL_TOKEN is set, X-Proposal-Token header
     must match. When unset (dev mode), any token is accepted.
+
+    AUTO-EXECUTE behaviour (post 2026-04-25 quant-analyst pivot):
+      The proposal is created AND immediately dispatched to the
+      ExecutionAdapter (subject to BIYINGTONG_EXECUTION_MODE). Validation
+      framework + RedLine are the safety; per-trade human approval would
+      contradict the automation contract. Status flips to:
+        - 'auto_approved' on successful execution (real or mock fill)
+        - 'auto_rejected' when adapter returns an error (e.g. TDX rejects)
+      Human can still POST /proposals/:id/reject (e.g. emergency override
+      AFTER the fact, but it does NOT cancel the executed order — see the
+      cancel endpoint for that).
     """
     import storage
     from storage.base import TradeProposal
+    from execution import get_adapter
 
     expected_token = os.environ.get('BIYINGTONG_PROPOSAL_TOKEN')
     if expected_token:
@@ -74,7 +86,48 @@ def create_proposal():
         status='pending',
     )
     storage.proposals().insert(p)
-    return jsonify(_proposal_to_dict(p)), 201
+
+    # Skip auto-execute for hold actions — there's nothing to place.
+    if (p.action or '').lower() == 'hold':
+        storage.proposals().update_status(p.id, 'auto_approved',
+                                          decided_by='framework')
+        return jsonify(_proposal_to_dict(storage.proposals().get(p.id))), 201
+
+    # Auto-execute via ExecutionAdapter
+    adapter = get_adapter()
+    p_for_exec = storage.proposals().get(p.id)
+    try:
+        result = adapter.place_order(p_for_exec)
+    except Exception as e:  # noqa: BLE001
+        result = None
+        exec_error = f'{type(e).__name__}: {e}'
+    else:
+        exec_error = result.error
+
+    new_status = 'auto_approved' if (result and result.success) else 'auto_rejected'
+    storage.proposals().update_status(p.id, new_status, decided_by='framework')
+    if result is not None:
+        storage.proposals().update_execution(
+            p.id,
+            execution_mode=result.mode,
+            execution_order_id=result.order_id,
+            execution_error=exec_error,
+            filled_qty=result.filled_qty,
+            filled_price=result.filled_price,
+            executed_at=result.executed_at,
+        )
+    else:
+        # exception path — record error string only
+        from datetime import datetime, timezone
+        storage.proposals().update_execution(
+            p.id,
+            execution_mode=adapter.mode,
+            execution_order_id=None,
+            execution_error=exec_error,
+            filled_qty=0, filled_price=0.0,
+            executed_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds'),
+        )
+    return jsonify(_proposal_to_dict(storage.proposals().get(p.id))), 201
 
 
 @api_bp.route('/proposals')

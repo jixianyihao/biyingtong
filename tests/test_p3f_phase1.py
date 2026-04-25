@@ -500,6 +500,7 @@ def test_deploy_status_404(deploy_storage, client):
 
 def test_create_proposal_happy(deploy_storage, client, monkeypatch):
     monkeypatch.delenv('BIYINGTONG_PROPOSAL_TOKEN', raising=False)
+    monkeypatch.delenv('BIYINGTONG_EXECUTION_MODE', raising=False)
     resp = client.post('/api/proposals', json={
         'id': 'p-new-1', 'agent_id': 'a1',
         'decision_at': '2026-04-23T10:00:00',
@@ -509,7 +510,26 @@ def test_create_proposal_happy(deploy_storage, client, monkeypatch):
     assert resp.status_code == 201
     data = resp.get_json()
     assert data['id'] == 'p-new-1'
-    assert data['status'] == 'pending'
+    # Auto-execute (post 2026-04-25 quant-analyst pivot): proposal goes
+    # straight from pending → auto_approved via MockExecutionAdapter on
+    # default dry_run mode, no human click required.
+    assert data['status'] == 'auto_approved'
+    assert data['execution_mode'] == 'dry_run'
+    assert data['filled_qty'] == 100
+
+
+def test_create_proposal_hold_action_skips_execute(deploy_storage, client, monkeypatch):
+    """A 'hold' action has nothing to place — auto_approved, no adapter call."""
+    monkeypatch.delenv('BIYINGTONG_PROPOSAL_TOKEN', raising=False)
+    resp = client.post('/api/proposals', json={
+        'id': 'p-hold-1', 'agent_id': 'a1',
+        'decision_at': '2026-04-23T10:00:00',
+        'action': 'hold',
+        'reason': 'no signal', 'thinking': '',
+    })
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data['status'] == 'auto_approved'
 
 
 def test_create_proposal_400_on_missing_fields(deploy_storage, client, monkeypatch):
