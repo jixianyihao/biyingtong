@@ -57,13 +57,6 @@ export function TopBar() {
       <RedLineBar />
 
       <ExecutionModeBadge />
-
-      <div
-        className="mono"
-        style={{ fontSize: 10.5, color: 'var(--text-faint)', letterSpacing: '0.06em', marginLeft: 8 }}
-      >
-        Vite · React 19 · TS
-      </div>
     </header>
   );
 }

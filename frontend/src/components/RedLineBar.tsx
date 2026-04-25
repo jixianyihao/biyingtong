@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useRedlines } from '../api/hooks';
 
 // Display labels for the known redline keys. Unknown keys get a fallback rendering.
@@ -29,59 +30,99 @@ function formatLimit(key: string, v: unknown): string {
 
 export function RedLineBar() {
   const { data, isLoading, error } = useRedlines();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
 
   if (isLoading) {
-    return (
-      <span className="mono text-[10px] text-text-faint">
-        loading redlines…
-      </span>
-    );
+    return <span className="mono text-[10px] text-text-faint">loading redlines…</span>;
   }
   if (error || !data) {
-    return null; // silently hide on error — TopBar should never break
+    return null;
   }
 
-  // Order keys for stable display: known LABELS first, others after
   const knownKeys = Object.keys(LABELS).filter((k) => k in data);
   const unknownKeys = Object.keys(data).filter((k) => !(k in LABELS));
   const orderedKeys = [...knownKeys, ...unknownKeys];
+  const count = orderedKeys.length;
 
   return (
-    <div
-      className="flex items-center gap-1.5 mono"
-      style={{ fontSize: 10 }}
-      title="当前 RedLine 风控配置 (实时用量待 LiveTrading 接入)"
-    >
-      <span
-        className="text-text-ghost uppercase"
-        style={{ letterSpacing: '0.08em', marginRight: 2 }}
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mono"
+        style={{
+          fontSize: 10,
+          padding: '2px 8px',
+          borderRadius: 3,
+          background: 'var(--bg-2)',
+          border: '1px solid var(--panel-border-soft)',
+          color: 'var(--text-dim)',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          letterSpacing: '0.04em',
+        }}
+        title="点击查看完整 RedLine 风控配置"
       >
-        Redline
-      </span>
-      {orderedKeys.map((k) => {
-        const v = data[k];
-        const label = LABELS[k] ?? k;
-        const valStr = formatLimit(k, v);
-        const isOff = isBool(v) && !v;
-        return (
-          <span
-            key={k}
-            style={{
-              padding: '1px 7px',
-              borderRadius: 2,
-              background: isOff ? 'transparent' : 'var(--bg-2)',
-              border: '1px solid var(--panel-border-soft)',
-              color: isOff ? 'var(--text-faint)' : 'var(--text-dim)',
-              display: 'inline-flex',
-              gap: 4,
-              alignItems: 'baseline',
-            }}
-          >
-            <span>{label}</span>
-            <span style={{ color: 'var(--brand)' }}>{valStr}</span>
-          </span>
-        );
-      })}
+        <span style={{ color: 'var(--text-ghost)', textTransform: 'uppercase' }}>
+          Redline
+        </span>
+        <span style={{ color: 'var(--brand)' }}>{count} 条</span>
+        <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <div
+          className="panel panel-border-soft mono"
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 'calc(100% + 6px)',
+            zIndex: 50,
+            padding: 10,
+            minWidth: 240,
+            maxHeight: 360,
+            overflowY: 'auto',
+            fontSize: 10.5,
+            display: 'grid',
+            gridTemplateColumns: '1fr auto',
+            gap: '4px 14px',
+          }}
+        >
+          {orderedKeys.map((k) => {
+            const v = data[k];
+            const label = LABELS[k] ?? k;
+            const valStr = formatLimit(k, v);
+            const isOff = isBool(v) && !v;
+            return (
+              <div key={k} style={{ display: 'contents' }}>
+                <span style={{ color: isOff ? 'var(--text-faint)' : 'var(--text-dim)' }}>
+                  {label}
+                </span>
+                <span
+                  style={{
+                    color: isOff ? 'var(--text-faint)' : 'var(--brand)',
+                    textAlign: 'right',
+                  }}
+                >
+                  {valStr}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
