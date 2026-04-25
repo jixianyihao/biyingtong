@@ -155,6 +155,12 @@ export const api = {
   rejectProposal: (id: string) =>
     request<TradeProposal>(`/api/proposals/${id}/reject`,
       { method: 'POST' }),
+  pollProposalStatus: (id: string) =>
+    request<TradeProposal>(`/api/proposals/${id}/poll_status`,
+      { method: 'POST' }),
+  cancelProposal: (id: string) =>
+    request<TradeProposal>(`/api/proposals/${id}/cancel`,
+      { method: 'POST' }),
   executionMode: () =>
     request<{ mode: ExecutionMode }>('/api/execution/mode'),
   positions: () => request<PositionsResponse>('/api/positions'),

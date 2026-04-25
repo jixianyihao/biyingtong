@@ -363,6 +363,35 @@ export const useRejectProposal = () => {
   });
 };
 
+export function useApprovedProposals(agentId: string | undefined, limit = 50) {
+  return useQuery({
+    queryKey: ['proposals', 'approved', agentId, limit],
+    queryFn: () => api.listProposals({ status: 'approved', agent_id: agentId!, limit }),
+    enabled: !!agentId,
+    staleTime: 5_000,
+  });
+}
+
+export function usePollProposalStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.pollProposalStatus(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proposals'] });
+    },
+  });
+}
+
+export function useCancelProposal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.cancelProposal(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proposals'] });
+    },
+  });
+}
+
 // ─── P3-F Phase 2: execution mode ─────────────────────────────────────────
 
 /**

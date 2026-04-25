@@ -14,6 +14,7 @@ import { AgentEditModal } from '../components/AgentEditModal';
 import { AgentDeleteDialog } from '../components/AgentDeleteDialog';
 import { DeployButton } from '../components/DeployButton';
 import { PersonaFormModal } from '../components/PersonaFormModal';
+import { ApprovedProposalsList } from '../components/ApprovedProposalsList';
 import { ProposalsPanel } from '../components/ProposalsPanel';
 
 // ─── styling helpers ───────────────────────────────────────────────────────
@@ -534,6 +535,12 @@ function AgentDetail({
       <div>
         <div className={sectionLabelCls}>待审批提议 · PENDING PROPOSALS</div>
         <ProposalsPanel agentId={agent.id} />
+      </div>
+
+      {/* approved proposals — execution lifecycle (poll + cancel) */}
+      <div>
+        <div className={sectionLabelCls}>已批准 / 执行中 · APPROVED PROPOSALS</div>
+        <ApprovedProposalsList agentId={agent.id} />
       </div>
 
       {/* recent audit events */}
