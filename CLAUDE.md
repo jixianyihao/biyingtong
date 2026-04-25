@@ -96,3 +96,16 @@ Delivered so far:
 Current totals (approx): ~685 pytest passing; 11+ tools in `ALL_TOOLS`; 6 built-in personas; 4 LLM adapters; dual-engine backtest runners; subprocess-based agent deployment with UI-gated approval flow; `execution/` abstraction for dry-run + live TDX order submission.
 
 **Phase 2** (real TDX order execution on proposal approval) is delivered behind `BIYINGTONG_EXECUTION_MODE` env var (default `dry_run` → `MockExecutionAdapter`; set to `live` → `TDXExecutionAdapter`). In live mode the UI additionally requires typing `确认下单` in a confirmation modal before each order is submitted. See `execution/` package and `docs/superpowers/plans/2026-04-24-p3f-phase2-execution.md`.
+
+## Development Discipline — Real-User First
+
+**Every change must leave the platform basically usable, not demo-grade.** Treat development as if you were the user landing on the page for the first time:
+
+- **No mock data in shipped UI.** If a backend isn't ready, show an honest empty state ("等待后端数据" / "Phase X pending") — never fake numbers, fake stocks, or fake equity curves.
+- **End-to-end smoke before claiming done.** For UI/feature work, actually click through the new path in the browser (`mcp__plugin_playwright_playwright__*` if running headless, or start dev servers and load the URL). Tests + tsc both green ≠ feature works.
+- **Verify with real data when possible.** If local kline cache or test fixtures cover the path, run the real flow against them; only fall back to mocks when the data genuinely doesn't exist.
+- **History / audit trails must be readable by a human.** Show display_name + persona + model — not raw `<persona>_<8hex>` ids. The user will never remember which `linyuan_3780f689` ran when.
+- **Forms validate against reality.** Date pickers, code inputs, etc. should warn pre-submit when the request will produce a useless result (e.g., date window outside data coverage). Don't let the user submit and stare at "0%, 0 trades" without explanation.
+- **Names of buttons / chips / labels must match what they actually do.** No "Phase 3" / "TODO" / "WIP" wording on production UI.
+
+If a change fails the real-user test (you wouldn't ship it as a paying customer), it's not done — fix the gap in the same commit, or open a follow-up before merging.
