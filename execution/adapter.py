@@ -26,3 +26,15 @@ class ExecutionAdapter(Protocol):
     @property
     def mode(self) -> str: ...
     def place_order(self, proposal) -> ExecutionResult: ...  # noqa: ANN001
+
+    def query_status(self, proposal) -> ExecutionResult:  # noqa: ANN001
+        """Re-query the order's current fill status. Returns updated
+        ExecutionResult — caller persists via storage.proposals().update_execution.
+        For Mock, returns the same fields (no-op refresh)."""
+        ...
+
+    def cancel(self, proposal) -> ExecutionResult:  # noqa: ANN001
+        """Cancel a previously placed order. Success → ExecutionResult with
+        error=None and a cancellation marker (e.g. order_id prefixed 'cancelled-').
+        Mock always succeeds; TDX delegates to tdx.cancel_order."""
+        ...
