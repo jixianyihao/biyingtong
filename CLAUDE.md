@@ -109,3 +109,15 @@ Current totals (approx): ~685 pytest passing; 11+ tools in `ALL_TOOLS`; 6 built-
 - **Names of buttons / chips / labels must match what they actually do.** No "Phase 3" / "TODO" / "WIP" wording on production UI.
 
 If a change fails the real-user test (you wouldn't ship it as a paying customer), it's not done — fix the gap in the same commit, or open a follow-up before merging.
+
+## Backtest Smokes Use Hunyuan, Not Mock
+
+Per user directive 2026-04-26: **all backtest verification / smoke / demo runs must use the real Hunyuan model via OpenRouter** (`model_id='hunyuan-hy3'`). MockLLM is reserved for unit tests in `tests/`.
+
+Reason: MockLLM doesn't exercise the validation/audit/thinking chain the user actually sees in the UI. A backtest that ran on Mock proves nothing about whether the platform is "basically usable" for a real quant analyst.
+
+- `OPENROUTER_API_KEY` is loaded from `.env` (gitignored)
+- Default smoke window: 2025-11-01 → 2025-11-28 or 2026-03-01 → 2026-04-01 (within local HS300 cache 2025-04-01 ~ 2026-04-01)
+- Default smoke universe: 4-6 mid/large caps with local data, e.g. `['600519.SH', '000858.SZ', '300750.SZ', '300059.SZ']`
+- Cost ballpark: ~100-200k tokens / $0.10-$0.30 per smoke
+- See memory `backtest_uses_hunyuan.md` for the full rule + command templates.
