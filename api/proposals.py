@@ -166,3 +166,56 @@ def reject_proposal(proposal_id):
     storage.proposals().update_status(proposal_id, 'rejected',
                                       decided_by='user')
     return jsonify(_proposal_to_dict(storage.proposals().get(proposal_id)))
+
+
+@api_bp.route('/proposals/<proposal_id>/poll_status', methods=['POST'])
+def poll_proposal_status(proposal_id):
+    """Re-query the underlying order via ExecutionAdapter. Updates execution_*
+    fields and returns the refreshed proposal. NOT idempotent in the sense
+    that filled_qty may change, but safe to call repeatedly."""
+    import storage
+    from execution import get_adapter
+    p = storage.proposals().get(proposal_id)
+    if p is None:
+        return jsonify({'error': 'not_found'}), 404
+    if p.status != 'approved':
+        return jsonify({'error': f'cannot poll status of {p.status} proposal'}), 409
+    adapter = get_adapter()
+    r = adapter.query_status(p)
+    storage.proposals().update_execution(
+        proposal_id,
+        execution_mode=r.mode,
+        execution_order_id=r.order_id,
+        execution_error=r.error,
+        filled_qty=r.filled_qty,
+        filled_price=r.filled_price,
+        executed_at=r.executed_at,
+    )
+    return jsonify(_proposal_to_dict(storage.proposals().get(proposal_id)))
+
+
+@api_bp.route('/proposals/<proposal_id>/cancel', methods=['POST'])
+def cancel_proposal_order(proposal_id):
+    """Cancel the order placed by a previously-approved proposal. Updates
+    execution_* fields with the cancel result; status STAYS 'approved' (the
+    proposal itself wasn't unapproved — we just cancelled the underlying
+    order). Use execution_order_id prefix 'cancelled-' as the marker."""
+    import storage
+    from execution import get_adapter
+    p = storage.proposals().get(proposal_id)
+    if p is None:
+        return jsonify({'error': 'not_found'}), 404
+    if p.status != 'approved':
+        return jsonify({'error': f'cannot cancel {p.status} proposal'}), 409
+    adapter = get_adapter()
+    r = adapter.cancel(p)
+    storage.proposals().update_execution(
+        proposal_id,
+        execution_mode=r.mode,
+        execution_order_id=r.order_id,
+        execution_error=r.error,
+        filled_qty=r.filled_qty,
+        filled_price=r.filled_price,
+        executed_at=r.executed_at,
+    )
+    return jsonify(_proposal_to_dict(storage.proposals().get(proposal_id)))

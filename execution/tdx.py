@@ -82,3 +82,84 @@ class TDXExecutionAdapter(ExecutionAdapter):
             filled_qty=shares, filled_price=price,
             error=None, executed_at=ts,
         )
+
+    def query_status(self, proposal) -> ExecutionResult:  # noqa: ANN001
+        ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds')
+        code = proposal.code or ''
+        target_id = proposal.execution_order_id
+        if not target_id:
+            return ExecutionResult(
+                success=False, mode='live', order_id=None,
+                filled_qty=0, filled_price=0.0,
+                error='no execution_order_id to query', executed_at=ts,
+            )
+        from tdx_service import tdx
+        try:
+            orders = tdx.get_orders(stock_code=code) or []
+        except Exception as e:  # noqa: BLE001
+            return ExecutionResult(
+                success=False, mode='live', order_id=target_id,
+                filled_qty=0, filled_price=0.0,
+                error=f'{type(e).__name__}: {e}', executed_at=ts,
+            )
+        # Find by order_id; tqcenter dict keys vary, accept several aliases
+        match = None
+        for o in orders:
+            if not isinstance(o, dict):
+                continue
+            oid = str(o.get('order_id') or o.get('id') or o.get('orderId') or '')
+            if oid == str(target_id):
+                match = o
+                break
+        if match is None:
+            return ExecutionResult(
+                success=True, mode='live', order_id=target_id,
+                filled_qty=int(proposal.filled_qty or 0),
+                filled_price=float(proposal.filled_price or 0.0),
+                error="order not in today's order book",
+                executed_at=ts,
+            )
+        filled = int(match.get('filled_qty') or match.get('matched_amount') or 0)
+        avg_price = float(
+            match.get('avg_price')
+            or match.get('matched_price')
+            or proposal.price
+            or 0.0
+        )
+        return ExecutionResult(
+            success=True, mode='live', order_id=target_id,
+            filled_qty=filled, filled_price=avg_price,
+            error=None, executed_at=ts,
+        )
+
+    def cancel(self, proposal) -> ExecutionResult:  # noqa: ANN001
+        ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec='seconds')
+        code = proposal.code or ''
+        oid = proposal.execution_order_id
+        if not oid:
+            return ExecutionResult(
+                success=False, mode='live', order_id=None,
+                filled_qty=0, filled_price=0.0,
+                error='no order_id to cancel', executed_at=ts,
+            )
+        from tdx_service import tdx
+        try:
+            result = tdx.cancel_order(stock_code=code, order_id=oid)
+        except Exception as e:  # noqa: BLE001
+            return ExecutionResult(
+                success=False, mode='live', order_id=oid,
+                filled_qty=0, filled_price=0.0,
+                error=f'{type(e).__name__}: {e}', executed_at=ts,
+            )
+        if isinstance(result, dict) and result.get('error'):
+            return ExecutionResult(
+                success=False, mode='live', order_id=oid,
+                filled_qty=0, filled_price=0.0,
+                error=str(result['error']), executed_at=ts,
+            )
+        return ExecutionResult(
+            success=True, mode='live',
+            order_id=f'cancelled-{oid}',
+            filled_qty=0, filled_price=0.0,
+            error=None, executed_at=ts,
+        )

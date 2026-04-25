@@ -376,3 +376,18 @@ export const useExecutionMode = () =>
     queryFn: api.executionMode,
     staleTime: Infinity,
   });
+
+/**
+ * Real positions from GET /api/positions. In dry_run mode the server returns
+ * an empty positions[] (no real orders were placed); the consumer should fall
+ * back to demo stub rows. In live mode this returns the actual TDX holdings.
+ * Polled every 10s while LiveTrading page is mounted.
+ */
+export function usePositions() {
+  return useQuery({
+    queryKey: ['positions'],
+    queryFn: api.positions,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+  });
+}
