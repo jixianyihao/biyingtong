@@ -118,3 +118,60 @@ def test_coverage_400_when_code_blank(client):
     resp = client.get('/api/data/coverage?code=%20%20')
     assert resp.status_code == 400
     assert resp.get_json() == {'error': 'code required'}
+
+
+# ── /api/data/kline tests ───────────────────────────────────────────────────
+
+
+def _bar_full(dt: datetime, o, h, l, c, v=0.0):
+    """Bar with OHLC fields needed by /api/data/kline."""
+    return SimpleNamespace(
+        datetime=dt,
+        open_price=o, high_price=h, low_price=l, close_price=c,
+        volume=v,
+    )
+
+
+def test_kline_returns_ohlc_in_range(client):
+    import storage
+    bars = [
+        _bar_full(datetime(2025, 5, 31), 100, 101, 99, 100.5),
+        _bar_full(datetime(2025, 6, 1), 100.5, 102, 100, 101.5),
+        _bar_full(datetime(2025, 6, 2), 101.5, 103, 101, 102.5),
+        _bar_full(datetime(2025, 6, 30), 105, 106, 104, 105.5),
+        _bar_full(datetime(2025, 7, 1), 105.5, 107, 105, 106.5),
+    ]
+    storage.set_kline(_FakeKlineStore({('600519.SH', '1d'): bars}))
+
+    resp = client.get('/api/data/kline?code=600519.SH&start=2025-06-01&end=2025-06-30')
+    assert resp.status_code == 200
+    rows = resp.get_json()
+    assert len(rows) == 3
+    assert rows[0] == {'date': '2025-06-01', 'open': 100.5, 'high': 102.0,
+                       'low': 100.0, 'close': 101.5, 'volume': 0.0}
+    assert rows[-1]['date'] == '2025-06-30'
+
+
+def test_kline_400_when_code_missing(client):
+    resp = client.get('/api/data/kline?start=2025-06-01&end=2025-06-30')
+    assert resp.status_code == 400
+
+
+def test_kline_400_when_dates_missing(client):
+    resp = client.get('/api/data/kline?code=600519.SH')
+    assert resp.status_code == 400
+    assert 'start and end' in resp.get_json()['error']
+
+
+def test_kline_400_when_dates_malformed(client):
+    resp = client.get('/api/data/kline?code=600519.SH&start=foo&end=bar')
+    assert resp.status_code == 400
+    assert 'YYYY-MM-DD' in resp.get_json()['error']
+
+
+def test_kline_returns_empty_when_no_data(client):
+    import storage
+    storage.set_kline(_FakeKlineStore({}))
+    resp = client.get('/api/data/kline?code=999999.SH&start=2025-01-01&end=2025-12-31')
+    assert resp.status_code == 200
+    assert resp.get_json() == []
