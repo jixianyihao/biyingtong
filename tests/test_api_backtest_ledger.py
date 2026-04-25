@@ -195,3 +195,84 @@ def test_ledger_404_on_unknown_result_id(client):
     resp = client.get('/api/backtests/does-not-exist/ledger')
     assert resp.status_code == 404
     assert resp.get_json() == {'error': 'not_found'}
+
+
+def test_ledger_joins_decision_with_next_bar_fill(client):
+    """Legacy runner records decision on day D, fill on D+1 (next-bar) — the
+    join must still match. Regression for the Hunyuan +2.10% session that
+    showed executed_shares=0 because of strict same-date matching."""
+    import storage
+    r = _FakeResult(
+        id='r1',
+        thinking=[{
+            'date': '2026-01-15',
+            'reasoning': 'Maotai dip on a quiet day',
+            'tool_calls': [],
+            'decisions': [{
+                'action': 'buy', 'code': '600519.SH',
+                'shares': 300, 'price': 1388.89,
+                'outcome': 'approved', 'reasoning': 'value pick',
+            }],
+        }],
+        trades=[{
+            # Fill on the NEXT trading day — typical legacy-runner convention
+            'date': '2026-01-16', 'code': '600519.SH',
+            'action': 'buy', 'shares': 300, 'price': 1388.89,
+            'fee': 125.0,
+        }],
+    )
+    storage.set_backtests(_FakeBacktestStore({'r1': r}))
+    body = client.get('/api/backtests/r1/ledger').get_json()
+    assert len(body['ledger']) == 1
+    row = body['ledger'][0]
+    assert row['executed_shares'] == 300, (
+        f'Decision on 2026-01-15 should match fill on 2026-01-16; '
+        f'got executed_shares={row["executed_shares"]}'
+    )
+    assert row['executed_price'] == 1388.89
+    assert row['executed_fee'] == 125.0
+
+
+def test_ledger_two_decisions_same_code_consume_separate_fills(client):
+    """Two consecutive buy decisions on the same code must each get their own
+    fill — not both grab the first one."""
+    import storage
+    r = _FakeResult(
+        id='r1',
+        thinking=[
+            {
+                'date': '2026-03-01',
+                'reasoning': 'open position', 'tool_calls': [],
+                'decisions': [{
+                    'action': 'buy', 'code': '600519.SH',
+                    'shares': 100, 'price': 1500.0,
+                    'outcome': 'approved', 'reasoning': 'first',
+                }],
+            },
+            {
+                'date': '2026-03-08',
+                'reasoning': 'add', 'tool_calls': [],
+                'decisions': [{
+                    'action': 'buy', 'code': '600519.SH',
+                    'shares': 200, 'price': 1520.0,
+                    'outcome': 'approved', 'reasoning': 'second',
+                }],
+            },
+        ],
+        trades=[
+            {'date': '2026-03-02', 'code': '600519.SH', 'action': 'buy',
+             'shares': 100, 'price': 1500.5, 'fee': 5.0},
+            {'date': '2026-03-09', 'code': '600519.SH', 'action': 'buy',
+             'shares': 200, 'price': 1520.5, 'fee': 10.0},
+        ],
+    )
+    storage.set_backtests(_FakeBacktestStore({'r1': r}))
+    body = client.get('/api/backtests/r1/ledger').get_json()
+    rows = body['ledger']
+    assert len(rows) == 2
+    # First decision matches first fill
+    assert rows[0]['executed_shares'] == 100
+    assert rows[0]['executed_fee'] == 5.0
+    # Second decision matches second fill, NOT the first one again
+    assert rows[1]['executed_shares'] == 200
+    assert rows[1]['executed_fee'] == 10.0

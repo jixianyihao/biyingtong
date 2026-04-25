@@ -295,14 +295,41 @@ def get_backtest_ledger(result_id):
     if r is None:
         return jsonify({'error': 'not_found'}), 404
 
-    # Index trades by (date, code, action) for O(1) lookup. We only keep the
-    # FIRST fill per key — multiple fills for the same key in the same day are
-    # rare in this codebase and would imply two LLM decisions hitting the same
-    # bucket. v1 collapses; future extension can list-of-fills.
-    trades_by_key: dict[tuple, dict] = {}
+    # Index unconsumed trades by (code, action) → list of fills sorted by
+    # date. The legacy runner records a decision on day D but the fill on
+    # D+1 (next-bar) so a strict (date, code, action) join would miss every
+    # trade. We instead match each decision to its earliest fill on
+    # decision_date or after; once consumed, the fill won't match a later
+    # decision. Same-day-close runs still work — first fill is on the same
+    # date.
+    from collections import defaultdict
+    trades_by_action: dict[tuple, list[dict]] = defaultdict(list)
     for t in (r.trades or []):
-        key = (t.get('date'), t.get('code'), t.get('action'))
-        trades_by_key.setdefault(key, t)
+        code_t = t.get('code')
+        action_t = t.get('action')
+        if code_t and action_t:
+            trades_by_action[(code_t, action_t)].append(t)
+    for v in trades_by_action.values():
+        v.sort(key=lambda t: t.get('date') or '')
+    # Track first-unconsumed index per (code, action) so we don't match the
+    # same fill to two decisions.
+    consumed_idx: dict[tuple, int] = defaultdict(int)
+
+    def _take_fill(decision_date: str, code: str, action: str) -> dict | None:
+        if not (code and action and decision_date):
+            return None
+        key = (code, action)
+        i = consumed_idx[key]
+        fills = trades_by_action.get(key) or []
+        # Skip fills strictly before decision_date (shouldn't normally happen
+        # with sorted fills, but be defensive).
+        while i < len(fills) and (fills[i].get('date') or '') < decision_date:
+            i += 1
+        if i >= len(fills):
+            consumed_idx[key] = i
+            return None
+        consumed_idx[key] = i + 1
+        return fills[i]
 
     out: list[dict] = []
     for day in (r.thinking or []):
@@ -332,8 +359,10 @@ def get_backtest_ledger(result_id):
             req_price = dec.get('price')
             outcome = dec.get('outcome') or 'ok'
             reasoning = dec.get('reasoning') or ''
-            # Match fill (only buy/sell — 'hold' decisions never produce fills)
-            t = trades_by_key.get((date, code, action)) if code else None
+            # Match fill (only buy/sell — 'hold' decisions never produce fills).
+            # Uses next-available-fill-on-or-after logic to handle the legacy
+            # runner's D-decision / D+1-fill convention.
+            t = _take_fill(date, code, action) if code and action != 'hold' else None
             executed_shares = int(t['shares']) if t else 0
             executed_price = t.get('price') if t else None
             executed_fee = t.get('fee') if t else None
