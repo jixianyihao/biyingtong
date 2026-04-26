@@ -1,9 +1,13 @@
-"""Registry of built-in personas."""
+"""Registry of built-in personas.
+
+User 2026-04-26 dropped linyuan + buffet from default registry — value-investor
+style was deemed unsuitable for the platform's quant-analyst focus. The .py
+files remain importable so legacy tests can construct fixtures directly, but
+they are NOT seeded into the default user-facing persona pool.
+"""
 from __future__ import annotations
 
-from .linyuan import PERSONA as LINYUAN
 from .fuyou import PERSONA as FUYOU
-from .buffet import PERSONA as BUFFET
 from .soros import PERSONA as SOROS
 from .quant_neutral import PERSONA as QUANT_NEUTRAL
 from .intraday_t0 import PERSONA as INTRADAY_T0
@@ -11,9 +15,7 @@ from .quant_sentiment import PERSONA as QUANT_SENTIMENT
 
 
 ALL_PERSONAS: dict[str, dict] = {
-    'linyuan': LINYUAN,
     'fuyou': FUYOU,
-    'buffet': BUFFET,
     'soros': SOROS,
     'quant_neutral': QUANT_NEUTRAL,
     'intraday_t0': INTRADAY_T0,
