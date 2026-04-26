@@ -168,6 +168,7 @@ class RuleRunner:
             daily_records=daily_records_serial,
             trades=trades_serial,
             thinking=[],
+            universe=list(universe),
             kind='rule',
         )
         storage.backtests().insert(result)

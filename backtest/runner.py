@@ -235,6 +235,7 @@ class BacktestRunner:
             daily_records=daily_records_serial,
             trades=trades_serial,
             thinking=per_day_thinking,
+            universe=list(universe),
         )
         storage.backtests().insert(result)
         return result

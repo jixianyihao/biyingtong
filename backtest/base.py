@@ -43,6 +43,7 @@ class BacktestResult:
     daily_records: list = None   # list[dict] — per-day equity/cash/pnl_pct
     trades: list = None          # list[dict] — per-fill {date,code,action,shares,price,fee}
     thinking: list = None        # list[dict] — per-day LLM reasoning + tool_calls + decisions
+    universe: list = None        # list[str] — input ticker pool (added 2026-04-26 so K-line grid can show all stocks, not just traded ones)
     kind: str = 'agent'          # 'agent' | 'rule' (P3-C)
 
     def __post_init__(self):
@@ -52,6 +53,8 @@ class BacktestResult:
             self.trades = []
         if self.thinking is None:
             self.thinking = []
+        if self.universe is None:
+            self.universe = []
 
 
 @dataclass

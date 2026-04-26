@@ -73,6 +73,7 @@ export type BacktestResult = {
   quality_gate_criteria: Record<string, unknown>;
   divergence_flag: boolean;
   divergence_metric: number | null;
+  universe: string[];
   kind: 'agent' | 'rule';
 };
 

@@ -22,15 +22,15 @@ def _row_to_result(row):
     stats = BacktestStats(**stats_d)
     zone_raw = json.loads(row[10])
     zones = [ZoneStats(**z) for z in zone_raw]
-    # Columns 13/14/15 are daily_records_json/trades_json/thinking_json.
-    # Schema default is '[]' and ensure_observability_columns runs at init,
-    # so row[13:16] are always populated strings — but json.loads('') raises,
-    # so we still guard against empty strings from buggy callers.
+    # Columns 13/14/15/16 are daily_records_json / trades_json / thinking_json /
+    # universe_json. Schema defaults are '[]' and ensure_*_columns runs at init.
     daily_records = json.loads(row[13]) if row[13] else []
     trades = json.loads(row[14]) if row[14] else []
     thinking = json.loads(row[15]) if row[15] else []
-    # P3-C: kind_str at index 16; default 'agent' for buggy callers returning empty
-    kind = row[16] if len(row) > 16 and row[16] else 'agent'
+    universe = json.loads(row[16]) if (len(row) > 16 and row[16]) else []
+    # P3-C: kind_str at index 17 (was 16 before universe_json was inserted);
+    # default 'agent' for buggy callers returning empty.
+    kind = row[17] if len(row) > 17 and row[17] else 'agent'
     return BacktestResult(
         id=row[0], session_id=row[1], agent_id=row[2],
         persona_id=row[3], model_id=row[4],
@@ -42,6 +42,7 @@ def _row_to_result(row):
         daily_records=daily_records,
         trades=trades,
         thinking=thinking,
+        universe=universe,
         kind=kind,
     )
 
@@ -61,11 +62,12 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.executescript(SCHEMA_BACKTEST_RESULTS)
             from data_schema.backtest_state import (
                 ensure_observability_columns, ensure_kind_column,
-                ensure_persona_model_columns,
+                ensure_persona_model_columns, ensure_universe_column,
             )
             ensure_persona_model_columns(con)
             ensure_observability_columns(con)
             ensure_kind_column(con)
+            ensure_universe_column(con)
             con.commit()
         finally:
             con.close()
@@ -92,17 +94,19 @@ class SQLiteBacktestResultStore(BacktestResultStore):
             con.executescript(SCHEMA_BACKTEST_RESULTS)
             from data_schema.backtest_state import (
                 ensure_observability_columns, ensure_kind_column,
-                ensure_persona_model_columns,
+                ensure_persona_model_columns, ensure_universe_column,
             )
             ensure_persona_model_columns(con)
             ensure_observability_columns(con)
             ensure_kind_column(con)
+            ensure_universe_column(con)
             zone_serial = json.dumps(
                 [asdict(z) for z in result.zone_stats], ensure_ascii=False,
             )
             daily_records = getattr(result, 'daily_records', None) or []
             trades = getattr(result, 'trades', None) or []
             thinking = getattr(result, 'thinking', None) or []
+            universe = getattr(result, 'universe', None) or []
             kind = getattr(result, 'kind', 'agent') or 'agent'
             con.execute(
                 '''INSERT OR REPLACE INTO backtest_results
@@ -110,8 +114,9 @@ class SQLiteBacktestResultStore(BacktestResultStore):
                     start_date, end_date, initial_capital, final_equity,
                     stats_json, zone_stats_json,
                     quality_gate_label, quality_gate_json,
-                    daily_records_json, trades_json, thinking_json, kind_str)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    daily_records_json, trades_json, thinking_json,
+                    universe_json, kind_str)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (result.id, result.session_id, result.agent_id,
                  result.persona_id, result.model_id,
                  result.start_date, result.end_date,
@@ -123,6 +128,7 @@ class SQLiteBacktestResultStore(BacktestResultStore):
                  json.dumps(daily_records, ensure_ascii=False, default=str),
                  json.dumps(trades, ensure_ascii=False, default=str),
                  json.dumps(thinking, ensure_ascii=False, default=str),
+                 json.dumps(universe, ensure_ascii=False),
                  kind),
             )
             con.commit()
@@ -134,7 +140,7 @@ class SQLiteBacktestResultStore(BacktestResultStore):
                 'start_date, end_date, initial_capital, final_equity, '
                 'stats_json, zone_stats_json, quality_gate_label, '
                 'quality_gate_json, daily_records_json, '
-                'trades_json, thinking_json, kind_str')
+                'trades_json, thinking_json, universe_json, kind_str')
 
     def get(self, result_id: str):
         con = sqlite3.connect(self._db_path)

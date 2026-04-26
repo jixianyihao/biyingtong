@@ -39,6 +39,7 @@ def _result_to_dict(r) -> dict:
         'quality_gate_criteria': r.quality_gate_criteria,
         'divergence_flag': flag,
         'divergence_metric': metric,
+        'universe': list(getattr(r, 'universe', None) or []),
         'kind': getattr(r, 'kind', 'agent'),
     }
 

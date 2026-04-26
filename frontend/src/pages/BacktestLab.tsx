@@ -1042,12 +1042,14 @@ function ResultDetailPanels({ result }: { result: BacktestResult }) {
   const thinking = useBacktestThinking(result.id);
   const rating = useBacktestRating(result.id);
 
-  // Derive universe from trades — the codes the agent actually touched.
-  // (Session row doesn't persist the input universe; trades are the source
-  // of truth for "what was in play during this run".)
-  const universeCodes = Array.from(
-    new Set((trades.data?.trades ?? []).map((t) => t.code)),
-  );
+  // Universe shown in the K-line grid — prefer the persisted input pool
+  // (post 2026-04-26 schema change) so analysts can see ALL stocks the
+  // agent had access to, not only the ones it actually traded. Fallback to
+  // deriving from trades for pre-fix legacy result rows.
+  const universeCodes =
+    result.universe && result.universe.length > 0
+      ? result.universe
+      : Array.from(new Set((trades.data?.trades ?? []).map((t) => t.code)));
 
   return (
     <div className="grid gap-4 mt-4">

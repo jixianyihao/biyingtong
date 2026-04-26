@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS backtest_results (
     daily_records_json   TEXT NOT NULL DEFAULT '[]',
     trades_json          TEXT NOT NULL DEFAULT '[]',
     thinking_json        TEXT NOT NULL DEFAULT '[]',
+    universe_json        TEXT NOT NULL DEFAULT '[]',
     kind_str             TEXT NOT NULL DEFAULT 'agent',
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -88,3 +89,14 @@ def ensure_persona_model_columns(con):
         con.execute('ALTER TABLE backtest_results ADD COLUMN persona_id TEXT')
     if 'model_id' not in cols:
         con.execute('ALTER TABLE backtest_results ADD COLUMN model_id TEXT')
+
+
+def ensure_universe_column(con):
+    """Add universe_json column (2026-04-26 — input ticker pool persisted so
+    the UI K-line grid can show ALL stocks in the universe, not only the
+    ones actually traded). Idempotent."""
+    cols = {row[1] for row in con.execute(
+        'PRAGMA table_info(backtest_results)').fetchall()}
+    if 'universe_json' not in cols:
+        con.execute("ALTER TABLE backtest_results ADD COLUMN "
+                    "universe_json TEXT NOT NULL DEFAULT '[]'")

@@ -342,6 +342,7 @@ class VnpyBacktestRunner:
             daily_records=daily_records,
             trades=trades_records,
             thinking=thinking,
+            universe=list(universe),
             kind='agent',
         )
         storage.backtests().insert(result)
