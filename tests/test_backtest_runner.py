@@ -66,7 +66,7 @@ def test_run_produces_backtest_result(wired_full, monkeypatch):
     from backtest.runner import BacktestRunner
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='Test',
     )
 
@@ -105,7 +105,7 @@ def test_buy_decision_reduces_cash(wired_full, monkeypatch):
     from backtest.runner import BacktestRunner
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='Test',
     )
 
@@ -167,7 +167,7 @@ def test_unknown_model_audits_warning(wired_full, monkeypatch):
     from backtest.runner import BacktestRunner
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='nonexistent-model-xyz',
+        persona_id='quant_neutral', model_id='nonexistent-model-xyz',
         display_name='Unknown',
     )
 
@@ -203,7 +203,7 @@ def test_unknown_model_audit_is_deduplicated(wired_full, monkeypatch):
     from backtest.runner import BacktestRunner
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='ghost-model-xyz',
+        persona_id='quant_neutral', model_id='ghost-model-xyz',
         display_name='UnknownDup',
     )
 
@@ -259,7 +259,7 @@ def test_divergence_flag_is_computed(wired_full, monkeypatch):
     monkeypatch.setattr(storage.models(), 'get', lambda _id: _M())
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='DivTest',
     )
 
@@ -303,7 +303,7 @@ def test_runner_builds_daily_snapshot(wired_full, monkeypatch):
     monkeypatch.setattr(cb, 'build_market_snapshot', fake_build)
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='SnapTest',
     )
     days = [date(2025, 3, 1) + timedelta(days=i) for i in range(3)]

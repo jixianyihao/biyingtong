@@ -32,7 +32,7 @@ def test_prompt_version_store_protocol_has_rollback_method():
 def test_agent_update_display_name(observability_storage):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='original', initial_capital=1_000_000.0,
     )
     storage.agents().update(agent.id, display_name='renamed')
@@ -45,7 +45,7 @@ def test_agent_update_display_name(observability_storage):
 def test_agent_update_rules_override(observability_storage):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     storage.agents().update(agent.id, rules_override={'max_holdings': 3})
@@ -57,7 +57,7 @@ def test_agent_update_rules_override(observability_storage):
 def test_agent_update_both_fields(observability_storage):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     storage.agents().update(
@@ -77,7 +77,7 @@ def test_agent_update_empty_kwargs_is_noop(observability_storage):
     """No kwargs passed → no SQL executed → no-op."""
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     storage.agents().update(agent.id)
@@ -88,7 +88,7 @@ def test_agent_update_empty_kwargs_is_noop(observability_storage):
 def test_agent_delete_removes_row(observability_storage):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     assert storage.agents().delete(agent.id) is True
@@ -98,7 +98,7 @@ def test_agent_delete_removes_row(observability_storage):
 def test_agent_delete_also_removes_prompt_versions(observability_storage):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     storage.prompt_versions().insert(
@@ -118,7 +118,7 @@ def test_agent_delete_nonexistent_returns_false(observability_storage):
 def test_agent_set_current_prompt_version(observability_storage):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     pv = storage.prompt_versions().insert(
@@ -158,7 +158,7 @@ def test_persona_delete_nonexistent_returns_false(observability_storage):
 def test_prompt_version_rollback_creates_new_version_with_old_prompt(observability_storage):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     pv = storage.prompt_versions()
@@ -183,7 +183,7 @@ def test_prompt_version_rollback_unknown_version_raises(observability_storage):
     import pytest
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     with pytest.raises(ValueError, match='not found'):
@@ -195,11 +195,11 @@ def test_prompt_version_rollback_wrong_agent_raises(observability_storage):
     import pytest
     import storage
     a1 = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='a1', initial_capital=1_000_000.0,
     )
     a2 = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='a2', initial_capital=1_000_000.0,
     )
     a1_v1 = storage.prompt_versions().list_for_agent(a1.id)[0]
@@ -233,7 +233,7 @@ def client(observability_storage):
 def test_put_agent_updates_display_name(observability_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='original', initial_capital=1_000_000.0,
     )
     resp = client.put(f'/api/agents/{agent.id}',
@@ -247,7 +247,7 @@ def test_put_agent_updates_display_name(observability_storage, client):
 def test_put_agent_updates_rules_override(observability_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     resp = client.put(f'/api/agents/{agent.id}',
@@ -264,7 +264,7 @@ def test_put_agent_404_on_missing(observability_storage, client):
 def test_put_agent_empty_body_is_noop_200(observability_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     resp = client.put(f'/api/agents/{agent.id}', json={})
@@ -275,7 +275,7 @@ def test_put_agent_empty_body_is_noop_200(observability_storage, client):
 def test_delete_agent_204(observability_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     resp = client.delete(f'/api/agents/{agent.id}')
@@ -291,7 +291,7 @@ def test_delete_agent_404_on_missing(observability_storage, client):
 def test_rollback_prompt_creates_new_version(observability_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     storage.prompt_versions().insert(
@@ -321,7 +321,7 @@ def test_rollback_404_on_missing_agent(observability_storage, client):
 def test_rollback_400_on_missing_version_id(observability_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     resp = client.post(f'/api/agents/{agent.id}/prompts/rollback', json={})
@@ -332,7 +332,7 @@ def test_rollback_400_on_bad_version_id(observability_storage, client):
     """version_id for a non-existent prompt version → 400 (ValueError from store)."""
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t', initial_capital=1_000_000.0,
     )
     resp = client.post(f'/api/agents/{agent.id}/prompts/rollback',
@@ -366,7 +366,7 @@ def test_post_persona_creates(observability_storage, client):
 
 def test_post_persona_409_on_duplicate_id(observability_storage, client):
     resp = client.post('/api/personas', json={
-        'id': 'linyuan',  # seeded as builtin
+        'id': 'quant_neutral',  # seeded as builtin (migrated from linyuan 2026-04-24)
         'name': 'x', 'style_desc': 'x', 'system_prompt': 'x',
     })
     assert resp.status_code == 409
@@ -421,7 +421,7 @@ def test_put_persona_system_prompt_bumps_agent_versions(observability_storage, c
 
 
 def test_put_persona_403_on_builtin(observability_storage, client):
-    resp = client.put('/api/personas/linyuan', json={'name': 'NOT ALLOWED'})
+    resp = client.put('/api/personas/quant_neutral', json={'name': 'NOT ALLOWED'})
     assert resp.status_code == 403
 
 
@@ -444,7 +444,7 @@ def test_delete_persona_204(observability_storage, client):
 
 
 def test_delete_persona_403_on_builtin(observability_storage, client):
-    resp = client.delete('/api/personas/linyuan')
+    resp = client.delete('/api/personas/quant_neutral')
     assert resp.status_code == 403
 
 

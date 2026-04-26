@@ -11,7 +11,7 @@ def _result(id='r1', session_id='s1', agent_id='a1',
     )
     return BacktestResult(
         id=id, session_id=session_id, agent_id=agent_id,
-        persona_id=kw.get('persona_id', 'linyuan'),
+        persona_id=kw.get('persona_id', 'quant_neutral'),
         model_id=kw.get('model_id', 'claude-opus-4-7'),
         start_date='2024-01-01', end_date='2024-03-01',
         initial_capital=1_000_000.0, stats=stats, zone_stats=[],
@@ -95,19 +95,19 @@ def test_backtest_result_persists_persona_and_model_ids(tmp_path):
 
     result = _result(
         id='r-pm-1', session_id='s-pm', agent_id='ag-1',
-        persona_id='linyuan', model_id='hunyuan-hy3',
+        persona_id='quant_neutral', model_id='hunyuan-hy3',
     )
     s.insert(result)
 
     got = s.get('r-pm-1')
     assert got is not None
-    assert got.persona_id == 'linyuan'
+    assert got.persona_id == 'quant_neutral'
     assert got.model_id == 'hunyuan-hy3'
 
     # list_for_agent / list_all should also surface the IDs.
     for row in s.list_for_agent('ag-1'):
         if row.id == 'r-pm-1':
-            assert row.persona_id == 'linyuan'
+            assert row.persona_id == 'quant_neutral'
             assert row.model_id == 'hunyuan-hy3'
             break
     else:
@@ -115,7 +115,7 @@ def test_backtest_result_persists_persona_and_model_ids(tmp_path):
 
     for row in s.list_all():
         if row.id == 'r-pm-1':
-            assert row.persona_id == 'linyuan'
+            assert row.persona_id == 'quant_neutral'
             assert row.model_id == 'hunyuan-hy3'
             break
     else:
@@ -159,8 +159,8 @@ def test_legacy_table_missing_persona_model_columns_is_repaired(tmp_path):
     s.create_session('s-legacy', '2024-01-01', '2024-03-01', ['ag-1'])
     s.insert(_result(
         id='r-legacy-1', session_id='s-legacy', agent_id='ag-1',
-        persona_id='buffet', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
     ))
     got = s.get('r-legacy-1')
-    assert got.persona_id == 'buffet'
+    assert got.persona_id == 'quant_neutral'
     assert got.model_id == 'claude-opus-4-7'

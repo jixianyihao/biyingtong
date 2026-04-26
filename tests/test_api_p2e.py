@@ -58,7 +58,7 @@ def client(wired):
 @pytest.fixture
 def agent(wired):
     a = wired.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='API-Test',
     )
     return a
@@ -69,15 +69,15 @@ def test_get_personas_list(client):
     assert resp.status_code == 200
     data = resp.get_json()
     ids = {p['id'] for p in data}
-    assert {'linyuan', 'buffet', 'fuyou', 'soros', 'quant_neutral',
-            'intraday_t0'} <= ids
+    # Migrated 2026-04-24: dropped linyuan/buffet from expected set per registry trim
+    assert {'fuyou', 'soros', 'quant_neutral', 'intraday_t0'} <= ids
 
 
 def test_get_persona_detail(client):
-    resp = client.get('/api/personas/linyuan')
+    resp = client.get('/api/personas/quant_neutral')
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data['id'] == 'linyuan'
+    assert data['id'] == 'quant_neutral'
     assert 'system_prompt' in data
     assert data['is_builtin'] is True
 
@@ -113,7 +113,7 @@ def test_get_agents_list_after_create(client, agent):
     data = resp.get_json()
     assert len(data) == 1
     assert data[0]['id'] == agent.id
-    assert data[0]['persona_id'] == 'linyuan'
+    assert data[0]['persona_id'] == 'quant_neutral'
 
 
 def test_get_agent_detail(client, agent):
@@ -152,7 +152,7 @@ def test_backtests_list_by_agent(client, agent, wired):
                                      [agent.id])
     wired.backtests().insert(BacktestResult(
         id='r1', session_id='s1', agent_id=agent.id,
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         start_date='2025-11-17', end_date='2025-11-28',
         initial_capital=1_000_000, stats=stats, zone_stats=[],
         quality_gate_label='pass', quality_gate_criteria={},
@@ -179,7 +179,7 @@ def test_backtest_detail(client, agent, wired):
                                      [agent.id])
     wired.backtests().insert(BacktestResult(
         id='r1', session_id='s1', agent_id=agent.id,
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         start_date='2025-11-17', end_date='2025-11-28',
         initial_capital=1_000_000, stats=stats, zone_stats=[],
         quality_gate_label='pass', quality_gate_criteria={},
@@ -210,7 +210,7 @@ def test_session_composite_view(client, agent, wired):
                                      [agent.id])
     wired.backtests().insert(BacktestResult(
         id='r1', session_id='s1', agent_id=agent.id,
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         start_date='2025-11-17', end_date='2025-11-28',
         initial_capital=1_000_000, stats=stats, zone_stats=[],
         quality_gate_label='warn', quality_gate_criteria={},

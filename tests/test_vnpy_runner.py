@@ -23,7 +23,7 @@ def test_vnpy_runner_smoke_short_window(observability_storage, vnpy_configured):
     from llm.mock import MockLLM
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='vnpy-smoke', initial_capital=1_000_000.0,
     )
 

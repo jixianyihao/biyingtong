@@ -53,7 +53,7 @@ def test_non_terminator_tool_is_executed(wired, monkeypatch):
     from llm.mock import MockLLM
 
     agent = wired.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='Tool-Exec-Test',
     )
 
@@ -116,7 +116,7 @@ def test_tool_exception_becomes_error_tool_result(wired, monkeypatch):
     from llm.mock import MockLLM
 
     agent = wired.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='Tool-Error-Test',
     )
 

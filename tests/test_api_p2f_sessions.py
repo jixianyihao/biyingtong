@@ -49,7 +49,7 @@ def test_sessions_populated(client, wired):
                           total_return_pct=2.5, final_equity=1_025_000)
     wired.backtests().insert(BacktestResult(
         id='r1', session_id='s1', agent_id='a1',
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         start_date='2025-11-17', end_date='2025-11-28',
         initial_capital=1_000_000, stats=stats, zone_stats=[],
         quality_gate_label='pass', quality_gate_criteria={},

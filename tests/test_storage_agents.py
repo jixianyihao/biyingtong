@@ -174,7 +174,7 @@ def test_update_health_persists(tmp_path):
     seed_personas()
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='HealthTest',
     )
     storage.agents().update_health(agent.id, health=75, rating='B')

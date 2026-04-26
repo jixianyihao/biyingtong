@@ -28,7 +28,7 @@ def _make_result(
     zone_stats = zones if zones is not None else []
     return BacktestResult(
         id='r-test', session_id='s-test', agent_id='a-test',
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         start_date='2025-01-01', end_date='2025-02-01',
         initial_capital=1_000_000.0, final_equity=final_equity,
         stats=stats, zone_stats=zone_stats,

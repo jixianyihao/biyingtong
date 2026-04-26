@@ -67,14 +67,15 @@ def _run_one(agent_id, session_id, llm_script, days, prices, monkeypatch):
 
 def test_two_personas_same_session(wired_full, monkeypatch):
     """Two agents → two result rows with same session_id."""
+    # Migrated 2026-04-24: linyuan/buffet → quant_neutral/soros to keep multi-persona spirit
     import storage
     agent_a = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
-        display_name='林园 · Claude',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
+        display_name='量化中性 · Claude',
     )
     agent_b = wired_full.agents().create_from_persona(
-        persona_id='buffet', model_id='claude-opus-4-7',
-        display_name='Buffet · Claude',
+        persona_id='soros', model_id='claude-opus-4-7',
+        display_name='Soros · Claude',
     )
 
     days = [date(2024, 3, 1) + timedelta(days=i) for i in range(5)]
@@ -100,7 +101,7 @@ def test_two_personas_same_session(wired_full, monkeypatch):
     agents = {r.agent_id for r in rows}
     assert agents == {agent_a.id, agent_b.id}
 
-    # Linyuan bought at day 1, Buffet never traded — their final_equity differs.
+    # Agent A bought at day 1, Agent B never traded — their final_equity differs.
     by_agent = {r.agent_id: r for r in rows}
     assert by_agent[agent_a.id].stats.trade_count == 1
     assert by_agent[agent_b.id].stats.trade_count == 0

@@ -35,7 +35,7 @@ def test_agent_runner_emits_decision_event(observability_storage):
     import storage
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-evt', initial_capital=1_000_000.0,
     )
     script = [{
@@ -71,7 +71,7 @@ def test_agent_runner_emits_blocked_event_on_rejected_decision(observability_sto
     import storage
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-blk', initial_capital=1_000_000.0,
     )
     # Existing position at cap → buy more rejected (observability_storage sets
@@ -114,7 +114,7 @@ def test_agent_runner_emits_tool_call_events(observability_storage):
     import storage
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-tool', initial_capital=1_000_000.0,
     )
 
@@ -167,7 +167,7 @@ def test_agent_runner_on_event_none_is_noop(observability_storage):
     import storage
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-noop', initial_capital=1_000_000.0,
     )
     script = [{
@@ -195,7 +195,7 @@ def test_backtest_runner_emits_progress_per_day(observability_storage, monkeypat
     from llm.mock import MockLLM
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-prog', initial_capital=1_000_000.0,
     )
     days = [date(2025, 1, 2) + timedelta(days=i) for i in range(5)]
@@ -234,11 +234,11 @@ def test_multi_agent_runner_forwards_on_event(observability_storage, monkeypatch
     from llm.factory import build_llm  # noqa: just to confirm import
 
     a1 = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-multi-1', initial_capital=1_000_000.0,
     )
     a2 = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-multi-2', initial_capital=1_000_000.0,
     )
     days = [date(2025, 1, 2) + timedelta(days=i) for i in range(3)]
@@ -279,7 +279,7 @@ def test_backtest_runner_on_event_none_is_noop(observability_storage, monkeypatc
     from llm.mock import MockLLM
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-noop', initial_capital=1_000_000.0,
     )
     days = [date(2025, 1, 2) + timedelta(days=i) for i in range(3)]
@@ -309,7 +309,7 @@ def test_submit_backtest_emits_phase_events(observability_storage, monkeypatch):
     import time
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-jobs', initial_capital=1_000_000.0,
     )
 
@@ -373,7 +373,7 @@ def test_submit_backtest_emits_baseline_done(observability_storage, monkeypatch)
     import time
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-bl', initial_capital=1_000_000.0,
     )
 
@@ -463,7 +463,7 @@ def test_sse_stream_emits_events_after_completion(observability_storage, client,
     import time
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-sse-end', initial_capital=1_000_000.0,
     )
 
@@ -538,7 +538,7 @@ def test_blocked_event_reason_joins_multiple_violations(observability_storage):
                            'max_holdings': 0})
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-multi-violation', initial_capital=1_000_000.0,
     )
     script = [{

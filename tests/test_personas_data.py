@@ -3,8 +3,9 @@
 
 def test_all_personas_registered():
     from personas import ALL_PERSONAS
+    # Migrated 2026-04-24: dropped linyuan/buffet from expected registry per registry trim
     assert set(ALL_PERSONAS.keys()) == {
-        'linyuan', 'fuyou', 'buffet', 'soros', 'quant_neutral',
+        'fuyou', 'soros', 'quant_neutral',
         'intraday_t0', 'quant_sentiment',
     }
 
