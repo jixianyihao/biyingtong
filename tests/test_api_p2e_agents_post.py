@@ -38,7 +38,7 @@ def client(wired):
 
 
 def test_post_missing_fields(client):
-    resp = client.post('/api/agents', json={'persona_id': 'linyuan'})
+    resp = client.post('/api/agents', json={'persona_id': 'quant_neutral'})
     assert resp.status_code == 400
 
 
@@ -52,7 +52,7 @@ def test_post_unknown_persona(client):
 
 def test_post_unknown_model(client):
     resp = client.post('/api/agents', json={
-        'persona_id': 'linyuan', 'model_id': 'ghost-model',
+        'persona_id': 'quant_neutral', 'model_id': 'ghost-model',
         'display_name': 'X',
     })
     assert resp.status_code == 404
@@ -60,12 +60,12 @@ def test_post_unknown_model(client):
 
 def test_post_creates_agent(client, wired):
     resp = client.post('/api/agents', json={
-        'persona_id': 'linyuan', 'model_id': 'claude-opus-4-7',
+        'persona_id': 'quant_neutral', 'model_id': 'claude-opus-4-7',
         'display_name': 'Created-via-API',
     })
     assert resp.status_code == 201
     data = resp.get_json()
-    assert data['persona_id'] == 'linyuan'
+    assert data['persona_id'] == 'quant_neutral'
     assert data['model_id'] == 'claude-opus-4-7'
     assert data['display_name'] == 'Created-via-API'
     # Persisted
@@ -74,7 +74,7 @@ def test_post_creates_agent(client, wired):
 
 def test_post_accepts_rules_override(client, wired):
     resp = client.post('/api/agents', json={
-        'persona_id': 'linyuan', 'model_id': 'claude-opus-4-7',
+        'persona_id': 'quant_neutral', 'model_id': 'claude-opus-4-7',
         'display_name': 'StrictAgent',
         'rules_override': {'position_max_pct': 5.0},
         'initial_capital': 500_000,

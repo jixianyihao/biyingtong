@@ -44,7 +44,7 @@ def test_unknown_agent_404(client):
 
 def test_new_agent_has_v1(client, wired):
     a = wired.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='PromptTest',
     )
     resp = client.get(f'/api/agents/{a.id}/prompt_versions')
@@ -52,12 +52,13 @@ def test_new_agent_has_v1(client, wired):
     data = resp.get_json()
     assert len(data) == 1
     assert data[0]['version_number'] == 1
-    assert '林园' in data[0]['system_prompt'] or 'value' in data[0]['system_prompt'].lower()
+    # Migrated 2026-04-24: linyuan→quant_neutral; assert on the new persona's prompt marker
+    assert '量化中性' in data[0]['system_prompt'] or '多因子' in data[0]['system_prompt']
 
 
 def test_multiple_versions_ordered(client, wired):
     a = wired.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='MultiVer',
     )
     wired.prompt_versions().insert(a.id, 'v2 prompt content — revised', note='tuned trigger threshold')

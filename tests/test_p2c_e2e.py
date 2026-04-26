@@ -59,7 +59,7 @@ def test_e2e_full_pipeline(wired_full, monkeypatch):
     from llm.mock import MockLLM
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='E2E',
     )
 
@@ -120,7 +120,7 @@ def test_e2e_rerun_uses_cache(wired_full, monkeypatch):
     from llm.mock import MockLLM
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='E2E-cache',
     )
     days = [date(2024, 3, 1) + timedelta(days=i) for i in range(3)]
@@ -168,7 +168,7 @@ def test_zone_stats_split_across_cutoff(wired_full, monkeypatch):
     monkeypatch.setattr(storage.models(), 'get', lambda _id: _M())
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='Zones',
     )
 

@@ -59,7 +59,7 @@ def test_e2e_agent_plus_baselines_plus_rating(wired_full, monkeypatch):
     from llm.mock import MockLLM
 
     agent = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='E2E',
     )
 

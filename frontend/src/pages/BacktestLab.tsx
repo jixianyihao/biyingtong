@@ -1598,10 +1598,23 @@ export function BacktestLab() {
       <div
         className="grid gap-5"
         style={{
-          gridTemplateColumns: 'minmax(220px, 260px) 1fr',
+          // History stays narrow so the result detail panel has breathing room.
+          // sticky+max-height keeps history in its own column without bleeding
+          // into the result area when scrolling long detail content.
+          gridTemplateColumns: 'minmax(180px, 200px) minmax(0, 1fr)',
         }}
       >
-        <div className="panel p-3" style={{ alignSelf: 'start', position: 'sticky', top: 16 }}>
+        <div
+          className="panel p-3"
+          style={{
+            alignSelf: 'start',
+            position: 'sticky',
+            top: 16,
+            maxHeight: 'calc(100vh - 80px)',
+            overflowY: 'auto',
+            zIndex: 1,
+          }}
+        >
           <div className="flex items-baseline gap-2 mb-2">
             <h3 className="text-text-hi text-sm font-semibold">历史回测</h3>
             <span className="mono text-[9.5px] text-text-ghost uppercase tracking-wider">

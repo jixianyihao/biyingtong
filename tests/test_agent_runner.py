@@ -53,7 +53,7 @@ def seeded_agent(wired):
     from personas import seed as seed_personas
     seed_personas()
     agent = wired.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='TestAgent',
     )
     return agent

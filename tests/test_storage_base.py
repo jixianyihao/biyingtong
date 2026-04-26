@@ -95,13 +95,13 @@ def test_persona_dataclass():
 def test_agent_dataclass():
     from storage.base import Agent
     a = Agent(
-        id='a1', persona_id='linyuan', model_id='claude-opus-4-7',
-        display_name='林园 · Claude Opus 4.7', rules_override={},
+        id='a1', persona_id='quant_neutral', model_id='claude-opus-4-7',
+        display_name='量化中性 · Claude Opus 4.7', rules_override={},
         initial_capital=1_000_000, status='created',
         subprocess_pid=None, health_score=100, trust_rating='A',
         current_prompt_version_id=None,
     )
-    assert a.persona_id == 'linyuan'
+    assert a.persona_id == 'quant_neutral'
 
 
 def test_prompt_version_dataclass():

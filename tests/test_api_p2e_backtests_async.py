@@ -56,7 +56,7 @@ def client(wired):
 @pytest.fixture
 def agent(wired):
     return wired.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='Async-Test',
     )
 

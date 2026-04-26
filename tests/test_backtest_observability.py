@@ -117,7 +117,7 @@ def test_backtest_runner_populates_trades_and_daily_records(
     from llm.mock import MockLLM
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-p3a', initial_capital=1_000_000.0,
     )
 
@@ -186,7 +186,7 @@ def test_agent_runner_captures_thinking_per_day(observability_storage):
     import storage
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-thk', initial_capital=1_000_000.0,
     )
 
@@ -225,7 +225,7 @@ def test_agent_runner_thinking_records_rejected_decisions(observability_storage)
     import storage
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-rej', initial_capital=1_000_000.0,
     )
 
@@ -269,7 +269,7 @@ def test_agent_runner_thinking_cache_hit_uses_synthetic_entry(observability_stor
     import storage
 
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='t-cache', initial_capital=1_000_000.0,
     )
     script = [

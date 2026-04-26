@@ -85,7 +85,8 @@ def test_multi_agent_runs_parallel(wired_full, monkeypatch):
     import backtest.runner as runner_mod
 
     agent_ids = []
-    for persona in ['linyuan', 'buffet', 'fuyou']:
+    # Migrated 2026-04-24: linyuan/buffet → quant_neutral/intraday_t0 (3 distinct personas to test parallelism)
+    for persona in ['quant_neutral', 'intraday_t0', 'fuyou']:
         a = wired_full.agents().create_from_persona(
             persona_id=persona, model_id='claude-opus-4-7',
             display_name=f'Par-{persona}',
@@ -136,12 +137,13 @@ def test_multi_agent_results_isolated(wired_full, monkeypatch):
     import agents.context_builder as cb
     from llm.mock import MockLLM
 
+    # Migrated 2026-04-24: linyuan/buffet → quant_neutral/soros (two distinct personas)
     a = wired_full.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='IsoA',
     )
     b = wired_full.agents().create_from_persona(
-        persona_id='buffet', model_id='claude-opus-4-7',
+        persona_id='soros', model_id='claude-opus-4-7',
         display_name='IsoB',
     )
 
@@ -157,12 +159,12 @@ def test_multi_agent_results_isolated(wired_full, monkeypatch):
     buy = {'tool_calls': [{'id': 'c', 'name': 'place_decision',
                            'input': {'action': 'buy', 'code': '600519.SH',
                                      'qty': 100,
-                                     'reason': 'linyuan buys on day 1 firmly',
+                                     'reason': 'agent A buys on day 1 firmly',
                                      'thinking': 't'}}],
            'stop_reason': 'tool_use'}
     hold = {'tool_calls': [{'id': 'c', 'name': 'place_decision',
                             'input': {'action': 'hold',
-                                      'reason': 'buffet holds cash no action',
+                                      'reason': 'agent B holds cash no action',
                                       'thinking': 't'}}],
             'stop_reason': 'tool_use'}
     llm_a = MockLLM([buy, hold])

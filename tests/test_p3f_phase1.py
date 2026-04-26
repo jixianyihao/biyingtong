@@ -381,7 +381,7 @@ def client(deploy_storage):
 def test_deploy_agent_spawns_subprocess(deploy_storage, client, monkeypatch):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='d1', initial_capital=1_000_000.0,
     )
 
@@ -415,7 +415,7 @@ def test_deploy_agent_404_on_missing(deploy_storage, client):
 def test_deploy_agent_409_when_already_running(deploy_storage, client, monkeypatch):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='d2', initial_capital=1_000_000.0,
     )
     # Pre-seed a running deployment
@@ -433,7 +433,7 @@ def test_deploy_agent_409_when_already_running(deploy_storage, client, monkeypat
 def test_deploy_agent_schedule_override(deploy_storage, client, monkeypatch):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='d_sched', initial_capital=1_000_000.0,
     )
 
@@ -452,7 +452,7 @@ def test_deploy_agent_schedule_override(deploy_storage, client, monkeypatch):
 def test_stop_agent_happy(deploy_storage, client, monkeypatch):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='d3', initial_capital=1_000_000.0,
     )
     storage.deployed_agents().upsert(agent.id, pid=12345, schedule='daily')
@@ -478,7 +478,7 @@ def test_stop_agent_404_when_not_deployed(deploy_storage, client):
 def test_deploy_status(deploy_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='d4', initial_capital=1_000_000.0,
     )
     storage.deployed_agents().upsert(agent.id, pid=99, schedule='weekly')

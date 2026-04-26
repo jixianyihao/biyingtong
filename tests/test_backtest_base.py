@@ -27,7 +27,7 @@ def test_backtest_result_fields():
                           total_return_pct=5, final_equity=105)
     r = BacktestResult(
         id='r1', session_id='s1', agent_id='a1',
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         start_date='2024-01-01', end_date='2024-02-01',
         initial_capital=100.0, stats=stats, zone_stats=[],
         quality_gate_label='pass', quality_gate_criteria={},

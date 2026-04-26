@@ -49,7 +49,7 @@ def test_submit_backtest_defaults_to_legacy(observability_storage, monkeypatch):
 
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='eng-legacy', initial_capital=1_000_000.0,
     )
 
@@ -100,7 +100,7 @@ def test_submit_backtest_vnpy_skips_run_multi(observability_storage, monkeypatch
 
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='eng-vnpy-sub', initial_capital=1_000_000.0,
     )
 
@@ -143,7 +143,7 @@ def test_post_backtests_engine_vnpy_accepted(observability_storage, client, monk
 
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='eng-vnpy', initial_capital=1_000_000.0,
     )
     resp = client.post('/api/backtests', json={
@@ -161,7 +161,7 @@ def test_post_backtests_engine_vnpy_accepted(observability_storage, client, monk
 def test_post_backtests_engine_bad_rejected(observability_storage, client):
     import storage
     agent = storage.agents().create_from_persona(
-        persona_id='linyuan', model_id='claude-opus-4-7',
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
         display_name='eng-bad', initial_capital=1_000_000.0,
     )
     resp = client.post('/api/backtests', json={
