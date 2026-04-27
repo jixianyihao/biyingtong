@@ -75,6 +75,7 @@ export type BacktestResult = {
   divergence_metric: number | null;
   universe: string[];
   kind: 'agent' | 'rule';
+  created_at: string | null;
 };
 
 export type BaselineResult = {

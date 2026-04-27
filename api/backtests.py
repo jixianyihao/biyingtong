@@ -41,6 +41,7 @@ def _result_to_dict(r) -> dict:
         'divergence_metric': metric,
         'universe': list(getattr(r, 'universe', None) or []),
         'kind': getattr(r, 'kind', 'agent'),
+        'created_at': getattr(r, 'created_at', None),
     }
 
 

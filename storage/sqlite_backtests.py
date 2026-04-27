@@ -31,6 +31,7 @@ def _row_to_result(row):
     # P3-C: kind_str at index 17 (was 16 before universe_json was inserted);
     # default 'agent' for buggy callers returning empty.
     kind = row[17] if len(row) > 17 and row[17] else 'agent'
+    created_at = row[18] if len(row) > 18 else None
     return BacktestResult(
         id=row[0], session_id=row[1], agent_id=row[2],
         persona_id=row[3], model_id=row[4],
@@ -44,6 +45,7 @@ def _row_to_result(row):
         thinking=thinking,
         universe=universe,
         kind=kind,
+        created_at=created_at,
     )
 
 
@@ -140,7 +142,8 @@ class SQLiteBacktestResultStore(BacktestResultStore):
                 'start_date, end_date, initial_capital, final_equity, '
                 'stats_json, zone_stats_json, quality_gate_label, '
                 'quality_gate_json, daily_records_json, '
-                'trades_json, thinking_json, universe_json, kind_str')
+                'trades_json, thinking_json, universe_json, kind_str, '
+                'created_at')
 
     def get(self, result_id: str):
         con = sqlite3.connect(self._db_path)
