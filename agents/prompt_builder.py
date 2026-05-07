@@ -3,8 +3,79 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 
 from llm.base import Message
+
+log = logging.getLogger(__name__)
+
+# Rough token estimator: ~3.5 chars per token for Chinese+English mixed content.
+CHARS_PER_TOKEN = 3.5
+
+# Reserve tokens for output + tool definitions. Input must stay below this.
+DEFAULT_MAX_INPUT_TOKENS = 250_000
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token count estimate for budget checks."""
+    return int(len(text) / CHARS_PER_TOKEN)
+
+
+def _compress_snapshot(
+    snapshot: dict,
+    budget_chars: int,
+) -> dict:
+    """Compress market snapshot to fit within a character budget.
+
+    Strategy (progressive):
+    1. Drop closes_last_30d array (biggest single item per stock)
+    2. Drop financials (less critical for short-term)
+    3. Drop technical indicators (can be re-fetched via tools)
+    4. Drop kline summary entirely (keep just code list)
+    """
+    import copy
+    compressed = copy.deepcopy(snapshot)
+    stocks = compressed.get('stocks', {})
+    if not stocks:
+        return compressed
+
+    def _total_snapshot_chars(s: dict) -> int:
+        return len(json.dumps(s, ensure_ascii=False))
+
+    # Stage 1: Remove closes_last_30d arrays
+    if _total_snapshot_chars(compressed) <= budget_chars:
+        return compressed
+    log.info('Context budget tight — removing closes_last_30d arrays')
+    for code, data in stocks.items():
+        ks = data.get('kline_summary')
+        if ks and 'closes_last_30d' in ks:
+            del ks['closes_last_30d']
+
+    if _total_snapshot_chars(compressed) <= budget_chars:
+        return compressed
+
+    # Stage 2: Remove financials
+    log.info('Context budget tight — removing financials')
+    for code, data in stocks.items():
+        data.pop('financials', None)
+
+    if _total_snapshot_chars(compressed) <= budget_chars:
+        return compressed
+
+    # Stage 3: Remove technical indicators
+    log.info('Context budget tight — removing technical indicators')
+    for code, data in stocks.items():
+        data.pop('technical', None)
+
+    if _total_snapshot_chars(compressed) <= budget_chars:
+        return compressed
+
+    # Stage 4: Remove kline summary entirely
+    log.info('Context budget tight — removing kline summaries')
+    for code, data in stocks.items():
+        data.pop('kline_summary', None)
+
+    return compressed
 
 
 def build_messages(
@@ -16,8 +87,13 @@ def build_messages(
     default_pool: list[str],
     market_snapshot: dict | None = None,
     model_cutoff: str | None = None,
+    max_input_tokens: int = DEFAULT_MAX_INPUT_TOKENS,
 ) -> list[Message]:
-    """Return [system Message, user Message]."""
+    """Return [system Message, user Message].
+
+    Automatically compresses market_snapshot if the total estimated
+    token count exceeds max_input_tokens.
+    """
     cash = portfolio.get('cash', 0)
     equity = portfolio.get('equity', 0)
     positions = portfolio.get('positions', {})
@@ -46,10 +122,16 @@ def build_messages(
             lines.append(f'  {code}:')
             ks = data.get('kline_summary')
             if ks:
+                closes_str = ''
+                if ks.get('closes_last_30d'):
+                    # Only show last 5 closes to save tokens
+                    last5 = ks['closes_last_30d'][-5:]
+                    closes_str = f', last5={[round(c, 2) for c in last5]}'
                 lines.append(
                     f'    K线: latest={ks.get("latest_close")}, '
                     f'30d_return={ks.get("return_30d_pct")}%, '
                     f'vol={ks.get("volatility_30d_pct")}%'
+                    f'{closes_str}'
                 )
             fin = data.get('financials')
             if fin:
@@ -85,6 +167,35 @@ def build_messages(
         )
     else:
         final_system = system_prompt
+
+    # --- Token budget check + auto-compression ---
+    total_text = final_system + user_msg
+    estimated_tokens = _estimate_tokens(total_text)
+
+    if estimated_tokens > max_input_tokens and has_snapshot:
+        # Calculate how many chars we can afford for the snapshot
+        non_snapshot_chars = len(final_system) + len(user_msg) - len(
+            json.dumps(market_snapshot, ensure_ascii=False)
+        )
+        budget_chars = int(max_input_tokens * CHARS_PER_TOKEN) - non_snapshot_chars
+        log.info(
+            'Token budget exceeded (%d > %d) — compressing snapshot (budget=%d chars)',
+            estimated_tokens, max_input_tokens, budget_chars,
+        )
+        compressed = _compress_snapshot(market_snapshot, budget_chars)
+        # Rebuild user_msg with compressed snapshot
+        market_snapshot = compressed
+        # Rebuild from scratch with compressed data
+        return build_messages(
+            system_prompt=system_prompt,
+            date=date,
+            portfolio=portfolio,
+            market_context=market_context,
+            default_pool=default_pool,
+            market_snapshot=compressed,
+            model_cutoff=model_cutoff,
+            max_input_tokens=max_input_tokens,
+        )
 
     return [
         Message(role='system', content=final_system),
