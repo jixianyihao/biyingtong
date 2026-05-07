@@ -34,10 +34,11 @@ def _summarize_kline(bars: list[dict]) -> dict | None:
     else:
         vol = 0.0
     return {
-        'closes_last_5d': [round(c, 2) for c in closes[:5]],
         'return_30d_pct': round(return_pct, 2),
         'volatility_30d_pct': round(vol, 2),
         'latest_close': round(latest, 2),
+        'high_30d': round(max(closes), 2),
+        'low_30d': round(min(closes), 2),
     }
 
 

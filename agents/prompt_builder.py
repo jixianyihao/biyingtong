@@ -122,16 +122,12 @@ def build_messages(
             lines.append(f'  {code}:')
             ks = data.get('kline_summary')
             if ks:
-                closes_str = ''
-                if ks.get('closes_last_30d'):
-                    # Only show last 5 closes to save tokens
-                    last5 = ks['closes_last_30d'][-5:]
-                    closes_str = f', last5={[round(c, 2) for c in last5]}'
                 lines.append(
                     f'    K线: latest={ks.get("latest_close")}, '
                     f'30d_return={ks.get("return_30d_pct")}%, '
-                    f'vol={ks.get("volatility_30d_pct")}%'
-                    f'{closes_str}'
+                    f'vol={ks.get("volatility_30d_pct")}%, '
+                    f'30d_high={ks.get("high_30d")}, '
+                    f'30d_low={ks.get("low_30d")}'
                 )
             fin = data.get('financials')
             if fin:
