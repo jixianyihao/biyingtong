@@ -21,10 +21,10 @@ def test_quant_sentiment_persona_shape():
     assert 'get_capital_flow' in p['allowed_tools']
     assert 'get_stock_list' in p['allowed_tools']
     assert 'get_technical' in p['allowed_tools']
-    # Market-neutral risk envelope
-    assert p['default_rules']['cash_min_pct'] >= 70
+    # Short-term risk envelope (tuned for active trading)
+    assert p['default_rules']['cash_min_pct'] >= 20  # leave safety cushion
     assert p['default_rules']['max_holdings'] <= 6
-    assert p['default_rules']['position_max_pct'] <= 8
+    assert p['default_rules']['position_max_pct'] <= 12
     # Universe is non-empty + valid
     assert len(p['default_pool']) >= 5
     for code in p['default_pool']:
