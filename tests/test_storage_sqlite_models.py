@@ -1,4 +1,4 @@
-"""SQLiteModelStore — llm_models registry with 7 seeded models."""
+"""SQLiteModelStore - llm_models registry with seeded models."""
 
 
 def test_sqlite_models_satisfies_protocol(tmp_path):
@@ -23,19 +23,20 @@ def test_init_schema_creates_table(tmp_path):
     assert len(rows) == 1
 
 
-def test_seed_inserts_7_models(tmp_path):
+def test_seed_inserts_models(tmp_path):
     from storage.sqlite_models import SQLiteModelStore
     store = SQLiteModelStore(tmp_path=tmp_path)
     store.init_schema()
     store.seed()
 
     enabled = store.list_enabled()
-    assert len(enabled) == 7
+    assert len(enabled) == 8
 
     ids = {m.id for m in enabled}
     assert ids == {
         'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
-        'gpt-5', 'gpt-4o', 'deepseek-v3', 'gemini-2-pro',
+        'gpt-5.3-codex-spark', 'gpt-5', 'gpt-4o',
+        'deepseek-v3', 'gemini-2-pro',
     }
 
 
@@ -53,6 +54,19 @@ def test_get_model_by_id(tmp_path):
     assert m.enabled is True
 
 
+def test_codex_relay_model_seeded_as_openai(tmp_path):
+    from storage.sqlite_models import SQLiteModelStore
+    store = SQLiteModelStore(tmp_path=tmp_path)
+    store.init_schema()
+    store.seed()
+
+    m = store.get('gpt-5.3-codex-spark')
+    assert m is not None
+    assert m.provider == 'openai'
+    assert m.api_model_id == 'gpt-5.3-codex-spark'
+    assert m.supports_tool_use is True
+
+
 def test_get_missing_returns_none(tmp_path):
     from storage.sqlite_models import SQLiteModelStore
     store = SQLiteModelStore(tmp_path=tmp_path)
@@ -67,4 +81,4 @@ def test_seed_idempotent(tmp_path):
     store.init_schema()
     store.seed()
     store.seed()
-    assert len(store.list_enabled()) == 7
+    assert len(store.list_enabled()) == 8

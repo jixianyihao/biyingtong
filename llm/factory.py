@@ -52,14 +52,23 @@ def build_llm(model_id: str):
         )
 
     if provider == 'openai':
-        key = os.environ.get('OPENAI_API_KEY')
+        key = (os.environ.get('OPENAI_API_KEY')
+               or os.environ.get('ANTHROPIC_AUTH_TOKEN'))
+        base_url = (os.environ.get('OPENAI_BASE_URL')
+                    or os.environ.get('ANTHROPIC_BASE_URL'))
         if not key:
-            raise LLMNotConfiguredError('OPENAI_API_KEY required for openai')
+            raise LLMNotConfiguredError(
+                'OPENAI_API_KEY or ANTHROPIC_AUTH_TOKEN required for openai')
         from .openai_adapter import OpenAILLM
         return OpenAILLM(
             model_id=info.api_model_id, api_key=key,
+            base_url=base_url,
             provider='openai',
             training_cutoff=info.training_cutoff,
+            force_stream=(
+                os.environ.get('OPENAI_FORCE_STREAM') == '1'
+                or bool(base_url and 'robotou.xyz' in base_url)
+            ),
         )
 
     raise ValueError(f'no adapter for provider {provider!r}')

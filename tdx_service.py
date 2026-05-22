@@ -1,10 +1,20 @@
 import sys
 import json
 import threading
+import os
 from pathlib import Path
 
 # Add TDX SDK to Python path
-TDX_SDK_PATH = r'C:\new_tdx_mock\PYPlugins\sys'
+_TDX_CANDIDATES = [
+    os.environ.get('BIYINGTONG_TDX_PATH'),
+    r'C:\new_tdx_mock',
+    r'C:\new_tdx64',
+]
+TDX_ROOT_PATH = next(
+    (str(Path(p)) for p in _TDX_CANDIDATES if p and Path(p).exists()),
+    r'C:\new_tdx_mock',
+)
+TDX_SDK_PATH = str(Path(TDX_ROOT_PATH) / 'PYPlugins' / 'sys')
 if TDX_SDK_PATH not in sys.path:
     sys.path.insert(0, TDX_SDK_PATH)
 
@@ -38,8 +48,7 @@ class TDXService:
         if self._initialized:
             return True
         try:
-            init_path = str(Path(TDX_SDK_PATH).parent.parent)
-            tq.initialize(init_path)
+            tq.initialize(TDX_ROOT_PATH)
             self._initialized = True
             return True
         except Exception as e:
@@ -212,7 +221,7 @@ class TDXService:
     # ---- Realtime push subscription ----
     def subscribe_hq(self, codes: list, callback):
         """Wrap tq.subscribe_hq. Returns handle or None if disconnected."""
-        if not self._connected:
+        if not self.is_connected():
             return None
         try:
             return tq.subscribe_hq(stock_list=codes, callback=callback)

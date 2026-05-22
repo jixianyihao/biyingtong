@@ -214,6 +214,30 @@ class SQLiteBacktestResultStore(BacktestResultStore):
         finally:
             con.close()
 
+    def purge_all(self) -> int:
+        """Delete all backtest history, baselines, sessions, and LLM cache.
+
+        Returns total rows deleted. Table names are fixed constants here; no
+        caller input is interpolated into SQL.
+        """
+        con = sqlite3.connect(self._db_path)
+        try:
+            total = 0
+            for table in ('backtest_results', 'baseline_results',
+                          'backtest_sessions', 'llm_decision_cache'):
+                try:
+                    cur = con.execute(f'DELETE FROM {table}')
+                except sqlite3.OperationalError:
+                    # Legacy/partially initialized databases may not have all
+                    # history tables yet. Purge is best-effort across existing
+                    # backtest-related tables.
+                    continue
+                total += max(cur.rowcount, 0)
+            con.commit()
+            return total
+        finally:
+            con.close()
+
     def list_sessions(self, limit: int = 50) -> list:
         import json as _json
         con = sqlite3.connect(self._db_path)

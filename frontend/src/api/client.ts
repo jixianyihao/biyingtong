@@ -160,6 +160,8 @@ export const api = {
       { method: 'POST' }),
   deleteBacktest: (resultId: string) =>
     request<void>(`/api/backtests/${resultId}`, { method: 'DELETE' }),
+  purgeBacktests: () =>
+    request<{ deleted: number }>('/api/backtests/purge', { method: 'POST' }),
   deployAgent: (id: string, body?: { schedule?: string }) =>
     request<DeployResponse>(`/api/agents/${id}/deploy`, {
       method: 'POST', body: JSON.stringify(body ?? {}),

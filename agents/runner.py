@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 
 from backtest.base import CachedDecision
 from llm.base import Message
@@ -10,8 +11,13 @@ from validation.engine import ValidationEngine
 
 from .prompt_builder import build_messages, prompt_hash
 
+log = logging.getLogger(__name__)
 
 _MAX_TOOL_ITERATIONS = 4  # snapshot pre-loads research; LLM should decide within a few turns
+
+# Safety limit: max chars of tool-result content per conversation.
+# Prevents context overflow from accumulated tool responses.
+_MAX_CONVO_CHARS = 200_000  # ~57k tokens at 3.5 chars/token
 
 
 def _portfolio_hash(portfolio: dict) -> str:
@@ -135,6 +141,18 @@ class AgentRunner:
         decisions_executed: list[dict] = []
         convo = list(messages)
 
+        def _convo_chars() -> int:
+            """Estimate total conversation character count."""
+            total = 0
+            for m in convo:
+                if isinstance(m.content, str):
+                    total += len(m.content)
+                elif isinstance(m.content, list):
+                    for block in m.content:
+                        if isinstance(block, dict):
+                            total += len(json.dumps(block, ensure_ascii=False, default=str))
+            return total
+
         for _ in range(self._max_iterations):
             resp = self._llm.chat(messages=convo, tools=tool_specs)
 
@@ -235,11 +253,14 @@ class AgentRunner:
                 _spec, tool_fn = entry
                 try:
                     result = tool_fn(call.input or {})
+                    result_str = json.dumps(result, ensure_ascii=False, default=str)
+                    # Truncate oversized tool results to prevent context bloat
+                    if len(result_str) > 8_000:
+                        result_str = result_str[:8_000] + '\n...[truncated]'
                     tool_result_blocks.append({
                         'type': 'tool_result',
                         'tool_use_id': call.id,
-                        'content': json.dumps(result, ensure_ascii=False,
-                                              default=str),
+                        'content': result_str,
                     })
                 except Exception as e:  # noqa: BLE001
                     tool_result_blocks.append({
@@ -254,6 +275,15 @@ class AgentRunner:
                 break
             if tool_result_blocks:
                 convo.append(Message(role='user', content=tool_result_blocks))
+            # Safety: if conversation is too large, stop the loop to avoid
+            # sending an oversized request on the next iteration.
+            if _convo_chars() > _MAX_CONVO_CHARS:
+                log.warning(
+                    'Conversation too large (%d chars) after tool calls — '
+                    'stopping loop to avoid token overflow',
+                    _convo_chars(),
+                )
+                break
 
         cache.put(CachedDecision(
             agent_id=agent_id, date=date,

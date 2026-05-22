@@ -199,6 +199,14 @@ def delete_backtest(result_id):
     return '', 204
 
 
+@api_bp.route('/backtests/purge', methods=['POST'])
+def purge_backtests():
+    """Delete ALL backtest results, baseline results, and sessions."""
+    import storage
+    deleted = storage.backtests().purge_all()
+    return jsonify({'deleted': deleted})
+
+
 @api_bp.route('/backtests/<result_id>/nav')
 def get_backtest_nav(result_id):
     """Daily equity curve for one backtest + same-session baselines.

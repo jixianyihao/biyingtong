@@ -16,6 +16,7 @@ import {
   useStartRuleBacktest,
   useStrategies,
 } from '../api/hooks';
+import { api } from '../api/client';
 import type {
   BacktestEvent,
   BacktestResult,
@@ -1579,20 +1580,23 @@ export function BacktestLab() {
         >
           + 新建回测
         </button>
-        {isHistoric && (
-          <button
+        <button
             className="btn"
             onClick={() => {
-              setSessionId(null);
-              setStartedAt(null);
-              setUiError(null);
+              if (window.confirm('清空所有回测历史？此操作不可撤销。')) {
+                api.purgeBacktests().then(() => {
+                  setSessionId(null);
+                  setStartedAt(null);
+                  setUiError(null);
+                  window.location.reload();
+                });
+              }
             }}
-            style={{ padding: '4px 12px', fontSize: 12 }}
-            title="清空当前历史 session 视图"
+            style={{ padding: '4px 12px', fontSize: 12, color: 'var(--down)', borderColor: 'var(--down-border)' }}
+            title="清空所有回测历史记录"
           >
             清空
           </button>
-        )}
       </div>
 
       <div

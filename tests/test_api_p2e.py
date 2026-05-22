@@ -196,6 +196,50 @@ def test_backtest_detail_not_found(client):
     assert resp.status_code == 404
 
 
+def test_purge_backtests_deletes_results_baselines_sessions_and_cache(client, agent, wired):
+    """The BacktestLab '清空' button must remove real history, not just clear
+    the selected session view."""
+    from backtest.base import BacktestStats, BacktestResult, CachedDecision
+    from backtest.baselines.base import BaselineResult
+
+    stats = BacktestStats(
+        sharpe=1.0, max_drawdown_pct=-5.0, trade_count=3,
+        win_rate=66.7, max_daily_loss_pct=-1.2,
+        total_return_pct=2.5, final_equity=1_025_000,
+    )
+    wired.backtests().create_session('s1', '2025-11-17', '2025-11-28',
+                                     [agent.id])
+    wired.backtests().insert(BacktestResult(
+        id='r1', session_id='s1', agent_id=agent.id,
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
+        start_date='2025-11-17', end_date='2025-11-28',
+        initial_capital=1_000_000, stats=stats, zone_stats=[],
+        quality_gate_label='pass', quality_gate_criteria={},
+        final_equity=1_025_000,
+    ))
+    wired.baselines().insert(BaselineResult(
+        id='b1', session_id='s1', name='buy_and_hold',
+        start_date='2025-11-17', end_date='2025-11-28',
+        initial_capital=1_000_000, stats=stats, final_equity=1_025_000,
+    ))
+    cache_key = CachedDecision.build_key(agent.id, '2025-11-17', 'p', 'h')
+    wired.llm_cache().put(CachedDecision(
+        agent_id=agent.id, date='2025-11-17',
+        portfolio_hash='p', prompt_hash='h',
+        decisions=[{'action': 'hold'}],
+    ))
+    assert wired.llm_cache().get(cache_key) is not None
+
+    resp = client.post('/api/backtests/purge')
+
+    assert resp.status_code == 200
+    assert resp.get_json()['deleted'] >= 4
+    assert wired.backtests().list_all() == []
+    assert wired.backtests().list_sessions() == []
+    assert wired.baselines().list_for_session('s1') == []
+    assert wired.llm_cache().get(cache_key) is None
+
+
 def test_session_composite_view(client, agent, wired):
     """Session endpoint joins agents + baselines in one response."""
     from backtest.base import BacktestStats, BacktestResult

@@ -27,6 +27,31 @@ def _fake(content='ok', tool_calls=None, finish='stop', in_tok=10, out_tok=5, ca
     )
 
 
+def _chunk(content='', finish=None, tool_calls=None):
+    from types import SimpleNamespace
+    tc_list = []
+    if tool_calls:
+        for t in tool_calls:
+            tc_list.append(SimpleNamespace(
+                index=t.get('index', 0),
+                id=t.get('id'),
+                function=SimpleNamespace(
+                    name=t.get('name'),
+                    arguments=t.get('arguments', ''),
+                ),
+            ))
+    return SimpleNamespace(
+        choices=[SimpleNamespace(
+            delta=SimpleNamespace(
+                content=content or None,
+                tool_calls=tc_list or None,
+            ),
+            finish_reason=finish,
+        )],
+        usage=None,
+    )
+
+
 def test_openai_simple_chat(monkeypatch):
     from llm import openai_adapter as oa
     from llm.base import Message
@@ -111,3 +136,56 @@ def test_openai_maps_cached_tokens(monkeypatch):
     llm = oa.OpenAILLM(model_id='gpt-4o', api_key='sk-test')
     resp = llm.chat([Message(role='user', content='hi')])
     assert resp.usage.cached_read_tokens == 50
+
+
+def test_openai_force_stream_aggregates_text(monkeypatch):
+    from llm import openai_adapter as oa
+    from llm.base import Message
+
+    fake = MagicMock()
+    fake.chat.completions.create.return_value = iter([
+        _chunk('o'),
+        _chunk('k', finish='stop'),
+    ])
+    monkeypatch.setattr(oa, '_get_client', lambda **kw: fake)
+
+    llm = oa.OpenAILLM(
+        model_id='gpt-5.3-codex-spark', api_key='cr-test',
+        base_url='https://robotou.xyz:6443/api/v1',
+        force_stream=True,
+    )
+    resp = llm.chat([Message(role='user', content='hi')])
+
+    sent = fake.chat.completions.create.call_args.kwargs
+    assert sent['stream'] is True
+    assert resp.messages[0].content == 'ok'
+    assert resp.stop_reason == 'end_turn'
+
+
+def test_openai_force_stream_aggregates_tool_calls(monkeypatch):
+    from llm import openai_adapter as oa
+    from llm.base import Message
+
+    fake = MagicMock()
+    fake.chat.completions.create.return_value = iter([
+        _chunk(tool_calls=[{
+            'index': 0, 'id': 'call_1', 'name': 'get_kline',
+            'arguments': '{"code":',
+        }]),
+        _chunk(tool_calls=[{
+            'index': 0, 'arguments': '"300059.SZ"}',
+        }], finish='tool_calls'),
+    ])
+    monkeypatch.setattr(oa, '_get_client', lambda **kw: fake)
+
+    llm = oa.OpenAILLM(
+        model_id='gpt-5.3-codex-spark', api_key='cr-test',
+        base_url='https://robotou.xyz:6443/api/v1',
+        force_stream=True,
+    )
+    resp = llm.chat([Message(role='user', content='hi')])
+
+    assert resp.stop_reason == 'tool_use'
+    assert resp.tool_calls[0].id == 'call_1'
+    assert resp.tool_calls[0].name == 'get_kline'
+    assert resp.tool_calls[0].input == {'code': '300059.SZ'}

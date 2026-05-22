@@ -314,6 +314,10 @@ class BacktestResultStore(Protocol):
         or sessions — those are independent rows."""
         ...
 
+    def purge_all(self) -> int:
+        """Delete all backtest history rows and return total deleted rows."""
+        ...
+
 
 @runtime_checkable
 class LLMDecisionCacheStore(Protocol):

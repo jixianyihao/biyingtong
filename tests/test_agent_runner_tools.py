@@ -151,3 +151,55 @@ def test_tool_exception_becomes_error_tool_result(wired, monkeypatch):
     assert block['type'] == 'tool_result'
     assert block.get('is_error') is True
     assert 'tqcenter offline' in block['content']
+
+
+def test_large_tool_result_is_truncated_before_next_llm_call(wired, monkeypatch):
+    """Oversized tool output must be capped before the next LLM turn.
+
+    Regression for real Hunyuan/OpenRouter failures where repeated
+    get_stock_list/get_capital_flow tool results grew the conversation past the
+    model's 262k token context limit.
+    """
+    from agents.runner import AgentRunner
+    from llm.mock import MockLLM
+
+    agent = wired.agents().create_from_persona(
+        persona_id='quant_neutral', model_id='claude-opus-4-7',
+        display_name='Tool-Truncate-Test',
+    )
+
+    from tools import get_kline as gk_mod
+
+    def huge_result(_inp):
+        return {'code': '300059.SZ', 'bars': [{'date': '2026-03-01',
+                                                'payload': 'x' * 20_000}]}
+
+    monkeypatch.setattr(gk_mod, 'call', huge_result)
+
+    llm = MockLLM([
+        {'tool_calls': [{'id': 'tk1', 'name': 'get_kline',
+                         'input': {'code': '300059.SZ', 'period': '1d',
+                                   'count': 30}}],
+         'stop_reason': 'tool_use'},
+        {'tool_calls': [{'id': 'pd1', 'name': 'place_decision',
+                         'input': {'action': 'hold',
+                                   'reason': 'large tool result was reviewed safely',
+                                   'thinking': 'tool output was capped'}}],
+         'stop_reason': 'tool_use'},
+    ])
+
+    runner = AgentRunner(llm=llm)
+    decisions = runner.run_day(
+        agent_id=agent.id, date='2026-03-01',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, mark_prices={'300059.SZ': 20.0},
+    )
+
+    assert len(decisions) == 1
+    assert decisions[0]['action'] == 'hold'
+    assert len(llm.calls) == 2
+    block = llm.calls[1]['messages'][-1].content[0]
+    assert block['type'] == 'tool_result'
+    assert block['tool_use_id'] == 'tk1'
+    assert len(block['content']) < 8_100
+    assert block['content'].endswith('...[truncated]')

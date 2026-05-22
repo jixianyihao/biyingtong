@@ -18,6 +18,7 @@ _SEED = [
     ('claude-opus-4-7',   'anthropic', 'Claude Opus 4.7 (1M)', 'claude-opus-4-7',           '2026-01-31', 1, 4096, 1),
     ('claude-sonnet-4-6', 'anthropic', 'Claude Sonnet 4.6',     'claude-sonnet-4-6',         '2026-01-31', 1, 4096, 1),
     ('claude-haiku-4-5',  'anthropic', 'Claude Haiku 4.5',      'claude-haiku-4-5-20251001', '2025-07-31', 1, 4096, 1),
+    ('gpt-5.3-codex-spark', 'openai',  'GPT-5.3 Codex Spark (relay)', 'gpt-5.3-codex-spark', '2026-05-01', 1, 4096, 1),
     ('gpt-5',             'openai',    'GPT-5',                 'gpt-5',                     '2025-10-31', 1, 4096, 1),
     ('gpt-4o',            'openai',    'GPT-4o',                'gpt-4o',                    '2023-10-31', 1, 4096, 1),
     ('deepseek-v3',       'deepseek',  'DeepSeek V3',           'deepseek-chat',             '2025-07-31', 1, 4096, 1),

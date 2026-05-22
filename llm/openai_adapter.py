@@ -40,6 +40,7 @@ class OpenAILLM(LLMBase):
         provider: str = 'openai',
         training_cutoff: str = '2025-10-31',
         extra_body: dict | None = None,
+        force_stream: bool = False,
     ):
         self.model_id = model_id
         self.provider = provider
@@ -47,6 +48,67 @@ class OpenAILLM(LLMBase):
         self._api_key = api_key
         self._base_url = base_url
         self._extra_body = extra_body
+        self._force_stream = force_stream
+
+    def _response_from_stream(self, stream) -> LLMResponse:
+        content_parts: list[str] = []
+        tool_parts: dict[int, dict[str, str]] = {}
+        finish_reason = 'stop'
+        usage_raw = None
+
+        for chunk in stream:
+            usage_raw = getattr(chunk, 'usage', None) or usage_raw
+            for choice in (getattr(chunk, 'choices', None) or []):
+                finish_reason = getattr(choice, 'finish_reason', None) or finish_reason
+                delta = getattr(choice, 'delta', None)
+                if delta is None:
+                    continue
+                piece = getattr(delta, 'content', None)
+                if piece:
+                    content_parts.append(piece)
+                for tc in (getattr(delta, 'tool_calls', None) or []):
+                    idx = getattr(tc, 'index', None)
+                    if idx is None:
+                        idx = len(tool_parts)
+                    state = tool_parts.setdefault(
+                        idx, {'id': '', 'name': '', 'arguments': ''})
+                    tc_id = getattr(tc, 'id', None)
+                    if tc_id:
+                        state['id'] = tc_id
+                    fn = getattr(tc, 'function', None)
+                    if fn is not None:
+                        name = getattr(fn, 'name', None)
+                        if name:
+                            state['name'] += name
+                        args = getattr(fn, 'arguments', None)
+                        if args:
+                            state['arguments'] += args
+
+        reply = []
+        text = ''.join(content_parts)
+        if text:
+            reply.append(Message(role='assistant', content=text))
+
+        tool_calls: list[ToolCall] = []
+        for state in [tool_parts[i] for i in sorted(tool_parts)]:
+            try:
+                args = json.loads(state['arguments'] or '{}')
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append(ToolCall(
+                id=state['id'], name=state['name'], input=args))
+
+        usage = Usage(
+            input_tokens=getattr(usage_raw, 'prompt_tokens', 0) if usage_raw else 0,
+            output_tokens=getattr(usage_raw, 'completion_tokens', 0) if usage_raw else 0,
+            cached_read_tokens=0,
+        )
+        return LLMResponse(
+            messages=reply,
+            tool_calls=tool_calls,
+            stop_reason=_STOP_MAP.get(finish_reason, 'other'),
+            usage=usage,
+        )
 
     def chat(
         self,
@@ -136,12 +198,17 @@ class OpenAILLM(LLMBase):
 
         if self._extra_body:
             kwargs['extra_body'] = self._extra_body
+        if self._force_stream:
+            kwargs['stream'] = True
 
         try:
             raw = client.chat.completions.create(**kwargs)
         except Exception as e:  # noqa: BLE001
             kind, retry = _classify(e)
             raise LLMError(self.provider, kind, str(e), retryable=retry) from e
+
+        if self._force_stream:
+            return self._response_from_stream(raw)
 
         choice = raw.choices[0]
         msg = choice.message
