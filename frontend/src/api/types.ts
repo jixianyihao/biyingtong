@@ -486,6 +486,15 @@ export type T0GridRow = {
   win_rate: number;
   days: number;
   bar_count: number;
+  train_days: number;
+  test_days: number;
+  train_total_pnl: number;
+  test_total_pnl: number;
+  train_round_trips: number;
+  test_round_trips: number;
+  test_win_rate: number;
+  test_max_drawdown: number;
+  robust: boolean;
   params: Record<string, unknown>;
 };
 

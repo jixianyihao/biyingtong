@@ -77,7 +77,7 @@ def main() -> int:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
 
-    print('rank score      pnl       dd   trips  win%   pf    mode params')
+    print('rank score      pnl   testPnL       dd   trips  win%   pf    mode params')
     for i, row in enumerate(rows, start=1):
         p = row['params']
         param_text = (
@@ -88,7 +88,8 @@ def main() -> int:
         )
         print(
             f"{i:>4} {row['rank_score']:>8.1f} "
-            f"{row['total_pnl']:>8.1f} {row['max_drawdown']:>8.1f} "
+            f"{row['total_pnl']:>8.1f} {row['test_total_pnl']:>8.1f} "
+            f"{row['max_drawdown']:>8.1f} "
             f"{row['round_trips']:>5} {row['win_rate']:>5.1f} "
             f"{row['profit_factor']:>5.2f} {row['mode']:<16} {param_text}"
         )

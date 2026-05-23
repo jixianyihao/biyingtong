@@ -56,7 +56,8 @@ function ResultTable({ rows }: { rows: T0GridRow[] }) {
             }}
           >
             <th style={{ padding: '7px 10px', textAlign: 'left' }}>排名</th>
-            <th style={{ padding: '7px 10px' }}>PnL</th>
+            <th style={{ padding: '7px 10px' }}>总PnL</th>
+            <th style={{ padding: '7px 10px' }}>样本外</th>
             <th style={{ padding: '7px 10px' }}>回撤</th>
             <th style={{ padding: '7px 10px' }}>胜率</th>
             <th style={{ padding: '7px 10px' }}>次数</th>
@@ -67,6 +68,7 @@ function ResultTable({ rows }: { rows: T0GridRow[] }) {
         <tbody>
           {rows.map((r, idx) => {
             const good = r.total_pnl >= 0;
+            const oosGood = r.test_total_pnl >= 0 && r.test_round_trips > 0;
             return (
               <tr
                 key={`${r.rank_score}-${idx}`}
@@ -77,6 +79,12 @@ function ResultTable({ rows }: { rows: T0GridRow[] }) {
                 </td>
                 <td style={{ padding: '7px 10px', color: good ? 'var(--up)' : 'var(--down)' }}>
                   {fmtMoney(r.total_pnl)}
+                </td>
+                <td style={{ padding: '7px 10px', color: oosGood ? 'var(--up)' : 'var(--down)' }}>
+                  {fmtMoney(r.test_total_pnl)}
+                  <span style={{ color: 'var(--text-ghost)', marginLeft: 4 }}>
+                    / {r.test_round_trips}
+                  </span>
                 </td>
                 <td style={{ padding: '7px 10px', color: 'var(--down)' }}>
                   {fmtMoney(r.max_drawdown)}
@@ -99,6 +107,11 @@ function ResultTable({ rows }: { rows: T0GridRow[] }) {
                     lineHeight: 1.45,
                   }}
                 >
+                  {r.robust && (
+                    <span className="pill brand" style={{ fontSize: 9, marginRight: 6 }}>
+                      OOS+
+                    </span>
+                  )}
                   {paramText(r)}
                 </td>
               </tr>
@@ -280,7 +293,8 @@ export function T0Lab() {
                 {fmtMoney(best.total_pnl)}
               </div>
               <div className="mono text-[11px] text-text-faint">
-                {best.round_trips} 次 · 胜率 {fmtPct(best.win_rate)} · PF {fmtNum(best.profit_factor, 2)}
+                全样本 {best.round_trips} 次 · 样本外 {best.test_round_trips} 次 ·
+                OOS {fmtMoney(best.test_total_pnl)}
               </div>
             </div>
           )}

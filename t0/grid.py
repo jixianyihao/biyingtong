@@ -6,6 +6,27 @@ from typing import Any, Iterable
 from .backtest import run_t0_backtest
 
 
+def _bar_day(bar: dict[str, Any]) -> str | None:
+    raw = str(bar.get('date') or '').strip()
+    return raw[:10] if len(raw) >= 10 else None
+
+
+def _split_bars_by_date(
+    bars: list[dict[str, Any]],
+    *,
+    train_fraction: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    days = sorted({d for bar in bars if (d := _bar_day(bar))})
+    if len(days) < 2:
+        return list(bars), []
+    split_idx = int(len(days) * train_fraction)
+    split_idx = max(1, min(len(days) - 1, split_idx))
+    train_days = set(days[:split_idx])
+    train = [bar for bar in bars if _bar_day(bar) in train_days]
+    test = [bar for bar in bars if _bar_day(bar) not in train_days]
+    return train, test
+
+
 def default_param_grid() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     modes = {
@@ -84,24 +105,42 @@ def run_grid_search(
     fee_bps: float = 2.5,
     sell_tax_bps: float = 5.0,
     slippage_bps: float = 2.0,
+    train_fraction: float = 0.67,
 ) -> list[dict[str, Any]]:
     candidates = param_grid if param_grid is not None else default_param_grid()
+    train_bars, test_bars = _split_bars_by_date(
+        bars,
+        train_fraction=train_fraction,
+    )
     ranked: list[dict[str, Any]] = []
     for params in candidates:
         mode = params.get('mode', 'custom')
         kwargs = {k: v for k, v in params.items() if k != 'mode'}
-        result = run_t0_backtest(
-            code,
-            bars,
-            base_shares=base_shares,
-            t_shares=t_shares,
-            fee_bps=fee_bps,
-            sell_tax_bps=sell_tax_bps,
-            slippage_bps=slippage_bps,
+        common = {
+            'base_shares': base_shares,
+            't_shares': t_shares,
+            'fee_bps': fee_bps,
+            'sell_tax_bps': sell_tax_bps,
+            'slippage_bps': slippage_bps,
             **kwargs,
+        }
+        result = run_t0_backtest(code, bars, **common)
+        train_result = run_t0_backtest(code, train_bars, **common)
+        test_result = run_t0_backtest(code, test_bars, **common) if test_bars else {
+            'days': 0, 'round_trips': 0, 'win_rate': 0.0,
+            'total_pnl': 0.0, 'max_drawdown': 0.0,
+        }
+        robust = (
+            train_result['round_trips'] > 0 and test_result['round_trips'] > 0
+            and train_result['total_pnl'] > 0 and test_result['total_pnl'] > 0
         )
+        robust_score = _rank_score(result)
+        if robust:
+            robust_score += float(test_result['total_pnl']) * 0.35
+        else:
+            robust_score -= 1_500.0
         row = {
-            'rank_score': round(_rank_score(result), 4),
+            'rank_score': round(robust_score, 4),
             'profit_factor': round(_profit_factor(result), 3),
             'mode': mode,
             'total_pnl': result['total_pnl'],
@@ -110,6 +149,15 @@ def run_grid_search(
             'win_rate': result['win_rate'],
             'days': result['days'],
             'bar_count': result['bar_count'],
+            'train_days': train_result['days'],
+            'test_days': test_result['days'],
+            'train_total_pnl': train_result['total_pnl'],
+            'test_total_pnl': test_result['total_pnl'],
+            'train_round_trips': train_result['round_trips'],
+            'test_round_trips': test_result['round_trips'],
+            'test_win_rate': test_result['win_rate'],
+            'test_max_drawdown': test_result['max_drawdown'],
+            'robust': robust,
             'params': {'mode': mode, **kwargs},
         }
         ranked.append(row)
