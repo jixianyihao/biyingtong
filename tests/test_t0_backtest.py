@@ -145,3 +145,64 @@ def test_latest_entry_time_prevents_late_new_leg():
 
     assert result['round_trips'] == 0
     assert result['trades'] == []
+
+
+def test_multiple_sell_first_round_trips_consume_same_day_sellable_base_shares():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0),
+        _bar('2026-01-26 09:35:00', 103.0, high=103.2, low=100.0),
+        _bar('2026-01-26 10:00:00', 101.0, high=103.2, low=100.8),
+        _bar('2026-01-26 10:30:00', 103.5, high=103.8, low=100.8),
+        _bar('2026-01-26 11:00:00', 101.5, high=103.8, low=100.8),
+        _bar('2026-01-26 13:30:00', 104.0, high=104.2, low=100.8),
+        _bar('2026-01-26 14:00:00', 102.0, high=104.2, low=100.8),
+    ]
+
+    result = run_t0_backtest(
+        '688981.SH',
+        bars,
+        base_shares=1000,
+        t_shares=500,
+        max_round_trips_per_day=3,
+        min_amplitude_pct=1.0,
+        take_profit_pct=1.0,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    # Two 500-share sell-first loops exhaust the 1000 old shares. The third
+    # intraday high must be skipped because same-day buybacks are not sellable.
+    assert result['round_trips'] == 2
+    assert [t['action'] for t in result['trades']] == [
+        'sell_t', 'buy_back', 'sell_t', 'buy_back',
+    ]
+
+
+def test_buy_first_round_trip_also_consumes_sellable_old_shares_on_sell_back():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0),
+        _bar('2026-01-26 09:35:00', 98.0, high=100.0, low=97.8),
+        _bar('2026-01-26 10:00:00', 100.0, high=100.0, low=97.8),
+        _bar('2026-01-26 13:30:00', 103.0, high=103.2, low=97.8),
+        _bar('2026-01-26 14:00:00', 101.0, high=103.2, low=97.8),
+    ]
+
+    result = run_t0_backtest(
+        '688981.SH',
+        bars,
+        base_shares=500,
+        t_shares=500,
+        max_round_trips_per_day=3,
+        min_amplitude_pct=1.0,
+        take_profit_pct=1.0,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    # The buy-first close sells the only 500 old shares. Later sell-first
+    # opportunities must be skipped even though max_round_trips_per_day allows
+    # more, because the later bought shares are T+1 locked.
+    assert result['round_trips'] == 1
+    assert [t['action'] for t in result['trades']] == ['buy_t', 'sell_back']

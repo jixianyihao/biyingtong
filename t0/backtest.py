@@ -145,6 +145,7 @@ def run_t0_backtest(
         open_leg: _Leg | None = None
         day_pnl = 0.0
         round_trips_today = 0
+        sellable_shares = base_shares
 
         for idx, row in enumerate(day_rows):
             price = row['close']
@@ -161,16 +162,22 @@ def run_t0_backtest(
                     continue
                 if amplitude_pct < min_amplitude_pct:
                     continue
-                if allow_sell_first and pos >= high_band and price >= base_price:
+                if (
+                    allow_sell_first
+                    and sellable_shares >= shares
+                    and pos >= high_band
+                    and price >= base_price
+                ):
                     sell_price = _exec_price(price, is_buy=False,
                                              slippage_bps=slippage_bps)
+                    sellable_shares -= shares
                     open_leg = _Leg('sell_first', sell_price, shares, row['ts'])
                     trades.append({
                         'ts': row['ts'], 'action': 'sell_t',
                         'shares': shares, 'price': round(sell_price, 4),
                         'reason': 'near_intraday_high',
                     })
-                elif allow_buy_first and pos <= low_band:
+                elif allow_buy_first and sellable_shares >= shares and pos <= low_band:
                     buy_price = _exec_price(price, is_buy=True,
                                             slippage_bps=slippage_bps)
                     open_leg = _Leg('buy_first', buy_price, shares, row['ts'])
@@ -209,6 +216,8 @@ def run_t0_backtest(
                 open_leg, price, fee_bps=fee_bps,
                 sell_tax_bps=sell_tax_bps, slippage_bps=slippage_bps,
             )
+            if open_leg.side == 'buy_first':
+                sellable_shares -= open_leg.shares
             day_pnl += pnl
             total_pnl += pnl
             if pnl > 0:

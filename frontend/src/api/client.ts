@@ -27,6 +27,8 @@ import type {
   StrategyRating,
   T0GridRequest,
   T0GridResponse,
+  T0PortfolioRequest,
+  T0PortfolioResponse,
   ThinkingResponse,
   TradeProposal,
   TradesResponse,
@@ -202,6 +204,11 @@ export const api = {
     }),
   t0Grid: (body: T0GridRequest) =>
     request<T0GridResponse>('/api/t0/grid', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  t0Portfolio: (body: T0PortfolioRequest) =>
+    request<T0PortfolioResponse>('/api/t0/portfolio', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

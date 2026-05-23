@@ -510,3 +510,46 @@ export type T0GridResponse = {
   coverage: T0GridCoverage;
   rows: T0GridRow[];
 };
+
+export type T0PortfolioRequest = {
+  code: string;
+  initial_capital?: number;
+  base_position_pct?: number;
+  t_shares_pct?: number;
+  max_round_trips_per_day?: number;
+  min_amplitude_pct?: number;
+  high_band?: number;
+  low_band?: number;
+  take_profit_pct?: number;
+  stop_loss_pct?: number;
+  latest_entry_time?: string;
+};
+
+export type T0PortfolioResponse = {
+  code: string;
+  first_date: string;
+  last_date: string;
+  bar_count: number;
+  days: number;
+  initial_capital: number;
+  final_equity: number;
+  total_return_pct: number;
+  base_hold_equity: number;
+  base_hold_return_pct: number;
+  all_in_hold_equity: number;
+  all_in_hold_return_pct: number;
+  alpha_vs_base_hold: number;
+  alpha_vs_all_in_hold: number;
+  t_pnl: number;
+  base_shares: number;
+  t_shares: number;
+  initial_cash: number;
+  final_cash: number;
+  final_shares: number;
+  round_trips: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  max_drawdown_pct: number;
+  params: Record<string, unknown>;
+};

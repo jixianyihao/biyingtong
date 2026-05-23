@@ -6,6 +6,7 @@ from flask import jsonify, request
 
 from t0.scorer import score_minute_bars, score_snapshot
 from t0.grid import run_grid_search
+from t0.portfolio import run_t0_portfolio_backtest
 from tdx_service import tdx
 
 from . import api_bp
@@ -57,6 +58,20 @@ def _as_of_date() -> date:
     if raw:
         return datetime.strptime(raw, '%Y-%m-%d').date()
     return date.today()
+
+
+def _body_float(body: dict, name: str, default: float) -> float:
+    try:
+        return float(body.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _body_int(body: dict, name: str, default: int) -> int:
+    try:
+        return int(body.get(name, default))
+    except (TypeError, ValueError):
+        return default
 
 
 @api_bp.route('/t0/signal')
@@ -134,3 +149,35 @@ def t0_grid():
         },
         'rows': rows,
     })
+
+
+@api_bp.route('/t0/portfolio', methods=['POST'])
+def t0_portfolio():
+    body = request.get_json(silent=True) or {}
+    code = str(body.get('code') or '688981.SH').strip().upper()
+    count = _body_int(body, 'count', -1)
+    bars = tdx.get_kline(code, period='1m', count=count, dividend_type='front')
+    bars = bars if isinstance(bars, list) else []
+    if not bars:
+        return jsonify({'error': f'no 1m bars for {code}'}), 404
+    result = run_t0_portfolio_backtest(
+        code,
+        bars,
+        initial_capital=_body_float(body, 'initial_capital', 1_000_000.0),
+        base_position_pct=_body_float(body, 'base_position_pct', 0.70),
+        t_shares_pct=_body_float(body, 't_shares_pct', 0.25),
+        min_amplitude_pct=_body_float(body, 'min_amplitude_pct', 1.0),
+        high_band=_body_float(body, 'high_band', 0.82),
+        low_band=_body_float(body, 'low_band', 0.25),
+        take_profit_pct=_body_float(body, 'take_profit_pct', 0.8),
+        stop_loss_pct=_body_float(body, 'stop_loss_pct', 1.2),
+        fee_bps=_body_float(body, 'fee_bps', 2.5),
+        sell_tax_bps=_body_float(body, 'sell_tax_bps', 5.0),
+        slippage_bps=_body_float(body, 'slippage_bps', 2.0),
+        allow_sell_first=bool(body.get('allow_sell_first', True)),
+        allow_buy_first=bool(body.get('allow_buy_first', True)),
+        max_round_trips_per_day=_body_int(body, 'max_round_trips_per_day', 1),
+        earliest_entry_time=str(body.get('earliest_entry_time') or '09:35'),
+        latest_entry_time=str(body.get('latest_entry_time') or '14:00'),
+    )
+    return jsonify(result)

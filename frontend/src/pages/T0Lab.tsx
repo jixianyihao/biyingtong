@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
-import { useT0Grid } from '../api/hooks';
+import { useT0Grid, useT0Portfolio } from '../api/hooks';
 import type { T0GridRow } from '../api/types';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -128,6 +128,7 @@ export function T0Lab() {
   const [minLastDate, setMinLastDate] = useState(todayIso());
   const [top, setTop] = useState(20);
   const grid = useT0Grid();
+  const portfolio = useT0Portfolio();
   const data = grid.data;
 
   const best = data?.rows?.[0];
@@ -146,6 +147,22 @@ export function T0Lab() {
       top,
       count: -1,
       min_last_date: minLastDate || undefined,
+    });
+  }
+
+  function runPortfolio() {
+    portfolio.mutate({
+      code: code.trim().toUpperCase(),
+      initial_capital: 1_000_000,
+      base_position_pct: 0.70,
+      t_shares_pct: 0.25,
+      max_round_trips_per_day: 1,
+      min_amplitude_pct: 1.0,
+      high_band: 0.82,
+      low_band: 0.25,
+      take_profit_pct: 0.8,
+      stop_loss_pct: 1.2,
+      latest_entry_time: '14:00',
     });
   }
 
@@ -298,6 +315,51 @@ export function T0Lab() {
               </div>
             </div>
           )}
+
+          <div
+            className="grid gap-2"
+            style={{ padding: 12, borderTop: '1px solid var(--panel-border-soft)' }}
+          >
+            <div className="text-[11px] text-text-faint">100万组合回测</div>
+            <button
+              className="btn"
+              onClick={runPortfolio}
+              disabled={portfolio.isPending}
+              style={{ justifyContent: 'center', height: 32 }}
+            >
+              {portfolio.isPending ? '计算中…' : '跑推荐做T组合'}
+            </button>
+            {portfolio.data && (
+              <div className="grid gap-1 mono text-[11px]" style={{ color: 'var(--text-dim)' }}>
+                <div>
+                  期末权益{' '}
+                  <span style={{ color: 'var(--text-hi)' }}>
+                    {fmtMoney(portfolio.data.final_equity)}
+                  </span>
+                  {' '}({fmtPct(portfolio.data.total_return_pct)})
+                </div>
+                <div>
+                  做T增量{' '}
+                  <span style={{ color: portfolio.data.alpha_vs_base_hold >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                    {fmtMoney(portfolio.data.alpha_vs_base_hold)}
+                  </span>
+                </div>
+                <div>
+                  底仓 {portfolio.data.base_shares} · T额 {portfolio.data.t_shares} ·
+                  {portfolio.data.round_trips} 次 · 胜率 {fmtPct(portfolio.data.win_rate)}
+                </div>
+                <div>
+                  基准持有 {fmtMoney(portfolio.data.base_hold_equity)} ·
+                  全仓持有 {fmtMoney(portfolio.data.all_in_hold_equity)}
+                </div>
+              </div>
+            )}
+            {portfolio.isError && (
+              <div style={{ color: 'var(--down)', fontSize: 11 }}>
+                组合回测失败：{portfolio.error instanceof Error ? portfolio.error.message : String(portfolio.error)}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="panel flex flex-col min-h-0">

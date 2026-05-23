@@ -49,7 +49,7 @@ def default_param_grid() -> list[dict[str, Any]]:
         [0.18, 0.25],
         [0.8, 1.2],
         [1.2, 2.0],
-        [1],
+        [1, 2, 3],
         ['14:00', '14:30'],
     ):
         allow_sell, allow_buy = modes[mode]
