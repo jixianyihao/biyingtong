@@ -29,3 +29,4 @@ from . import execution      # noqa: F401,E402  P3-F Phase 2
 from . import positions      # noqa: F401,E402  Phase 25 polish
 from . import data           # noqa: F401,E402  Phase 2.5 — kline coverage
 from . import screener       # noqa: F401,E402  multi-factor stock screening
+from . import t0             # noqa: F401,E402  focused intraday T signal

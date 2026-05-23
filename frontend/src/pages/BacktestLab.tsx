@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useBacktestNav,
   useBacktestRating,
@@ -1326,6 +1327,7 @@ function RuleBacktestForm({
 
 // ─── page ──────────────────────────────────────────────────────────────────
 export function BacktestLab() {
+  const queryClient = useQueryClient();
   const personas = usePersonas();
   const models = useModels();
   const strategies = useStrategies();
@@ -1412,6 +1414,7 @@ export function BacktestLab() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
   const [showFormModal, setShowFormModal] = useState<boolean>(false);
+  const [isPurging, setIsPurging] = useState(false);
   // Tracks which mode produced the current sessionId; controls whether we
   // wait for the SSE job stream (agent) or fetch the session composite
   // immediately (rule mode is synchronous).
@@ -1444,6 +1447,25 @@ export function BacktestLab() {
       sessionMode === 'agent' &&
       (jobStream.status?.state === 'queued' ||
         jobStream.status?.state === 'running'));
+
+  async function purgeHistory() {
+    if (isPurging) return;
+    if (!window.confirm('清空所有回测历史？此操作不可撤销。')) return;
+    setIsPurging(true);
+    setUiError(null);
+    try {
+      await api.purgeBacktests();
+      setSessionId(null);
+      setStartedAt(null);
+      await queryClient.invalidateQueries({ queryKey: ['backtests'] });
+      await queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      await queryClient.invalidateQueries({ queryKey: ['session'] });
+    } catch (e) {
+      setUiError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsPurging(false);
+    }
+  }
 
   async function onSubmit() {
     setUiError(null);
@@ -1582,20 +1604,12 @@ export function BacktestLab() {
         </button>
         <button
             className="btn"
-            onClick={() => {
-              if (window.confirm('清空所有回测历史？此操作不可撤销。')) {
-                api.purgeBacktests().then(() => {
-                  setSessionId(null);
-                  setStartedAt(null);
-                  setUiError(null);
-                  window.location.reload();
-                });
-              }
-            }}
+            onClick={purgeHistory}
+            disabled={isPurging}
             style={{ padding: '4px 12px', fontSize: 12, color: 'var(--down)', borderColor: 'var(--down-border)' }}
             title="清空所有回测历史记录"
           >
-            清空
+            {isPurging ? '清空中…' : '清空'}
           </button>
       </div>
 

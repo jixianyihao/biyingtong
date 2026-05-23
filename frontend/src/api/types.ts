@@ -465,3 +465,39 @@ export type ScreenerResponse = {
   /** Set when the local financial cache is missing — UI shows a hint. */
   note?: string;
 };
+
+// ─── T0 Lab (POST /api/t0/grid) ─────────────────────────────────────────────
+
+export type T0GridCoverage = {
+  first: string | null;
+  last: string | null;
+  bar_count: number;
+  is_stale: boolean;
+  stale_reason: string | null;
+};
+
+export type T0GridRow = {
+  rank_score: number;
+  profit_factor: number;
+  mode: string;
+  total_pnl: number;
+  max_drawdown: number;
+  round_trips: number;
+  win_rate: number;
+  days: number;
+  bar_count: number;
+  params: Record<string, unknown>;
+};
+
+export type T0GridRequest = {
+  code: string;
+  top?: number;
+  count?: number;
+  min_last_date?: string;
+};
+
+export type T0GridResponse = {
+  code: string;
+  coverage: T0GridCoverage;
+  rows: T0GridRow[];
+};

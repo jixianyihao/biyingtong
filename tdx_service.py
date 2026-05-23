@@ -131,8 +131,18 @@ class TDXService:
             bars = []
             for i, dt in enumerate(df_close.index):
                 try:
+                    if hasattr(dt, 'strftime'):
+                        has_time = (
+                            period in {'1m', '5m', '15m', '30m', '1h', '60m', 'tick'}
+                            or getattr(dt, 'hour', 0) != 0
+                            or getattr(dt, 'minute', 0) != 0
+                            or getattr(dt, 'second', 0) != 0
+                        )
+                        date_text = dt.strftime('%Y-%m-%d %H:%M:%S' if has_time else '%Y-%m-%d')
+                    else:
+                        date_text = str(dt)
                     bar = {
-                        'date': dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt),
+                        'date': date_text,
                         'open': round(float(df_open.iloc[i][stock_code]) if stock_code in df_open.columns else 0, 2),
                         'high': round(float(df_high.iloc[i][stock_code]) if stock_code in df_high.columns else 0, 2),
                         'low': round(float(df_low.iloc[i][stock_code]) if stock_code in df_low.columns else 0, 2),

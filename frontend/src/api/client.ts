@@ -25,6 +25,8 @@ import type {
   StartRuleBacktestResponse,
   StrategyDescriptor,
   StrategyRating,
+  T0GridRequest,
+  T0GridResponse,
   ThinkingResponse,
   TradeProposal,
   TradesResponse,
@@ -197,6 +199,11 @@ export const api = {
     request<ScreenerResponse>('/api/screener', {
       method: 'POST',
       body: JSON.stringify({ filters }),
+    }),
+  t0Grid: (body: T0GridRequest) =>
+    request<T0GridResponse>('/api/t0/grid', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 };
 

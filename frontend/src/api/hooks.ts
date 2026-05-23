@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
   BacktestEvent, JobStatus, ScreenerFilter,
+  T0GridRequest,
   UpdateAgentBody, UpdatePersonaBody,
 } from './types';
 
@@ -480,5 +481,13 @@ export function usePositions() {
 export function useScreener() {
   return useMutation({
     mutationFn: (filters: ScreenerFilter[]) => api.runScreener(filters),
+  });
+}
+
+// ─── T0 Lab ────────────────────────────────────────────────────────────────
+
+export function useT0Grid() {
+  return useMutation({
+    mutationFn: (body: T0GridRequest) => api.t0Grid(body),
   });
 }

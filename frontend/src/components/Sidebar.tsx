@@ -21,15 +21,9 @@ type SepItem = {
 type Item = NavItem | SepItem;
 
 const ITEMS: Item[] = [
-  { id: 'dashboard', kind: 'nav', icon: 'dashboard', label: '我的盈亏', sub: 'My P&L', to: '/' },
-  { id: 'agent', kind: 'nav', icon: 'agent', label: '我的 AI 操盘手', sub: 'My Traders', to: '/agent', badge: '核心' },
-  { id: 'live', kind: 'nav', icon: 'live', label: '实盘交易', sub: 'Trade', to: '/live' },
-  { id: 'risk', kind: 'nav', icon: 'risk', label: '安全管控', sub: 'Safety', to: '/risk' },
-  { id: 'audit', kind: 'nav', icon: 'list', label: '审计日志', sub: 'Audit Log', to: '/audit' },
-  { id: '__sep', kind: 'sep', label: '研究工具', sub: 'RESEARCH' },
-  { id: 'screener', kind: 'nav', icon: 'filter', label: '选股器', sub: 'Screener', to: '/screener' },
-  { id: 'editor', kind: 'nav', icon: 'code', label: '策略研发', sub: 'Strategy', to: '/editor' },
-  { id: 'backtest', kind: 'nav', icon: 'backtest', label: '回测', sub: 'Backtest', to: '/backtest' },
+  { id: 't0', kind: 'nav', icon: 'backtest', label: '做T研究', sub: 'T0 Lab', to: '/t0', badge: '核心' },
+  { id: 'backtest', kind: 'nav', icon: 'list', label: '回测记录', sub: 'History', to: '/backtest' },
+  { id: 'live', kind: 'nav', icon: 'live', label: '实盘执行', sub: 'Trade', to: '/live' },
 ];
 
 export function Sidebar() {

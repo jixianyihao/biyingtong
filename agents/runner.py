@@ -97,6 +97,7 @@ class AgentRunner:
             default_pool=persona.default_pool if persona else [],
             market_snapshot=market_snapshot,
             model_cutoff=model_cutoff,
+            allowed_tools=persona.allowed_tools if persona else [],
         )
         p_hash = prompt_hash(messages)
         port_hash = _portfolio_hash(portfolio)

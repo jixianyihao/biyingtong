@@ -3,11 +3,12 @@ import { ExecutionModeBadge } from './ExecutionModeBadge';
 import { RedLineBar } from './RedLineBar';
 
 const TITLES: Record<string, [string, string]> = {
-  '/': ['我的盈亏工作台', 'My P&L Dashboard'],
+  '/': ['做T研究', 'A-share T0 Lab'],
   '/agent': ['我的 AI 操盘手', 'My AI Traders'],
   '/live': ['实盘交易', 'Live Trading'],
   '/risk': ['安全管控', 'Safety & Guardrails'],
   '/screener': ['选股器', 'Factor Screener'],
+  '/t0': ['做T研究', 'A-share T0 Lab'],
   '/editor': ['策略研发', 'Strategy Editor'],
   '/backtest': ['回测引擎', 'Backtest Engine'],
 };

@@ -83,6 +83,7 @@ def test_market_snapshot_renders_in_user_message():
                 },
                 'financials': {'pe': 25.0, 'roe': 30.0},
                 'technical': {'ma20': 1580.0, 'rsi14': 58.0},
+                'capital_flow': {'GP1': 123.4, 'GP2': 456.7},
             },
         },
     }
@@ -96,6 +97,34 @@ def test_market_snapshot_renders_in_user_message():
     assert '1600' in user or '1,600' in user
     assert 'pe' in user.lower()
     assert 'roe' in user.lower()
+    assert 'CapitalFlow' in user
+    assert 'GP1=123.4' in user
+
+
+def test_short_term_snapshot_still_allows_capital_flow_tools():
+    from agents.prompt_builder import build_messages
+    snap = {
+        'date': '2025-11-17',
+        'stocks': {
+            '300059.SZ': {
+                'kline_summary': {'latest_close': 20.0},
+                'financials': None,
+                'technical': None,
+                'capital_flow': None,
+            },
+        },
+    }
+    msgs = build_messages(
+        system_prompt='x', date='2025-11-17',
+        portfolio={'cash': 1_000_000, 'equity': 1_000_000, 'positions': {}},
+        market_context={}, default_pool=['300059.SZ'],
+        market_snapshot=snap,
+        allowed_tools=['get_stock_list', 'get_capital_flow', 'place_decision'],
+    )
+    user = msgs[1].content
+    assert 'SHORT-TERM RESEARCH OVERRIDE' in user
+    assert 'get_capital_flow' in user
+    assert 'use the available tools first' in user
 
 
 def test_no_snapshot_keeps_old_behavior():

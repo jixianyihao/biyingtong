@@ -88,6 +88,7 @@ def build_messages(
     market_snapshot: dict | None = None,
     model_cutoff: str | None = None,
     max_input_tokens: int = DEFAULT_MAX_INPUT_TOKENS,
+    allowed_tools: list[str] | None = None,
 ) -> list[Message]:
     """Return [system Message, user Message].
 
@@ -97,6 +98,7 @@ def build_messages(
     cash = portfolio.get('cash', 0)
     equity = portfolio.get('equity', 0)
     positions = portfolio.get('positions', {})
+    allowed_tool_set = set(allowed_tools or [])
 
     lines = [f'决策日期：{date}']
     lines.append(f'组合：现金 {cash:.0f}，总资产 {equity:.0f}')
@@ -137,6 +139,10 @@ def build_messages(
             if tech:
                 tech_str = ', '.join(f'{k}={v}' for k, v in tech.items())
                 lines.append(f'    技术: {tech_str}')
+            flow = data.get('capital_flow')
+            if flow:
+                flow_str = ', '.join(f'{k}={v}' for k, v in flow.items())
+                lines.append(f'    CapitalFlow: {flow_str}')
     lines.append('')
     if has_snapshot:
         lines.append(
@@ -146,6 +152,14 @@ def build_messages(
             '除非数据明显缺失某个关键维度，不要重复调用 get_kline/'
             'get_financials/get_technical——snapshot 已经是今天的最新数据。'
         )
+        if {'get_capital_flow', 'get_stock_list'} & allowed_tool_set:
+            lines.append(
+                'SHORT-TERM RESEARCH OVERRIDE: this preload is compact. '
+                'For sector-rotation / capital-flow strategies, call '
+                'get_stock_list and/or get_capital_flow before place_decision '
+                'when the preload is not enough. Do not HOLD merely because '
+                'sector/capital-flow data is missing; use the available tools first.'
+            )
     else:
         lines.append(
             '使用工具调研后调用 place_decision 给出当日决策（'
@@ -191,6 +205,7 @@ def build_messages(
             market_snapshot=compressed,
             model_cutoff=model_cutoff,
             max_input_tokens=max_input_tokens,
+            allowed_tools=allowed_tools,
         )
 
     return [
