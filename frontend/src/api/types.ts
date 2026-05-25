@@ -525,11 +525,21 @@ export type T0CandidateRow = {
   median_intraday_amp_pct: number;
   ordered_opportunity_1000: number;
   score: number;
+  preview_total_return_pct?: number;
+  preview_final_equity?: number;
+  preview_alpha_vs_all_in?: number;
+  preview_alpha_vs_base?: number;
+  preview_round_trips?: number;
+  preview_win_rate?: number;
+  preview_max_drawdown_pct?: number;
 };
 
 export type T0CandidatesRequest = {
   top?: number;
   max_files?: number;
+  with_backtest?: boolean;
+  preview_pool?: number;
+  min_preview_trips?: number;
   min_days?: number;
   min_avg_amp_pct?: number;
   max_avg_amp_pct?: number;

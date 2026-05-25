@@ -150,15 +150,18 @@ function CandidateList({
         >
           <div className="flex items-center gap-2">
             <span style={{ color: 'var(--text-hi)', fontWeight: 700 }}>{r.code}</span>
-            <span style={{ color: r.period_return_pct >= 0 ? 'var(--up)' : 'var(--down)' }}>
-              {fmtPct(r.period_return_pct)}
+            <span style={{ color: (r.preview_total_return_pct ?? r.period_return_pct) >= 0 ? 'var(--up)' : 'var(--down)' }}>
+              {fmtPct(r.preview_total_return_pct ?? r.period_return_pct)}
             </span>
             <span style={{ marginLeft: 'auto', color: 'var(--text-faint)' }}>
               振幅 {fmtPct(r.avg_intraday_amp_pct)}
             </span>
           </div>
           <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-ghost)' }}>
-            {r.first_date} → {r.last_date} · {r.days} 天 · 理论T空间¥{fmtMoney(r.ordered_opportunity_1000)}
+            {r.first_date} → {r.last_date} · {r.days} 天 · T {r.preview_round_trips ?? 0} 次
+            {r.preview_alpha_vs_all_in != null && (
+              <> · 跑赢全仓¥{fmtMoney(r.preview_alpha_vs_all_in)}</>
+            )}
           </div>
         </button>
       ))}
@@ -206,6 +209,9 @@ export function T0Lab() {
     candidates.mutate({
       top: 30,
       max_files: 2_000,
+      with_backtest: true,
+      preview_pool: 80,
+      min_preview_trips: 1,
       min_days: 50,
       min_avg_amp_pct: 3.0,
       max_avg_amp_pct: 15.0,

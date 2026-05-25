@@ -7,7 +7,7 @@ from flask import jsonify, request
 from t0.scorer import score_minute_bars, score_snapshot
 from t0.allocator import choose_t0_allocation
 from t0.grid import run_grid_search
-from t0.local_lc1 import scan_lc1_candidates
+from t0.local_lc1 import load_lc1_bars_for_code, scan_lc1_candidates
 from t0.portfolio import run_t0_portfolio_backtest
 from tdx_service import tdx
 
@@ -176,9 +176,11 @@ def t0_candidates():
         return jsonify({'error': 'roots must be a list of minline directories'}), 400
     top = max(1, min(100, _body_int(body, 'top', 30)))
     max_files = max(1, min(20_000, _body_int(body, 'max_files', 2_000)))
+    with_backtest = _body_bool(body, 'with_backtest', False)
+    preview_pool = max(top, min(300, _body_int(body, 'preview_pool', top * 5)))
     rows = scan_lc1_candidates(
         roots,
-        top_n=top,
+        top_n=preview_pool if with_backtest else top,
         max_files=max_files,
         min_days=_body_int(body, 'min_days', 50),
         min_avg_amp_pct=_body_float(body, 'min_avg_amp_pct', 3.0),
@@ -186,6 +188,52 @@ def t0_candidates():
         min_return_pct=_body_float(body, 'min_return_pct', -30.0),
         max_return_pct=_body_float(body, 'max_return_pct', 120.0),
     )
+    if with_backtest:
+        min_preview_trips = max(0, _body_int(body, 'min_preview_trips', 1))
+        previewed = []
+        for row in rows:
+            bars = load_lc1_bars_for_code(str(row['code']), roots)
+            if not bars:
+                continue
+            allocation = choose_t0_allocation(bars)
+            defaults = allocation.get('strategy_params', {})
+            result = run_t0_portfolio_backtest(
+                str(row['code']),
+                bars,
+                initial_capital=1_000_000.0,
+                base_position_pct=float(allocation['base_position_pct']),
+                t_shares_pct=float(allocation['t_shares_pct']),
+                min_amplitude_pct=float(defaults.get('min_amplitude_pct', 1.0)),
+                high_band=float(defaults.get('high_band', 0.82)),
+                low_band=float(defaults.get('low_band', 0.25)),
+                take_profit_pct=float(defaults.get('take_profit_pct', 0.8)),
+                stop_loss_pct=float(defaults.get('stop_loss_pct', 1.2)),
+                allow_sell_first=bool(defaults.get('allow_sell_first', True)),
+                allow_buy_first=bool(defaults.get('allow_buy_first', True)),
+                max_round_trips_per_day=int(defaults.get('max_round_trips_per_day', 1)),
+                latest_entry_time=str(defaults.get('latest_entry_time', '14:00')),
+            )
+            row = dict(row)
+            row.update({
+                'preview_total_return_pct': result['total_return_pct'],
+                'preview_final_equity': result['final_equity'],
+                'preview_alpha_vs_all_in': result['alpha_vs_all_in_hold'],
+                'preview_alpha_vs_base': result['alpha_vs_base_hold'],
+                'preview_round_trips': result['round_trips'],
+                'preview_win_rate': result['win_rate'],
+                'preview_max_drawdown_pct': result['max_drawdown_pct'],
+            })
+            if result['round_trips'] >= min_preview_trips:
+                previewed.append(row)
+        previewed.sort(
+            key=lambda r: (
+                r['preview_total_return_pct'],
+                r['preview_alpha_vs_all_in'],
+                r['preview_round_trips'],
+            ),
+            reverse=True,
+        )
+        rows = previewed[:top]
     return jsonify({
         'count': len(rows),
         'rows': rows,
@@ -199,6 +247,13 @@ def t0_portfolio():
     count = _body_int(body, 'count', -1)
     bars = tdx.get_kline(code, period='1m', count=count, dividend_type='front')
     bars = bars if isinstance(bars, list) else []
+    data_source = 'tdx_sdk'
+    if not bars:
+        roots = body.get('roots')
+        if roots is not None and not isinstance(roots, list):
+            return jsonify({'error': 'roots must be a list of minline directories'}), 400
+        bars = load_lc1_bars_for_code(code, roots)
+        data_source = 'local_lc1' if bars else data_source
     if not bars:
         return jsonify({'error': f'no 1m bars for {code}'}), 404
     allocation = choose_t0_allocation(
@@ -265,4 +320,5 @@ def t0_portfolio():
         ),
     )
     result['allocation'] = allocation
+    result['data_source'] = data_source
     return jsonify(result)

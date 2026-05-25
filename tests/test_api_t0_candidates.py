@@ -62,3 +62,29 @@ def test_t0_candidates_endpoint_scans_local_lc1_files(tmp_path):
     assert body['count'] == 1
     assert body['rows'][0]['code'] == '688981.SH'
     assert body['rows'][0]['bar_count'] == 80
+
+
+def test_t0_candidates_endpoint_can_attach_portfolio_preview(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 2,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'preview_pool': 5,
+        'min_preview_trips': 0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert row['code'] == '688981.SH'
+    assert row['preview_total_return_pct'] is not None
+    assert row['preview_alpha_vs_all_in'] is not None
+    assert row['preview_round_trips'] >= 0

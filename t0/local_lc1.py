@@ -21,6 +21,15 @@ def _code_from_path(path: Path) -> str:
     return stem[2:].upper() + suffix
 
 
+def _path_for_code(root: str | Path, code: str) -> Path:
+    raw = code[:6].lower()
+    market = code[-2:].lower()
+    r = Path(root)
+    if r.name.lower() == 'minline':
+        return r / f'{market}{raw}.lc1'
+    return r / market / 'minline' / f'{market}{raw}.lc1'
+
+
 def _is_normal_a_share(code: str) -> bool:
     return code.startswith(('60', '68', '00', '30'))
 
@@ -61,6 +70,17 @@ def parse_lc1_file(path: str | Path) -> list[dict[str, Any]]:
             'amount': round(float(amount), 4),
         })
     return bars
+
+
+def load_lc1_bars_for_code(
+    code: str,
+    roots: Iterable[str | Path] | None = None,
+) -> list[dict[str, Any]]:
+    for root in roots or DEFAULT_MINLINE_ROOTS:
+        p = _path_for_code(root, code)
+        if p.exists():
+            return parse_lc1_file(p)
+    return []
 
 
 def _candidate_metrics(code: str, path: Path, bars: list[dict[str, Any]]) -> dict[str, Any] | None:
