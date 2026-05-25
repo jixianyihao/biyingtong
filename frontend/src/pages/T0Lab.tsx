@@ -211,7 +211,7 @@ export function T0Lab() {
       max_files: 10_000,
       score_profile: 'stable_t',
       with_backtest: true,
-      preview_pool: 120,
+      preview_pool: 500,
       min_preview_trips: 1,
       min_preview_return_pct: 0,
       min_preview_alpha_vs_all_in: 0,

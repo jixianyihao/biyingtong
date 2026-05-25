@@ -91,6 +91,15 @@ def _has_body_value(body: dict, name: str) -> bool:
     return name in body and body.get(name) not in (None, '')
 
 
+def _preview_sort_key(row: dict) -> tuple[float, float, int]:
+    """Rank already-filtered candidates by actual portfolio outcome first."""
+    return (
+        float(row.get('preview_total_return_pct') or 0.0),
+        float(row.get('preview_alpha_vs_all_in') or 0.0),
+        int(row.get('preview_round_trips') or 0),
+    )
+
+
 @api_bp.route('/t0/signal')
 def t0_signal():
     code = (request.args.get('code') or '').strip().upper()
@@ -177,7 +186,7 @@ def t0_candidates():
     top = max(1, min(100, _body_int(body, 'top', 30)))
     max_files = max(1, min(20_000, _body_int(body, 'max_files', 2_000)))
     with_backtest = _body_bool(body, 'with_backtest', False)
-    preview_pool = max(top, min(300, _body_int(body, 'preview_pool', top * 5)))
+    preview_pool = max(top, min(800, _body_int(body, 'preview_pool', top * 5)))
     rows = scan_lc1_candidates(
         roots,
         top_n=preview_pool if with_backtest else top,
@@ -237,11 +246,7 @@ def t0_candidates():
             ):
                 previewed.append(row)
         previewed.sort(
-            key=lambda r: (
-                r['preview_alpha_vs_all_in'],
-                r['preview_total_return_pct'],
-                r['preview_round_trips'],
-            ),
+            key=_preview_sort_key,
             reverse=True,
         )
         rows = previewed[:top]

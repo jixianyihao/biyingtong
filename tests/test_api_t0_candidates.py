@@ -5,6 +5,8 @@ from pathlib import Path
 
 from flask import Flask
 
+from api.t0 import _preview_sort_key
+
 
 def _fresh_flask_app():
     from api import api_bp
@@ -134,3 +136,27 @@ def test_t0_candidates_endpoint_can_filter_negative_preview_alpha(tmp_path):
 
     assert resp.status_code == 200
     assert resp.get_json()['rows'] == []
+
+
+def test_previewed_candidates_sort_by_return_after_alpha_filter():
+    rows = [
+        {
+            'code': 'low-return-high-alpha',
+            'preview_total_return_pct': 1.1,
+            'preview_alpha_vs_all_in': 31_000.0,
+            'preview_round_trips': 70,
+        },
+        {
+            'code': 'high-return-positive-alpha',
+            'preview_total_return_pct': 13.1,
+            'preview_alpha_vs_all_in': 4_000.0,
+            'preview_round_trips': 49,
+        },
+    ]
+
+    rows.sort(key=_preview_sort_key, reverse=True)
+
+    assert [r['code'] for r in rows] == [
+        'high-return-positive-alpha',
+        'low-return-high-alpha',
+    ]
