@@ -5,6 +5,7 @@ from datetime import date, datetime
 from flask import jsonify, request
 
 from t0.scorer import score_minute_bars, score_snapshot
+from t0.allocator import choose_t0_allocation
 from t0.grid import run_grid_search
 from t0.portfolio import run_t0_portfolio_backtest
 from tdx_service import tdx
@@ -72,6 +73,21 @@ def _body_int(body: dict, name: str, default: int) -> int:
         return int(body.get(name, default))
     except (TypeError, ValueError):
         return default
+
+
+def _body_bool(body: dict, name: str, default: bool) -> bool:
+    raw = body.get(name)
+    if raw is None or raw == '':
+        return default
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+    return bool(raw)
+
+
+def _has_body_value(body: dict, name: str) -> bool:
+    return name in body and body.get(name) not in (None, '')
 
 
 @api_bp.route('/t0/signal')
@@ -160,24 +176,68 @@ def t0_portfolio():
     bars = bars if isinstance(bars, list) else []
     if not bars:
         return jsonify({'error': f'no 1m bars for {code}'}), 404
+    allocation = choose_t0_allocation(
+        bars,
+        requested_mode=str(body.get('allocation_mode') or 'auto'),
+    )
+    base_position_pct = (
+        _body_float(body, 'base_position_pct', allocation['base_position_pct'])
+        if _has_body_value(body, 'base_position_pct')
+        else allocation['base_position_pct']
+    )
+    t_shares_pct = (
+        _body_float(body, 't_shares_pct', allocation['t_shares_pct'])
+        if _has_body_value(body, 't_shares_pct')
+        else allocation['t_shares_pct']
+    )
+    strategy_defaults = allocation.get('strategy_params', {})
     result = run_t0_portfolio_backtest(
         code,
         bars,
         initial_capital=_body_float(body, 'initial_capital', 1_000_000.0),
-        base_position_pct=_body_float(body, 'base_position_pct', 0.70),
-        t_shares_pct=_body_float(body, 't_shares_pct', 0.25),
-        min_amplitude_pct=_body_float(body, 'min_amplitude_pct', 1.0),
-        high_band=_body_float(body, 'high_band', 0.82),
-        low_band=_body_float(body, 'low_band', 0.25),
-        take_profit_pct=_body_float(body, 'take_profit_pct', 0.8),
-        stop_loss_pct=_body_float(body, 'stop_loss_pct', 1.2),
+        base_position_pct=base_position_pct,
+        t_shares_pct=t_shares_pct,
+        min_amplitude_pct=_body_float(
+            body, 'min_amplitude_pct',
+            float(strategy_defaults.get('min_amplitude_pct', 1.0)),
+        ),
+        high_band=_body_float(
+            body, 'high_band',
+            float(strategy_defaults.get('high_band', 0.82)),
+        ),
+        low_band=_body_float(
+            body, 'low_band',
+            float(strategy_defaults.get('low_band', 0.25)),
+        ),
+        take_profit_pct=_body_float(
+            body, 'take_profit_pct',
+            float(strategy_defaults.get('take_profit_pct', 0.8)),
+        ),
+        stop_loss_pct=_body_float(
+            body, 'stop_loss_pct',
+            float(strategy_defaults.get('stop_loss_pct', 1.2)),
+        ),
         fee_bps=_body_float(body, 'fee_bps', 2.5),
         sell_tax_bps=_body_float(body, 'sell_tax_bps', 5.0),
         slippage_bps=_body_float(body, 'slippage_bps', 2.0),
-        allow_sell_first=bool(body.get('allow_sell_first', True)),
-        allow_buy_first=bool(body.get('allow_buy_first', True)),
-        max_round_trips_per_day=_body_int(body, 'max_round_trips_per_day', 1),
+        allow_sell_first=_body_bool(
+            body, 'allow_sell_first',
+            bool(strategy_defaults.get('allow_sell_first', True)),
+        ),
+        allow_buy_first=_body_bool(
+            body, 'allow_buy_first',
+            bool(strategy_defaults.get('allow_buy_first', True)),
+        ),
+        max_round_trips_per_day=_body_int(
+            body, 'max_round_trips_per_day',
+            int(strategy_defaults.get('max_round_trips_per_day', 1)),
+        ),
         earliest_entry_time=str(body.get('earliest_entry_time') or '09:35'),
-        latest_entry_time=str(body.get('latest_entry_time') or '14:00'),
+        latest_entry_time=str(
+            body.get('latest_entry_time')
+            or strategy_defaults.get('latest_entry_time')
+            or '14:00'
+        ),
     )
+    result['allocation'] = allocation
     return jsonify(result)

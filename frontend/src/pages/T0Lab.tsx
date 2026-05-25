@@ -154,15 +154,7 @@ export function T0Lab() {
     portfolio.mutate({
       code: code.trim().toUpperCase(),
       initial_capital: 1_000_000,
-      base_position_pct: 0.70,
-      t_shares_pct: 0.25,
-      max_round_trips_per_day: 1,
-      min_amplitude_pct: 1.0,
-      high_band: 0.82,
-      low_band: 0.25,
-      take_profit_pct: 0.8,
-      stop_loss_pct: 1.2,
-      latest_entry_time: '14:00',
+      allocation_mode: 'auto',
     });
   }
 
@@ -332,6 +324,18 @@ export function T0Lab() {
             {portfolio.data && (
               <div className="grid gap-1 mono text-[11px]" style={{ color: 'var(--text-dim)' }}>
                 <div>
+                  仓位模式{' '}
+                  <span style={{ color: portfolio.data.allocation.mode === 'bull_high_base' ? 'var(--up)' : 'var(--text-hi)' }}>
+                    {portfolio.data.allocation.mode === 'bull_high_base'
+                      ? '牛市高底仓'
+                      : portfolio.data.allocation.mode === 'defensive_low_base'
+                        ? '防守低底仓'
+                        : '震荡均衡'}
+                  </span>
+                  {' '}· 底仓 {(Number(portfolio.data.params.base_position_pct) * 100).toFixed(0)}%
+                  {' '}· T额 {(Number(portfolio.data.params.t_shares_pct) * 100).toFixed(0)}%
+                </div>
+                <div>
                   期末权益{' '}
                   <span style={{ color: 'var(--text-hi)' }}>
                     {fmtMoney(portfolio.data.final_equity)}
@@ -339,7 +343,13 @@ export function T0Lab() {
                   {' '}({fmtPct(portfolio.data.total_return_pct)})
                 </div>
                 <div>
-                  做T增量{' '}
+                  跑赢全仓{' '}
+                  <span style={{ color: portfolio.data.alpha_vs_all_in_hold >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                    {fmtMoney(portfolio.data.alpha_vs_all_in_hold)}
+                  </span>
+                </div>
+                <div>
+                  跑赢同底仓{' '}
                   <span style={{ color: portfolio.data.alpha_vs_base_hold >= 0 ? 'var(--up)' : 'var(--down)' }}>
                     {fmtMoney(portfolio.data.alpha_vs_base_hold)}
                   </span>
@@ -351,6 +361,9 @@ export function T0Lab() {
                 <div>
                   基准持有 {fmtMoney(portfolio.data.base_hold_equity)} ·
                   全仓持有 {fmtMoney(portfolio.data.all_in_hold_equity)}
+                </div>
+                <div style={{ color: 'var(--text-ghost)', whiteSpace: 'normal', lineHeight: 1.45 }}>
+                  {portfolio.data.allocation.reason}
                 </div>
               </div>
             )}

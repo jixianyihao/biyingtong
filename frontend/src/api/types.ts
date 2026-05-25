@@ -514,6 +514,7 @@ export type T0GridResponse = {
 export type T0PortfolioRequest = {
   code: string;
   initial_capital?: number;
+  allocation_mode?: 'auto' | 'bull' | 'balanced' | 'defensive';
   base_position_pct?: number;
   t_shares_pct?: number;
   max_round_trips_per_day?: number;
@@ -523,6 +524,15 @@ export type T0PortfolioRequest = {
   take_profit_pct?: number;
   stop_loss_pct?: number;
   latest_entry_time?: string;
+};
+
+export type T0Allocation = {
+  mode: 'bull_high_base' | 'balanced_range' | 'defensive_low_base';
+  base_position_pct: number;
+  t_shares_pct: number;
+  trend_return_pct: number;
+  reason: string;
+  strategy_params: Record<string, unknown>;
 };
 
 export type T0PortfolioResponse = {
@@ -551,5 +561,6 @@ export type T0PortfolioResponse = {
   losses: number;
   win_rate: number;
   max_drawdown_pct: number;
+  allocation: T0Allocation;
   params: Record<string, unknown>;
 };
