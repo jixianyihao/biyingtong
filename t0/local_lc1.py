@@ -223,6 +223,7 @@ def scan_lc1_candidates(
     *,
     top_n: int = 30,
     max_files: int = 10_000,
+    score_profile: str = 'raw_opportunity',
     min_days: int = 50,
     min_avg_amp_pct: float = 3.0,
     max_avg_amp_pct: float = 15.0,
@@ -256,14 +257,50 @@ def scan_lc1_candidates(
             continue
         if not (min_return_pct <= metrics['period_return_pct'] <= max_return_pct):
             continue
+        stable_trend_fit = max(
+            0.0,
+            1.0 - abs(float(metrics['period_return_pct']) - 6.0) / 24.0,
+        )
+        stable_amp_fit = max(
+            0.0,
+            1.0 - abs(float(metrics['avg_intraday_amp_pct']) - 3.8) / 3.0,
+        )
+        avg_amp = max(float(metrics['avg_intraday_amp_pct']), 0.01)
+        amp_consistency = max(
+            0.0,
+            1.0 - abs(float(metrics['avg_intraday_amp_pct']) -
+                      float(metrics['median_intraday_amp_pct'])) / avg_amp,
+        )
+        opportunity_fit = min(
+            float(metrics['ordered_opportunity_1000']) / 200_000.0,
+            1.0,
+        )
+        metrics['stable_t_score'] = round(
+            stable_trend_fit * 45.0 +
+            stable_amp_fit * 35.0 +
+            amp_consistency * 10.0 +
+            opportunity_fit * 10.0,
+            4,
+        )
         rows.append(metrics)
 
-    rows.sort(
-        key=lambda r: (
-            r['score'],
-            r['avg_intraday_amp_pct'],
-            r['ordered_opportunity_1000'],
-        ),
-        reverse=True,
-    )
+    profile = (score_profile or 'raw_opportunity').strip().lower()
+    if profile == 'stable_t':
+        rows.sort(
+            key=lambda r: (
+                r['stable_t_score'],
+                r['ordered_opportunity_1000'],
+                r['avg_intraday_amp_pct'],
+            ),
+            reverse=True,
+        )
+    else:
+        rows.sort(
+            key=lambda r: (
+                r['score'],
+                r['avg_intraday_amp_pct'],
+                r['ordered_opportunity_1000'],
+            ),
+            reverse=True,
+        )
     return rows[:max(1, top_n)]

@@ -182,6 +182,7 @@ def t0_candidates():
         roots,
         top_n=preview_pool if with_backtest else top,
         max_files=max_files,
+        score_profile=str(body.get('score_profile') or 'stable_t'),
         min_days=_body_int(body, 'min_days', 50),
         min_avg_amp_pct=_body_float(body, 'min_avg_amp_pct', 3.0),
         max_avg_amp_pct=_body_float(body, 'max_avg_amp_pct', 15.0),
@@ -190,6 +191,12 @@ def t0_candidates():
     )
     if with_backtest:
         min_preview_trips = max(0, _body_int(body, 'min_preview_trips', 1))
+        min_preview_return_pct = _body_float(
+            body, 'min_preview_return_pct', float('-inf'),
+        )
+        min_preview_alpha_vs_all_in = _body_float(
+            body, 'min_preview_alpha_vs_all_in', float('-inf'),
+        )
         previewed = []
         for row in rows:
             bars = load_lc1_bars_for_code(str(row['code']), roots)
@@ -223,12 +230,16 @@ def t0_candidates():
                 'preview_win_rate': result['win_rate'],
                 'preview_max_drawdown_pct': result['max_drawdown_pct'],
             })
-            if result['round_trips'] >= min_preview_trips:
+            if (
+                result['round_trips'] >= min_preview_trips and
+                result['total_return_pct'] >= min_preview_return_pct and
+                result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in
+            ):
                 previewed.append(row)
         previewed.sort(
             key=lambda r: (
-                r['preview_total_return_pct'],
                 r['preview_alpha_vs_all_in'],
+                r['preview_total_return_pct'],
                 r['preview_round_trips'],
             ),
             reverse=True,

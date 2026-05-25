@@ -208,10 +208,13 @@ export function T0Lab() {
   function scanCandidates() {
     candidates.mutate({
       top: 30,
-      max_files: 2_000,
+      max_files: 10_000,
+      score_profile: 'stable_t',
       with_backtest: true,
-      preview_pool: 80,
+      preview_pool: 120,
       min_preview_trips: 1,
+      min_preview_return_pct: 0,
+      min_preview_alpha_vs_all_in: 0,
       min_days: 50,
       min_avg_amp_pct: 3.0,
       max_avg_amp_pct: 15.0,

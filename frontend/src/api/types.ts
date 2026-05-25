@@ -525,6 +525,7 @@ export type T0CandidateRow = {
   median_intraday_amp_pct: number;
   ordered_opportunity_1000: number;
   score: number;
+  stable_t_score?: number;
   preview_total_return_pct?: number;
   preview_final_equity?: number;
   preview_alpha_vs_all_in?: number;
@@ -537,9 +538,12 @@ export type T0CandidateRow = {
 export type T0CandidatesRequest = {
   top?: number;
   max_files?: number;
+  score_profile?: 'raw_opportunity' | 'stable_t';
   with_backtest?: boolean;
   preview_pool?: number;
   min_preview_trips?: number;
+  min_preview_return_pct?: number;
+  min_preview_alpha_vs_all_in?: number;
   min_days?: number;
   min_avg_amp_pct?: number;
   max_avg_amp_pct?: number;
