@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
-import { useT0Grid, useT0Portfolio } from '../api/hooks';
-import type { T0GridRow } from '../api/types';
+import { useT0Candidates, useT0Grid, useT0Portfolio } from '../api/hooks';
+import type { T0CandidateRow, T0GridRow } from '../api/types';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -123,12 +123,56 @@ function ResultTable({ rows }: { rows: T0GridRow[] }) {
   );
 }
 
+function CandidateList({
+  rows,
+  onPick,
+}: {
+  rows: T0CandidateRow[];
+  onPick: (code: string) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="grid gap-1" style={{ maxHeight: 210, overflowY: 'auto' }}>
+      {rows.slice(0, 12).map((r) => (
+        <button
+          key={r.code}
+          onClick={() => onPick(r.code)}
+          className="mono"
+          style={{
+            textAlign: 'left',
+            padding: '6px 7px',
+            borderRadius: 4,
+            border: '1px solid var(--panel-border-soft)',
+            background: 'var(--bg-2)',
+            color: 'var(--text-dim)',
+            cursor: 'pointer',
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span style={{ color: 'var(--text-hi)', fontWeight: 700 }}>{r.code}</span>
+            <span style={{ color: r.period_return_pct >= 0 ? 'var(--up)' : 'var(--down)' }}>
+              {fmtPct(r.period_return_pct)}
+            </span>
+            <span style={{ marginLeft: 'auto', color: 'var(--text-faint)' }}>
+              振幅 {fmtPct(r.avg_intraday_amp_pct)}
+            </span>
+          </div>
+          <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-ghost)' }}>
+            {r.first_date} → {r.last_date} · {r.days} 天 · 理论T空间¥{fmtMoney(r.ordered_opportunity_1000)}
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function T0Lab() {
   const [code, setCode] = useState('688981.SH');
   const [minLastDate, setMinLastDate] = useState(todayIso());
   const [top, setTop] = useState(20);
   const grid = useT0Grid();
   const portfolio = useT0Portfolio();
+  const candidates = useT0Candidates();
   const data = grid.data;
 
   const best = data?.rows?.[0];
@@ -155,6 +199,18 @@ export function T0Lab() {
       code: code.trim().toUpperCase(),
       initial_capital: 1_000_000,
       allocation_mode: 'auto',
+    });
+  }
+
+  function scanCandidates() {
+    candidates.mutate({
+      top: 30,
+      max_files: 2_000,
+      min_days: 50,
+      min_avg_amp_pct: 3.0,
+      max_avg_amp_pct: 15.0,
+      min_return_pct: -30.0,
+      max_return_pct: 120.0,
     });
   }
 
@@ -307,6 +363,35 @@ export function T0Lab() {
               </div>
             </div>
           )}
+
+          <div
+            className="grid gap-2"
+            style={{ padding: 12, borderTop: '1px solid var(--panel-border-soft)' }}
+          >
+            <div className="text-[11px] text-text-faint">候选标的扫描</div>
+            <button
+              className="btn"
+              onClick={scanCandidates}
+              disabled={candidates.isPending}
+              style={{ justifyContent: 'center', height: 32 }}
+            >
+              {candidates.isPending ? '扫描本地1m数据…' : '扫描做T候选'}
+            </button>
+            {candidates.data && (
+              <CandidateList
+                rows={candidates.data.rows}
+                onPick={(nextCode) => {
+                  setCode(nextCode);
+                  portfolio.reset();
+                }}
+              />
+            )}
+            {candidates.isError && (
+              <div style={{ color: 'var(--down)', fontSize: 11 }}>
+                候选扫描失败：{candidates.error instanceof Error ? candidates.error.message : String(candidates.error)}
+              </div>
+            )}
+          </div>
 
           <div
             className="grid gap-2"

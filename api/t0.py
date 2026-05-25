@@ -7,6 +7,7 @@ from flask import jsonify, request
 from t0.scorer import score_minute_bars, score_snapshot
 from t0.allocator import choose_t0_allocation
 from t0.grid import run_grid_search
+from t0.local_lc1 import scan_lc1_candidates
 from t0.portfolio import run_t0_portfolio_backtest
 from tdx_service import tdx
 
@@ -163,6 +164,30 @@ def t0_grid():
             'is_stale': stale,
             'stale_reason': stale_reason,
         },
+        'rows': rows,
+    })
+
+
+@api_bp.route('/t0/candidates', methods=['POST'])
+def t0_candidates():
+    body = request.get_json(silent=True) or {}
+    roots = body.get('roots')
+    if roots is not None and not isinstance(roots, list):
+        return jsonify({'error': 'roots must be a list of minline directories'}), 400
+    top = max(1, min(100, _body_int(body, 'top', 30)))
+    max_files = max(1, min(20_000, _body_int(body, 'max_files', 2_000)))
+    rows = scan_lc1_candidates(
+        roots,
+        top_n=top,
+        max_files=max_files,
+        min_days=_body_int(body, 'min_days', 50),
+        min_avg_amp_pct=_body_float(body, 'min_avg_amp_pct', 3.0),
+        max_avg_amp_pct=_body_float(body, 'max_avg_amp_pct', 15.0),
+        min_return_pct=_body_float(body, 'min_return_pct', -30.0),
+        max_return_pct=_body_float(body, 'max_return_pct', 120.0),
+    )
+    return jsonify({
+        'count': len(rows),
         'rows': rows,
     })
 

@@ -511,6 +511,37 @@ export type T0GridResponse = {
   rows: T0GridRow[];
 };
 
+export type T0CandidateRow = {
+  code: string;
+  path: string;
+  first_date: string;
+  last_date: string;
+  days: number;
+  bar_count: number;
+  first_price: number;
+  last_price: number;
+  period_return_pct: number;
+  avg_intraday_amp_pct: number;
+  median_intraday_amp_pct: number;
+  ordered_opportunity_1000: number;
+  score: number;
+};
+
+export type T0CandidatesRequest = {
+  top?: number;
+  max_files?: number;
+  min_days?: number;
+  min_avg_amp_pct?: number;
+  max_avg_amp_pct?: number;
+  min_return_pct?: number;
+  max_return_pct?: number;
+};
+
+export type T0CandidatesResponse = {
+  count: number;
+  rows: T0CandidateRow[];
+};
+
 export type T0PortfolioRequest = {
   code: string;
   initial_capital?: number;
