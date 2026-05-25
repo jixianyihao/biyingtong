@@ -6,6 +6,7 @@ from .backtest import _normalise_bars
 
 
 BULL_RETURN_THRESHOLD_PCT = 3.0
+STRONG_BULL_RETURN_THRESHOLD_PCT = 10.0
 BEAR_RETURN_THRESHOLD_PCT = -3.0
 
 
@@ -35,6 +36,25 @@ def _allocation(mode: str, trend_return_pct: float, reason: str) -> dict[str, An
                 'stop_loss_pct': 1.0,
                 'allow_sell_first': False,
                 'allow_buy_first': True,
+                'max_round_trips_per_day': 1,
+                'latest_entry_time': '14:00',
+            },
+        }
+    if mode == 'strong_bull_sell_rebalance':
+        return {
+            'mode': mode,
+            'base_position_pct': 0.99,
+            't_shares_pct': 0.25,
+            'trend_return_pct': trend_return_pct,
+            'reason': reason,
+            'strategy_params': {
+                'min_amplitude_pct': 1.0,
+                'high_band': 0.88,
+                'low_band': 0.18,
+                'take_profit_pct': 0.8,
+                'stop_loss_pct': 1.0,
+                'allow_sell_first': True,
+                'allow_buy_first': False,
                 'max_round_trips_per_day': 1,
                 'latest_entry_time': '14:00',
             },
@@ -108,6 +128,15 @@ def choose_t0_allocation(
             'explicit defensive mode: reduce base exposure',
         )
 
+    if trend >= STRONG_BULL_RETURN_THRESHOLD_PCT:
+        return _allocation(
+            'strong_bull_sell_rebalance',
+            trend,
+            f'trend return {trend:.2f}% >= '
+            f'{STRONG_BULL_RETURN_THRESHOLD_PCT:.1f}%; strong bull mode keeps '
+            'nearly full base exposure and uses sell-first T to harvest '
+            'intraday spikes',
+        )
     if trend >= BULL_RETURN_THRESHOLD_PCT:
         return _allocation(
             'bull_high_base',
