@@ -53,6 +53,8 @@ def test_strong_bull_trend_uses_sell_first_rebalance_mode():
     assert allocation['strategy_params']['allow_buy_first'] is False
     assert allocation['strategy_params']['high_band'] == 0.88
     assert allocation['strategy_params']['low_band'] == 0.18
+    assert allocation['strategy_params']['max_round_trips_per_day'] == 3
+    assert allocation['strategy_params']['stop_after_daily_loss'] is True
 
 
 def test_sideways_trend_keeps_balanced_cash_for_active_t():

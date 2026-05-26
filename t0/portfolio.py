@@ -47,6 +47,7 @@ def run_t0_portfolio_backtest(
     allow_sell_first: bool = True,
     allow_buy_first: bool = True,
     max_round_trips_per_day: int = 2,
+    stop_after_daily_loss: bool = False,
     earliest_entry_time: str = '09:35',
     latest_entry_time: str = '14:00',
 ) -> dict[str, Any]:
@@ -108,6 +109,7 @@ def run_t0_portfolio_backtest(
         open_leg: dict[str, Any] | None = None
         day_t_pnl = 0.0
         round_trips_today = 0
+        stop_trading_today = False
         start_equity = cash + shares * base_price
 
         for idx, row in enumerate(day_rows):
@@ -120,6 +122,8 @@ def run_t0_portfolio_backtest(
             now_time = row['dt'].time()
 
             if open_leg is None:
+                if stop_trading_today:
+                    continue
                 if t_shares <= 0 or round_trips_today >= max_round_trips_per_day:
                     continue
                 if not (earliest_entry <= now_time <= latest_entry):
@@ -237,6 +241,8 @@ def run_t0_portfolio_backtest(
                 wins += 1
             else:
                 losses += 1
+                if stop_after_daily_loss:
+                    stop_trading_today = True
             round_trips_today += 1
             trades.append({
                 'ts': row['ts'], 'action': action,
@@ -309,6 +315,7 @@ def run_t0_portfolio_backtest(
             'allow_sell_first': allow_sell_first,
             'allow_buy_first': allow_buy_first,
             'max_round_trips_per_day': max_round_trips_per_day,
+            'stop_after_daily_loss': stop_after_daily_loss,
             'earliest_entry_time': earliest_entry_time,
             'latest_entry_time': latest_entry_time,
         },

@@ -129,3 +129,37 @@ def test_sellable_old_shares_reset_next_day_not_after_same_day_buyback():
     # Day 1 can sell 500 twice, then same-day buybacks are locked. Day 2 resets
     # sellable shares and can sell 500 again.
     assert result['round_trips'] == 3
+
+
+def test_stop_after_daily_loss_blocks_second_same_day_t_attempt():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0),
+        _bar('2026-01-26 09:35:00', 103.0, high=103.0, low=100.0),
+        _bar('2026-01-26 10:00:00', 104.2, high=104.2, low=100.0),
+        _bar('2026-01-26 11:00:00', 106.0, high=106.0, low=100.0),
+        _bar('2026-01-26 11:30:00', 104.0, high=106.0, low=100.0),
+    ]
+
+    result = run_t0_portfolio_backtest(
+        '688981.SH',
+        bars,
+        initial_capital=100_000,
+        base_position_pct=0.80,
+        t_shares_pct=0.25,
+        max_round_trips_per_day=3,
+        stop_after_daily_loss=True,
+        allow_sell_first=True,
+        allow_buy_first=False,
+        min_amplitude_pct=1.0,
+        high_band=0.80,
+        low_band=0.25,
+        take_profit_pct=1.0,
+        stop_loss_pct=1.0,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    assert result['round_trips'] == 1
+    assert result['losses'] == 1
+    assert [t['action'] for t in result['trades']] == ['sell_t', 'buy_back']

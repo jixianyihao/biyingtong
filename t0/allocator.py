@@ -55,7 +55,8 @@ def _allocation(mode: str, trend_return_pct: float, reason: str) -> dict[str, An
                 'stop_loss_pct': 1.0,
                 'allow_sell_first': True,
                 'allow_buy_first': False,
-                'max_round_trips_per_day': 1,
+                'max_round_trips_per_day': 3,
+                'stop_after_daily_loss': True,
                 'latest_entry_time': '14:00',
             },
         }

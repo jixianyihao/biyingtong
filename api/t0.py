@@ -227,6 +227,7 @@ def t0_candidates():
                 allow_sell_first=bool(defaults.get('allow_sell_first', True)),
                 allow_buy_first=bool(defaults.get('allow_buy_first', True)),
                 max_round_trips_per_day=int(defaults.get('max_round_trips_per_day', 1)),
+                stop_after_daily_loss=bool(defaults.get('stop_after_daily_loss', False)),
                 latest_entry_time=str(defaults.get('latest_entry_time', '14:00')),
             )
             row = dict(row)
@@ -327,6 +328,10 @@ def t0_portfolio():
         max_round_trips_per_day=_body_int(
             body, 'max_round_trips_per_day',
             int(strategy_defaults.get('max_round_trips_per_day', 1)),
+        ),
+        stop_after_daily_loss=_body_bool(
+            body, 'stop_after_daily_loss',
+            bool(strategy_defaults.get('stop_after_daily_loss', False)),
         ),
         earliest_entry_time=str(body.get('earliest_entry_time') or '09:35'),
         latest_entry_time=str(
