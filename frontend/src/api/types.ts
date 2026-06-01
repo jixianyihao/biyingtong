@@ -533,6 +533,7 @@ export type T0CandidateRow = {
   preview_round_trips?: number;
   preview_win_rate?: number;
   preview_max_drawdown_pct?: number;
+  preview_selected_variant?: string;
 };
 
 export type T0CandidatesRequest = {
@@ -563,16 +564,18 @@ export type T0PortfolioRequest = {
   base_position_pct?: number;
   t_shares_pct?: number;
   max_round_trips_per_day?: number;
+  stop_after_daily_loss?: boolean;
   min_amplitude_pct?: number;
   high_band?: number;
   low_band?: number;
   take_profit_pct?: number;
   stop_loss_pct?: number;
+  earliest_entry_time?: string;
   latest_entry_time?: string;
 };
 
 export type T0Allocation = {
-  mode: 'bull_high_base' | 'balanced_range' | 'defensive_low_base';
+  mode: 'bull_high_base' | 'strong_bull_sell_rebalance' | 'balanced_range' | 'defensive_low_base';
   base_position_pct: number;
   t_shares_pct: number;
   trend_return_pct: number;
@@ -606,6 +609,7 @@ export type T0PortfolioResponse = {
   losses: number;
   win_rate: number;
   max_drawdown_pct: number;
+  selected_variant?: string;
   allocation: T0Allocation;
   params: Record<string, unknown>;
 };

@@ -9,6 +9,7 @@ from t0.allocator import choose_t0_allocation
 from t0.grid import run_grid_search
 from t0.local_lc1 import load_lc1_bars_for_code, scan_lc1_candidates
 from t0.portfolio import run_t0_portfolio_backtest
+from t0.strategy_selector import choose_best_t0_result, t0_strategy_variants
 from tdx_service import tdx
 
 from . import api_bp
@@ -98,6 +99,49 @@ def _preview_sort_key(row: dict) -> tuple[float, float, int]:
         float(row.get('preview_alpha_vs_all_in') or 0.0),
         int(row.get('preview_round_trips') or 0),
     )
+
+
+def _run_t0_portfolio_with_strategy(
+    code: str,
+    bars: list[dict],
+    *,
+    allocation: dict,
+    initial_capital: float,
+    strategy_params: dict,
+    base_position_pct: float | None = None,
+    t_shares_pct: float | None = None,
+) -> dict:
+    result = run_t0_portfolio_backtest(
+        code,
+        bars,
+        initial_capital=initial_capital,
+        base_position_pct=(
+            float(base_position_pct)
+            if base_position_pct is not None
+            else float(allocation['base_position_pct'])
+        ),
+        t_shares_pct=(
+            float(t_shares_pct)
+            if t_shares_pct is not None
+            else float(allocation['t_shares_pct'])
+        ),
+        min_amplitude_pct=float(strategy_params.get('min_amplitude_pct', 1.0)),
+        high_band=float(strategy_params.get('high_band', 0.82)),
+        low_band=float(strategy_params.get('low_band', 0.25)),
+        take_profit_pct=float(strategy_params.get('take_profit_pct', 0.8)),
+        stop_loss_pct=float(strategy_params.get('stop_loss_pct', 1.2)),
+        fee_bps=float(strategy_params.get('fee_bps', 2.5)),
+        sell_tax_bps=float(strategy_params.get('sell_tax_bps', 5.0)),
+        slippage_bps=float(strategy_params.get('slippage_bps', 2.0)),
+        allow_sell_first=bool(strategy_params.get('allow_sell_first', True)),
+        allow_buy_first=bool(strategy_params.get('allow_buy_first', True)),
+        max_round_trips_per_day=int(strategy_params.get('max_round_trips_per_day', 1)),
+        stop_after_daily_loss=bool(strategy_params.get('stop_after_daily_loss', False)),
+        earliest_entry_time=str(strategy_params.get('earliest_entry_time', '09:35')),
+        latest_entry_time=str(strategy_params.get('latest_entry_time', '14:00')),
+    )
+    result['selected_variant'] = strategy_params.get('selected_variant', 'default')
+    return result
 
 
 @api_bp.route('/t0/signal')
@@ -212,23 +256,15 @@ def t0_candidates():
             if not bars:
                 continue
             allocation = choose_t0_allocation(bars)
-            defaults = allocation.get('strategy_params', {})
-            result = run_t0_portfolio_backtest(
-                str(row['code']),
-                bars,
-                initial_capital=1_000_000.0,
-                base_position_pct=float(allocation['base_position_pct']),
-                t_shares_pct=float(allocation['t_shares_pct']),
-                min_amplitude_pct=float(defaults.get('min_amplitude_pct', 1.0)),
-                high_band=float(defaults.get('high_band', 0.82)),
-                low_band=float(defaults.get('low_band', 0.25)),
-                take_profit_pct=float(defaults.get('take_profit_pct', 0.8)),
-                stop_loss_pct=float(defaults.get('stop_loss_pct', 1.2)),
-                allow_sell_first=bool(defaults.get('allow_sell_first', True)),
-                allow_buy_first=bool(defaults.get('allow_buy_first', True)),
-                max_round_trips_per_day=int(defaults.get('max_round_trips_per_day', 1)),
-                stop_after_daily_loss=bool(defaults.get('stop_after_daily_loss', False)),
-                latest_entry_time=str(defaults.get('latest_entry_time', '14:00')),
+            result = choose_best_t0_result(
+                _run_t0_portfolio_with_strategy(
+                    str(row['code']),
+                    bars,
+                    allocation=allocation,
+                    initial_capital=1_000_000.0,
+                    strategy_params=params,
+                )
+                for params in t0_strategy_variants(allocation)
             )
             row = dict(row)
             row.update({
@@ -239,6 +275,7 @@ def t0_candidates():
                 'preview_round_trips': result['round_trips'],
                 'preview_win_rate': result['win_rate'],
                 'preview_max_drawdown_pct': result['max_drawdown_pct'],
+                'preview_selected_variant': result['selected_variant'],
             })
             if (
                 result['round_trips'] >= min_preview_trips and
@@ -288,57 +325,75 @@ def t0_portfolio():
         else allocation['t_shares_pct']
     )
     strategy_defaults = allocation.get('strategy_params', {})
-    result = run_t0_portfolio_backtest(
-        code,
-        bars,
-        initial_capital=_body_float(body, 'initial_capital', 1_000_000.0),
-        base_position_pct=base_position_pct,
-        t_shares_pct=t_shares_pct,
-        min_amplitude_pct=_body_float(
-            body, 'min_amplitude_pct',
-            float(strategy_defaults.get('min_amplitude_pct', 1.0)),
-        ),
-        high_band=_body_float(
-            body, 'high_band',
-            float(strategy_defaults.get('high_band', 0.82)),
-        ),
-        low_band=_body_float(
-            body, 'low_band',
-            float(strategy_defaults.get('low_band', 0.25)),
-        ),
-        take_profit_pct=_body_float(
-            body, 'take_profit_pct',
-            float(strategy_defaults.get('take_profit_pct', 0.8)),
-        ),
-        stop_loss_pct=_body_float(
-            body, 'stop_loss_pct',
-            float(strategy_defaults.get('stop_loss_pct', 1.2)),
-        ),
-        fee_bps=_body_float(body, 'fee_bps', 2.5),
-        sell_tax_bps=_body_float(body, 'sell_tax_bps', 5.0),
-        slippage_bps=_body_float(body, 'slippage_bps', 2.0),
-        allow_sell_first=_body_bool(
-            body, 'allow_sell_first',
-            bool(strategy_defaults.get('allow_sell_first', True)),
-        ),
-        allow_buy_first=_body_bool(
-            body, 'allow_buy_first',
-            bool(strategy_defaults.get('allow_buy_first', True)),
-        ),
-        max_round_trips_per_day=_body_int(
-            body, 'max_round_trips_per_day',
-            int(strategy_defaults.get('max_round_trips_per_day', 1)),
-        ),
-        stop_after_daily_loss=_body_bool(
-            body, 'stop_after_daily_loss',
-            bool(strategy_defaults.get('stop_after_daily_loss', False)),
-        ),
-        earliest_entry_time=str(body.get('earliest_entry_time') or '09:35'),
-        latest_entry_time=str(
-            body.get('latest_entry_time')
-            or strategy_defaults.get('latest_entry_time')
-            or '14:00'
-        ),
+    manual_strategy_keys = {
+        'min_amplitude_pct', 'high_band', 'low_band', 'take_profit_pct',
+        'stop_loss_pct', 'fee_bps', 'sell_tax_bps', 'slippage_bps',
+        'allow_sell_first', 'allow_buy_first', 'max_round_trips_per_day',
+        'stop_after_daily_loss', 'earliest_entry_time', 'latest_entry_time',
+    }
+    manual_strategy = any(_has_body_value(body, k) for k in manual_strategy_keys)
+    if manual_strategy:
+        variants = [{
+            'selected_variant': 'manual',
+            'min_amplitude_pct': _body_float(
+                body, 'min_amplitude_pct',
+                float(strategy_defaults.get('min_amplitude_pct', 1.0)),
+            ),
+            'high_band': _body_float(
+                body, 'high_band',
+                float(strategy_defaults.get('high_band', 0.82)),
+            ),
+            'low_band': _body_float(
+                body, 'low_band',
+                float(strategy_defaults.get('low_band', 0.25)),
+            ),
+            'take_profit_pct': _body_float(
+                body, 'take_profit_pct',
+                float(strategy_defaults.get('take_profit_pct', 0.8)),
+            ),
+            'stop_loss_pct': _body_float(
+                body, 'stop_loss_pct',
+                float(strategy_defaults.get('stop_loss_pct', 1.2)),
+            ),
+            'fee_bps': _body_float(body, 'fee_bps', 2.5),
+            'sell_tax_bps': _body_float(body, 'sell_tax_bps', 5.0),
+            'slippage_bps': _body_float(body, 'slippage_bps', 2.0),
+            'allow_sell_first': _body_bool(
+                body, 'allow_sell_first',
+                bool(strategy_defaults.get('allow_sell_first', True)),
+            ),
+            'allow_buy_first': _body_bool(
+                body, 'allow_buy_first',
+                bool(strategy_defaults.get('allow_buy_first', True)),
+            ),
+            'max_round_trips_per_day': _body_int(
+                body, 'max_round_trips_per_day',
+                int(strategy_defaults.get('max_round_trips_per_day', 1)),
+            ),
+            'stop_after_daily_loss': _body_bool(
+                body, 'stop_after_daily_loss',
+                bool(strategy_defaults.get('stop_after_daily_loss', False)),
+            ),
+            'earliest_entry_time': str(body.get('earliest_entry_time') or '09:35'),
+            'latest_entry_time': str(
+                body.get('latest_entry_time')
+                or strategy_defaults.get('latest_entry_time')
+                or '14:00'
+            ),
+        }]
+    else:
+        variants = t0_strategy_variants(allocation)
+    result = choose_best_t0_result(
+        _run_t0_portfolio_with_strategy(
+            code,
+            bars,
+            allocation=allocation,
+            initial_capital=_body_float(body, 'initial_capital', 1_000_000.0),
+            base_position_pct=base_position_pct,
+            t_shares_pct=t_shares_pct,
+            strategy_params=params,
+        )
+        for params in variants
     )
     result['allocation'] = allocation
     result['data_source'] = data_source
