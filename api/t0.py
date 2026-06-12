@@ -92,7 +92,9 @@ def _has_body_value(body: dict, name: str) -> bool:
     return name in body and body.get(name) not in (None, '')
 
 
-def _preview_sort_key(row: dict) -> tuple[float, float, float, float, float, int]:
+def _preview_sort_key(
+    row: dict,
+) -> tuple[float, float, float, float, float, float, float, float, float, int]:
     """Rank candidates by out-of-sample outcome when available.
 
     If walk-forward preview fields are present, validation cost-reduction is
@@ -111,11 +113,23 @@ def _preview_sort_key(row: dict) -> tuple[float, float, float, float, float, int
         'preview_validation_alpha_vs_all_in',
         row.get('preview_alpha_vs_all_in'),
     )
+    primary_min_cost_reduction = row.get(
+        'preview_validation_min_cost_reduction_pct',
+        row.get('preview_min_cost_reduction_pct'),
+    )
+    primary_positive_days = row.get(
+        'preview_validation_cost_reduction_positive_days_pct',
+        row.get('preview_cost_reduction_positive_days_pct'),
+    )
     return (
         float(primary_cost_reduction or 0.0),
+        float(primary_min_cost_reduction or 0.0),
+        float(primary_positive_days or 0.0),
         float(primary_return or 0.0),
         float(primary_alpha or 0.0),
         float(row.get('preview_cost_reduction_pct') or 0.0),
+        float(row.get('preview_min_cost_reduction_pct') or 0.0),
+        float(row.get('preview_cost_reduction_positive_days_pct') or 0.0),
         float(row.get('preview_total_return_pct') or 0.0),
         int(row.get('preview_round_trips') or 0),
     )
@@ -386,6 +400,12 @@ def t0_candidates():
                 'preview_cost_reduction_per_share': (
                     result['cost_reduction_per_share']
                 ),
+                'preview_min_cost_reduction_pct': (
+                    result['min_cost_reduction_pct']
+                ),
+                'preview_cost_reduction_positive_days_pct': (
+                    result['cost_reduction_positive_days_pct']
+                ),
             })
             validation_pass = True
             if validation_bars:
@@ -399,6 +419,15 @@ def t0_candidates():
                 row.update({
                     'preview_train_total_return_pct': selected['total_return_pct'],
                     'preview_train_alpha_vs_all_in': selected['alpha_vs_all_in_hold'],
+                    'preview_train_cost_reduction_pct': (
+                        selected['cost_reduction_pct']
+                    ),
+                    'preview_train_min_cost_reduction_pct': (
+                        selected['min_cost_reduction_pct']
+                    ),
+                    'preview_train_cost_reduction_positive_days_pct': (
+                        selected['cost_reduction_positive_days_pct']
+                    ),
                     'preview_validation_total_return_pct': (
                         validation_result['total_return_pct']
                     ),
@@ -415,6 +444,14 @@ def t0_candidates():
                     ),
                     'preview_validation_cost_reduction_per_share': (
                         validation_result['cost_reduction_per_share']
+                    ),
+                    'preview_validation_min_cost_reduction_pct': (
+                        validation_result['min_cost_reduction_pct']
+                    ),
+                    'preview_validation_cost_reduction_positive_days_pct': (
+                        validation_result[
+                            'cost_reduction_positive_days_pct'
+                        ]
                     ),
                 })
                 validation_pass = (

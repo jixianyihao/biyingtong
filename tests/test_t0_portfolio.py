@@ -79,6 +79,44 @@ def test_portfolio_buy_first_uses_reserved_cash_and_sells_old_shares():
     assert [t['action'] for t in result['trades']] == ['buy_t', 'sell_back']
 
 
+def test_portfolio_reports_cost_reduction_path_quality():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0),
+        _bar('2026-01-26 09:35:00', 103.0, high=103.0, low=100.0),
+        _bar('2026-01-26 10:00:00', 104.2, high=104.2, low=100.0),
+        _bar('2026-01-26 15:00:00', 104.2),
+        _bar('2026-01-27 09:31:00', 100.0),
+        _bar('2026-01-27 09:35:00', 98.0, high=100.0, low=97.8),
+        _bar('2026-01-27 10:05:00', 101.0, high=101.2, low=97.8),
+        _bar('2026-01-27 15:00:00', 101.0),
+    ]
+
+    result = run_t0_portfolio_backtest(
+        '688981.SH',
+        bars,
+        initial_capital=100_000,
+        base_position_pct=0.80,
+        t_shares_pct=0.25,
+        max_round_trips_per_day=1,
+        allow_sell_first=True,
+        allow_buy_first=True,
+        min_amplitude_pct=1.0,
+        high_band=0.80,
+        low_band=0.25,
+        take_profit_pct=1.0,
+        stop_loss_pct=1.0,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    assert result['round_trips'] == 2
+    assert result['t_pnl'] == pytest.approx(360.0)
+    assert result['cost_reduction_pct'] == pytest.approx(0.45)
+    assert result['min_cost_reduction_pct'] == pytest.approx(-0.3)
+    assert result['cost_reduction_positive_days_pct'] == pytest.approx(50.0)
+
+
 def test_all_in_position_disables_buy_first_when_cash_is_insufficient():
     bars = [
         _bar('2026-01-26 09:31:00', 100.0),

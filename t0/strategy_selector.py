@@ -70,13 +70,17 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _result_rank(
     result: dict[str, Any],
-) -> tuple[bool, bool, float, float, float, float, float]:
+) -> tuple[bool, bool, float, float, float, float, float, float, float]:
     alpha = float(result.get('alpha_vs_all_in_hold') or 0.0)
     cost_reduction = float(result.get('cost_reduction_pct') or 0.0)
+    min_cost_reduction = float(result.get('min_cost_reduction_pct') or 0.0)
+    positive_days = float(result.get('cost_reduction_positive_days_pct') or 0.0)
     return (
         cost_reduction >= 0.0,
         alpha >= 0.0,
         cost_reduction,
+        min_cost_reduction,
+        positive_days,
         alpha,
         float(result.get('total_return_pct') or 0.0),
         float(result.get('win_rate') or 0.0),

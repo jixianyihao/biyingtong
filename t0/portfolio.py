@@ -29,6 +29,17 @@ def _max_drawdown_pct(curve: list[dict[str, Any]]) -> float:
     return round(max_dd, 4)
 
 
+def _cost_path_quality(daily: list[dict[str, Any]]) -> tuple[float, float]:
+    if not daily:
+        return 0.0, 0.0
+    values = [float(row.get('cost_reduction_pct') or 0.0) for row in daily]
+    positive = sum(1 for value in values if value >= 0.0)
+    return (
+        round(min(values), 4),
+        round(positive / len(values) * 100.0, 4),
+    )
+
+
 def run_t0_portfolio_backtest(
     code: str,
     bars: list[dict[str, Any]],
@@ -65,6 +76,8 @@ def run_t0_portfolio_backtest(
             'initial_capital': round(initial_capital, 4),
             'final_equity': round(initial_capital, 4),
             'total_return_pct': 0.0, 't_pnl': 0.0,
+            'min_cost_reduction_pct': 0.0,
+            'cost_reduction_positive_days_pct': 0.0,
             'round_trips': 0, 'wins': 0, 'losses': 0,
             'win_rate': 0.0, 'trades': [], 'daily': [],
         }
@@ -296,6 +309,9 @@ def run_t0_portfolio_backtest(
         cost_reduction_per_share / initial_cost_per_share * 100.0
         if initial_cost_per_share > 0 else 0.0
     )
+    min_cost_reduction_pct, cost_reduction_positive_days_pct = (
+        _cost_path_quality(daily)
+    )
 
     return {
         'code': code,
@@ -314,6 +330,8 @@ def run_t0_portfolio_backtest(
         'effective_cost_per_share': round(effective_cost_per_share, 4),
         'cost_reduction_per_share': round(cost_reduction_per_share, 4),
         'cost_reduction_pct': round(cost_reduction_pct, 4),
+        'min_cost_reduction_pct': min_cost_reduction_pct,
+        'cost_reduction_positive_days_pct': cost_reduction_positive_days_pct,
         'final_cash': round(cash, 4),
         'final_shares': shares,
         'final_equity': round(final_equity, 4),

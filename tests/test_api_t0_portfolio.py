@@ -116,6 +116,8 @@ def test_t0_portfolio_endpoint_returns_account_level_result(monkeypatch):
     assert body['round_trips'] == 1
     assert body['t_pnl'] == 4500
     assert body['alpha_vs_base_hold'] == 4500
+    assert body['min_cost_reduction_pct'] is not None
+    assert body['cost_reduction_positive_days_pct'] is not None
 
 
 def test_t0_portfolio_endpoint_auto_allocation_uses_bull_mode(monkeypatch):

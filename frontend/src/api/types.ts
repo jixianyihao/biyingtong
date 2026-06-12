@@ -536,8 +536,13 @@ export type T0CandidateRow = {
   preview_selected_variant?: string;
   preview_cost_reduction_pct?: number;
   preview_cost_reduction_per_share?: number;
+  preview_min_cost_reduction_pct?: number;
+  preview_cost_reduction_positive_days_pct?: number;
   preview_train_total_return_pct?: number;
   preview_train_alpha_vs_all_in?: number;
+  preview_train_cost_reduction_pct?: number;
+  preview_train_min_cost_reduction_pct?: number;
+  preview_train_cost_reduction_positive_days_pct?: number;
   preview_validation_total_return_pct?: number;
   preview_validation_alpha_vs_all_in?: number;
   preview_validation_round_trips?: number;
@@ -545,6 +550,8 @@ export type T0CandidateRow = {
   preview_validation_max_drawdown_pct?: number;
   preview_validation_cost_reduction_pct?: number;
   preview_validation_cost_reduction_per_share?: number;
+  preview_validation_min_cost_reduction_pct?: number;
+  preview_validation_cost_reduction_positive_days_pct?: number;
 };
 
 export type T0CandidatesRequest = {
@@ -625,6 +632,8 @@ export type T0PortfolioResponse = {
   effective_cost_per_share: number;
   cost_reduction_per_share: number;
   cost_reduction_pct: number;
+  min_cost_reduction_pct: number;
+  cost_reduction_positive_days_pct: number;
   base_shares: number;
   t_shares: number;
   initial_cash: number;

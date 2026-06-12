@@ -65,6 +65,31 @@ def test_choose_best_t0_result_prefers_cost_reduction_over_raw_return():
     ]) is lower_return_better_cost_cut
 
 
+def test_choose_best_t0_result_prefers_smoother_cost_path_on_tie():
+    choppy = {
+        'selected_variant': 'choppy_cost_path',
+        'total_return_pct': 14.0,
+        'alpha_vs_all_in_hold': 30_000.0,
+        'cost_reduction_pct': 2.0,
+        'min_cost_reduction_pct': -2.0,
+        'cost_reduction_positive_days_pct': 55.0,
+        'win_rate': 80.0,
+        'max_drawdown_pct': -10.0,
+    }
+    smoother = {
+        'selected_variant': 'smoother_cost_path',
+        'total_return_pct': 12.0,
+        'alpha_vs_all_in_hold': 30_000.0,
+        'cost_reduction_pct': 2.0,
+        'min_cost_reduction_pct': -0.2,
+        'cost_reduction_positive_days_pct': 90.0,
+        'win_rate': 65.0,
+        'max_drawdown_pct': -11.0,
+    }
+
+    assert choose_best_t0_result([choppy, smoother]) is smoother
+
+
 def test_t0_strategy_variants_for_strong_bull_include_single_and_multi():
     allocation = {
         'mode': 'strong_bull_sell_rebalance',

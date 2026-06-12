@@ -174,6 +174,12 @@ function CandidateList({
             {r.preview_cost_reduction_pct != null && (
               <> · 成本↓{fmtPct(r.preview_cost_reduction_pct)}</>
             )}
+            {r.preview_min_cost_reduction_pct != null && (
+              <> · 最差{fmtPct(r.preview_min_cost_reduction_pct)}</>
+            )}
+            {r.preview_cost_reduction_positive_days_pct != null && (
+              <> · 正天{fmtPct(r.preview_cost_reduction_positive_days_pct)}</>
+            )}
           </div>
           {validationReturn != null && (
             <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-ghost)' }}>
@@ -183,6 +189,12 @@ function CandidateList({
               )}
               {r.preview_validation_cost_reduction_pct != null && (
                 <> · 成本↓{fmtPct(r.preview_validation_cost_reduction_pct)}</>
+              )}
+              {r.preview_validation_min_cost_reduction_pct != null && (
+                <> · 最差{fmtPct(r.preview_validation_min_cost_reduction_pct)}</>
+              )}
+              {r.preview_validation_cost_reduction_positive_days_pct != null && (
+                <> · 正天{fmtPct(r.preview_validation_cost_reduction_positive_days_pct)}</>
               )}
             </div>
           )}
@@ -482,6 +494,13 @@ export function T0Lab() {
                   </span>
                   {' '}({portfolio.data.cost_reduction_per_share >= 0 ? '↓' : '↑'}
                   {fmtNum(Math.abs(portfolio.data.cost_reduction_per_share), 3)} / {fmtPct(portfolio.data.cost_reduction_pct)})
+                </div>
+                <div>
+                  路径质量{' '}
+                  <span style={{ color: portfolio.data.min_cost_reduction_pct >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                    最差 {fmtPct(portfolio.data.min_cost_reduction_pct)}
+                  </span>
+                  {' '}· 正向天数 {fmtPct(portfolio.data.cost_reduction_positive_days_pct)}
                 </div>
                 <div>
                   跑赢全仓{' '}
