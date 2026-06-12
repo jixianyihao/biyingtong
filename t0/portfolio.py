@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from math import floor
+from math import floor, sqrt
 from typing import Any
 
 from .backtest import _exec_price, _fee, _normalise_bars, _parse_hhmm
+from .execution_policy import (
+    T0Intent,
+    T0PendingIntent,
+    build_execution_policy,
+)
 from .fill_simulator import MarketFillSimulator, T0FillConfig, T0Leg
 from .signals import IntradaySignalState, T0SignalConfig, evaluate_t0_signal
 
@@ -64,6 +69,7 @@ def run_t0_portfolio_backtest(
     stop_after_cost_floor_pct: float | None = None,
     signal_mode: str = 'band',
     vwap_deviation_pct: float = 1.0,
+    vwap_zscore_threshold: float = 1.5,
     execution_style: str = 'market',
     earliest_entry_time: str = '09:35',
     latest_entry_time: str = '14:00',
@@ -118,12 +124,14 @@ def run_t0_portfolio_backtest(
     earliest_entry = _parse_hhmm(earliest_entry_time, None)
     latest_entry = _parse_hhmm(latest_entry_time, None)
     mode = (signal_mode or 'band').strip().lower()
-    exec_style = (execution_style or 'market').strip().lower()
+    execution_policy = build_execution_policy(execution_style)
+    exec_style = execution_policy.style
     signal_config = T0SignalConfig(
         signal_mode=mode,
         high_band=high_band,
         low_band=low_band,
         vwap_deviation_pct=vwap_deviation_pct,
+        vwap_zscore_threshold=vwap_zscore_threshold,
     )
 
     trades: list[dict[str, Any]] = []
@@ -147,14 +155,17 @@ def run_t0_portfolio_backtest(
         base_price = day_rows[0]['close']
         sellable_shares = shares
         open_leg: T0Leg | None = None
-        pending_open_side: str | None = None
-        pending_close_reason: str | None = None
+        pending_open: T0PendingIntent | None = None
+        pending_close: T0PendingIntent | None = None
         day_t_pnl = 0.0
         round_trips_today = 0
         stop_trading_today = False
         start_equity = cash + shares * base_price
         cum_notional = 0.0
         cum_volume = 0.0
+        dev_count = 0
+        dev_mean = 0.0
+        dev_m2 = 0.0
 
         for idx, row in enumerate(day_rows):
             price = row['close']
@@ -164,6 +175,16 @@ def run_t0_portfolio_backtest(
             cum_notional += price * volume
             cum_volume += volume
             vwap = cum_notional / cum_volume if cum_volume > 0 else price
+            vwap_deviation = (
+                (price / vwap - 1.0) * 100.0 if vwap > 0 else 0.0
+            )
+            dev_count += 1
+            dev_delta = vwap_deviation - dev_mean
+            dev_mean += dev_delta / dev_count
+            dev_m2 += dev_delta * (vwap_deviation - dev_mean)
+            vwap_deviation_std = (
+                sqrt(dev_m2 / dev_count) if dev_count > 1 else 0.0
+            )
             rng = day_high - day_low
             amplitude_pct = rng / base_price * 100.0 if base_price > 0 else 0.0
             signal = evaluate_t0_signal(
@@ -173,16 +194,19 @@ def run_t0_portfolio_backtest(
                     day_high=day_high,
                     vwap=vwap,
                     amplitude_pct=amplitude_pct,
+                    vwap_deviation_std_pct=vwap_deviation_std,
                 ),
                 signal_config,
             )
             pos = signal.position
             now_time = row['dt'].time()
+            is_last_bar = idx == len(day_rows) - 1
 
             if open_leg is None:
-                if pending_open_side is not None:
-                    side = pending_open_side
-                    pending_open_side = None
+                if pending_open is not None:
+                    intent = execution_policy.execute_pending(pending_open)
+                    pending_open = None
+                    side = intent.side if intent is not None else ''
                     if (
                         side == 'sell_first' and
                         sellable_shares >= t_shares and shares >= t_shares
@@ -225,9 +249,14 @@ def run_t0_portfolio_backtest(
                     and signal.sell
                     and price >= base_price
                 ):
-                    if exec_style == 'next_bar':
-                        if idx != len(day_rows) - 1:
-                            pending_open_side = 'sell_first'
+                    plan = execution_policy.plan_open(
+                        T0Intent(kind='open', side='sell_first'),
+                        is_last_bar=is_last_bar,
+                    )
+                    if plan.pending is not None:
+                        pending_open = plan.pending
+                        continue
+                    if plan.execute is None:
                         continue
                     fill = fill_sim.open_leg(
                         'sell_first', price=price, shares=t_shares,
@@ -239,9 +268,14 @@ def run_t0_portfolio_backtest(
                     open_leg = fill.leg
                     trades.append(fill.trade)
                 elif allow_buy_first and sellable_shares >= t_shares and signal.buy:
-                    if exec_style == 'next_bar':
-                        if idx != len(day_rows) - 1:
-                            pending_open_side = 'buy_first'
+                    plan = execution_policy.plan_open(
+                        T0Intent(kind='open', side='buy_first'),
+                        is_last_bar=is_last_bar,
+                    )
+                    if plan.pending is not None:
+                        pending_open = plan.pending
+                        continue
+                    if plan.execute is None:
                         continue
                     fill = fill_sim.open_leg(
                         'buy_first', price=price, shares=t_shares,
@@ -258,11 +292,12 @@ def run_t0_portfolio_backtest(
 
             move_pct = ((price - open_leg.price) / open_leg.price * 100.0
                         if open_leg.price > 0 else 0.0)
-            executing_pending_close = pending_close_reason is not None
+            executing_pending_close = pending_close is not None
             if executing_pending_close:
+                intent = execution_policy.execute_pending(pending_close)
                 should_close = True
-                reason = pending_close_reason
-                pending_close_reason = None
+                reason = intent.reason if intent is not None else ''
+                pending_close = None
             else:
                 should_close = False
                 reason = ''
@@ -286,12 +321,18 @@ def run_t0_portfolio_backtest(
             if not should_close:
                 reason = 'forced_close'
             elif (
-                exec_style == 'next_bar' and
-                not executing_pending_close and
-                idx != len(day_rows) - 1
+                not executing_pending_close
             ):
-                pending_close_reason = reason
-                continue
+                plan = execution_policy.plan_close(
+                    T0Intent(kind='close', side=open_leg.side, reason=reason),
+                    is_last_bar=is_last_bar,
+                )
+                if plan.pending is not None:
+                    pending_close = plan.pending
+                    continue
+                if plan.execute is None:
+                    continue
+                reason = plan.execute.reason
 
             if open_leg.side == 'sell_first':
                 fill = fill_sim.close_leg(
@@ -440,6 +481,7 @@ def run_t0_portfolio_backtest(
             'stop_after_cost_floor_pct': stop_after_cost_floor_pct,
             'signal_mode': mode,
             'vwap_deviation_pct': vwap_deviation_pct,
+            'vwap_zscore_threshold': vwap_zscore_threshold,
             'execution_style': exec_style,
             'earliest_entry_time': earliest_entry_time,
             'latest_entry_time': latest_entry_time,

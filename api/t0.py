@@ -448,6 +448,9 @@ def _run_t0_portfolio_with_strategy(
         vwap_deviation_pct=float(
             strategy_params.get('vwap_deviation_pct', 1.0),
         ),
+        vwap_zscore_threshold=float(
+            strategy_params.get('vwap_zscore_threshold', 1.5),
+        ),
         execution_style=str(strategy_params.get('execution_style') or 'market'),
         earliest_entry_time=str(strategy_params.get('earliest_entry_time', '09:35')),
         latest_entry_time=str(strategy_params.get('latest_entry_time', '14:00')),

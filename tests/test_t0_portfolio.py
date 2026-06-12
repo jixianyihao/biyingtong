@@ -323,3 +323,41 @@ def test_next_bar_execution_uses_following_minute_for_open_and_close():
         ('2026-01-26 09:36:00', 'buy_t', 96.0),
         ('2026-01-26 10:06:00', 'sell_back', 99.0),
     ]
+
+
+def test_adaptive_vwap_mode_uses_intraday_deviation_volatility_to_open_t():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0, high=100.0, low=100.0),
+        _bar('2026-01-26 09:35:00', 100.1, high=100.1, low=100.0),
+        _bar('2026-01-26 09:36:00', 102.0, high=102.0, low=100.0),
+        _bar('2026-01-26 10:05:00', 100.5, high=102.0, low=100.0),
+        _bar('2026-01-26 15:00:00', 100.5, high=102.0, low=100.0),
+    ]
+
+    result = run_t0_portfolio_backtest(
+        '688981.SH',
+        bars,
+        initial_capital=100_000,
+        base_position_pct=1.0,
+        t_shares_pct=0.2,
+        allow_sell_first=True,
+        allow_buy_first=False,
+        signal_mode='adaptive_vwap',
+        # Static VWAP threshold is unreachable; this should trigger only via
+        # adaptive z-score from the 09:36 spike versus prior deviation noise.
+        vwap_deviation_pct=99.0,
+        vwap_zscore_threshold=1.5,
+        min_amplitude_pct=1.0,
+        high_band=0.999,
+        low_band=0.25,
+        take_profit_pct=1.0,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    assert result['round_trips'] == 1
+    assert result['t_pnl'] == pytest.approx(300.0)
+    assert result['params']['signal_mode'] == 'adaptive_vwap'
+    assert result['params']['vwap_zscore_threshold'] == 1.5
+    assert [t['action'] for t in result['trades']] == ['sell_t', 'buy_back']

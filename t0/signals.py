@@ -10,6 +10,7 @@ class IntradaySignalState:
     day_high: float
     vwap: float
     amplitude_pct: float
+    vwap_deviation_std_pct: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class T0SignalConfig:
     high_band: float = 0.82
     low_band: float = 0.25
     vwap_deviation_pct: float = 1.0
+    vwap_zscore_threshold: float = 1.5
 
 
 @dataclass(frozen=True)
@@ -26,12 +28,17 @@ class T0Signal:
     sell: bool
     position: float
     vwap_deviation_pct: float
+    vwap_zscore: float
     reasons: list[str]
 
 
-def _mode_flags(signal_mode: str) -> tuple[bool, bool]:
+def _mode_flags(signal_mode: str) -> tuple[bool, bool, bool]:
     mode = (signal_mode or 'band').strip().lower()
-    return mode in {'band', 'hybrid'}, mode in {'vwap_deviation', 'hybrid'}
+    return (
+        mode in {'band', 'hybrid'},
+        mode in {'vwap_deviation', 'hybrid'},
+        mode in {'adaptive_vwap', 'hybrid_adaptive'},
+    )
 
 
 def evaluate_t0_signal(
@@ -50,7 +57,13 @@ def evaluate_t0_signal(
         (state.price / state.vwap - 1.0) * 100.0
         if state.vwap > 0 else 0.0
     )
-    use_band_signal, use_vwap_signal = _mode_flags(config.signal_mode)
+    vwap_zscore = (
+        vwap_deviation / state.vwap_deviation_std_pct
+        if state.vwap_deviation_std_pct > 0 else 0.0
+    )
+    use_band_signal, use_vwap_signal, use_adaptive_vwap = _mode_flags(
+        config.signal_mode,
+    )
 
     sell = False
     buy = False
@@ -67,11 +80,18 @@ def evaluate_t0_signal(
     if use_vwap_signal and vwap_deviation <= -config.vwap_deviation_pct:
         buy = True
         reasons.append('vwap_low')
+    if use_adaptive_vwap and vwap_zscore >= config.vwap_zscore_threshold:
+        sell = True
+        reasons.append('vwap_z_high')
+    if use_adaptive_vwap and vwap_zscore <= -config.vwap_zscore_threshold:
+        buy = True
+        reasons.append('vwap_z_low')
 
     return T0Signal(
         buy=buy,
         sell=sell,
         position=round(position, 4),
         vwap_deviation_pct=round(vwap_deviation, 4),
+        vwap_zscore=round(vwap_zscore, 4),
         reasons=reasons,
     )

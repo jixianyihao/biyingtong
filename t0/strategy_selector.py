@@ -74,7 +74,27 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
             'selected_variant': 'vwap_hybrid_next_bar',
             'execution_style': 'next_bar',
         }
-        return [default, active, guarded, vwap_hybrid, vwap_hybrid_next_bar]
+        vwap_hybrid_guarded_next_bar = {
+            **vwap_hybrid_next_bar,
+            'selected_variant': 'vwap_hybrid_guarded_next_bar',
+            # Real LC1 sweep on 300951.SZ favored this as a validation-stable
+            # defensive path: lower full-period cost cut, but much better
+            # validation cost path and worst-fold drawdown of cost basis.
+            'vwap_deviation_pct': 0.7,
+            'max_round_trips_per_day': 1,
+            'take_profit_pct': 0.55,
+            'stop_loss_pct': 0.9,
+            'stop_after_cost_floor_pct': -1.0,
+            'stop_after_daily_loss': True,
+        }
+        return [
+            default,
+            active,
+            guarded,
+            vwap_hybrid,
+            vwap_hybrid_next_bar,
+            vwap_hybrid_guarded_next_bar,
+        ]
 
     single = {
         **defaults,
