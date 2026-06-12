@@ -7,6 +7,14 @@ from typing import Any, Iterable
 
 
 LC1_RECORD = struct.Struct('<HHfffffii')
+_LC1_METRICS_CACHE: dict[
+    str,
+    tuple[tuple[int, int], dict[str, Any] | None],
+] = {}
+_LC1_BARS_CACHE: dict[
+    str,
+    tuple[tuple[int, int], list[dict[str, Any]]],
+] = {}
 DEFAULT_MINLINE_ROOTS = [
     Path(r'C:\new_tdx_mock\vipdoc\sh\minline'),
     Path(r'C:\new_tdx_mock\vipdoc\sz\minline'),
@@ -72,6 +80,15 @@ def parse_lc1_file(path: str | Path) -> list[dict[str, Any]]:
     return bars
 
 
+def _file_fingerprint(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return int(stat.st_size), int(stat.st_mtime_ns)
+
+
+def _copy_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [dict(bar) for bar in bars]
+
+
 def load_lc1_bars_for_code(
     code: str,
     roots: Iterable[str | Path] | None = None,
@@ -79,7 +96,14 @@ def load_lc1_bars_for_code(
     for root in roots or DEFAULT_MINLINE_ROOTS:
         p = _path_for_code(root, code)
         if p.exists():
-            return parse_lc1_file(p)
+            fingerprint = _file_fingerprint(p)
+            cache_key = str(p.resolve())
+            cached = _LC1_BARS_CACHE.get(cache_key)
+            if cached and cached[0] == fingerprint:
+                return _copy_bars(cached[1])
+            bars = parse_lc1_file(p)
+            _LC1_BARS_CACHE[cache_key] = (fingerprint, _copy_bars(bars))
+            return bars
     return []
 
 
@@ -218,6 +242,25 @@ def _candidate_metrics_from_file(code: str, path: Path) -> dict[str, Any] | None
     }
 
 
+def _candidate_metrics_from_file_cached(
+    code: str,
+    path: Path,
+) -> dict[str, Any] | None:
+    fingerprint = _file_fingerprint(path)
+    cache_key = str(path.resolve())
+    cached = _LC1_METRICS_CACHE.get(cache_key)
+    if cached and cached[0] == fingerprint:
+        metrics = cached[1]
+        return dict(metrics) if metrics is not None else None
+
+    metrics = _candidate_metrics_from_file(code, path)
+    _LC1_METRICS_CACHE[cache_key] = (
+        fingerprint,
+        dict(metrics) if metrics is not None else None,
+    )
+    return metrics
+
+
 def _sample_paths_evenly(paths: list[Path], max_files: int) -> list[Path]:
     limit = max(1, int(max_files))
     if len(paths) <= limit:
@@ -260,7 +303,7 @@ def scan_lc1_candidates(
     rows: list[dict[str, Any]] = []
     for path in paths:
         code = _code_from_path(path)
-        metrics = _candidate_metrics_from_file(code, path)
+        metrics = _candidate_metrics_from_file_cached(code, path)
         if not metrics:
             continue
         if metrics['days'] < min_days:

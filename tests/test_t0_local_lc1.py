@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from t0.local_lc1 import parse_lc1_file, scan_lc1_candidates
+from t0.local_lc1 import (
+    _LC1_BARS_CACHE,
+    _LC1_METRICS_CACHE,
+    load_lc1_bars_for_code,
+    parse_lc1_file,
+    scan_lc1_candidates,
+)
 
 
 def _date_code(year: int, month: int, day: int) -> int:
@@ -140,3 +146,85 @@ def test_scan_lc1_candidates_max_files_samples_across_market_not_by_size(tmp_pat
     )
 
     assert [r['code'] for r in rows] == ['000009.SZ']
+
+
+def test_scan_lc1_candidates_reuses_metrics_until_file_changes(
+    tmp_path,
+    monkeypatch,
+):
+    _LC1_METRICS_CACHE.clear()
+    _write_lc1(tmp_path, '000009.SZ', [30 + i * 0.06 for i in range(80)])
+
+    read_count = 0
+    original_read_bytes = Path.read_bytes
+
+    def counted_read_bytes(path: Path):
+        nonlocal read_count
+        if path.name == 'sz000009.lc1':
+            read_count += 1
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', counted_read_bytes)
+    scan_args = {
+        'top_n': 5,
+        'max_files': 10,
+        'min_days': 10,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'score_profile': 'stable_t',
+    }
+
+    first = scan_lc1_candidates([tmp_path / 'sz' / 'minline'], **scan_args)
+    second = scan_lc1_candidates([tmp_path / 'sz' / 'minline'], **scan_args)
+
+    assert [r['code'] for r in first] == ['000009.SZ']
+    assert [r['code'] for r in second] == ['000009.SZ']
+    assert read_count == 1
+
+    _write_lc1(
+        tmp_path,
+        '000009.SZ',
+        [35 + i * 0.08 for i in range(80)],
+    )
+    third = scan_lc1_candidates([tmp_path / 'sz' / 'minline'], **scan_args)
+
+    assert [r['code'] for r in third] == ['000009.SZ']
+    assert read_count == 2
+
+
+def test_load_lc1_bars_for_code_reuses_bars_until_file_changes(
+    tmp_path,
+    monkeypatch,
+):
+    _LC1_BARS_CACHE.clear()
+    _write_lc1(tmp_path, '000009.SZ', [30 + i * 0.06 for i in range(80)])
+
+    read_count = 0
+    original_read_bytes = Path.read_bytes
+
+    def counted_read_bytes(path: Path):
+        nonlocal read_count
+        if path.name == 'sz000009.lc1':
+            read_count += 1
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', counted_read_bytes)
+    roots = [tmp_path / 'sz' / 'minline']
+
+    first = load_lc1_bars_for_code('000009.SZ', roots)
+    second = load_lc1_bars_for_code('000009.SZ', roots)
+
+    assert len(first) == 80
+    assert len(second) == 80
+    assert first is not second
+    assert read_count == 1
+
+    first[0]['close'] = -1
+    third = load_lc1_bars_for_code('000009.SZ', roots)
+    assert third[0]['close'] != -1
+
+    _write_lc1(tmp_path, '000009.SZ', [35 + i * 0.08 for i in range(80)])
+    fourth = load_lc1_bars_for_code('000009.SZ', roots)
+
+    assert len(fourth) == 80
+    assert read_count == 2
