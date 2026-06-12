@@ -8,6 +8,7 @@ from t0.scorer import score_minute_bars, score_snapshot
 from t0.allocator import choose_t0_allocation
 from t0.grid import run_grid_search
 from t0.local_lc1 import load_lc1_bars_for_code, scan_lc1_candidates
+from t0.optimizer import T0OptimizerConstraints, optimize_t0_parameters
 from t0.portfolio import run_t0_portfolio_backtest
 from t0.strategy_selector import choose_best_t0_result, t0_strategy_variants
 from tdx_service import tdx
@@ -17,6 +18,15 @@ from . import api_bp
 
 _T0_PORTFOLIO_PREVIEW_CACHE: dict[tuple, dict] = {}
 _T0_PORTFOLIO_PREVIEW_CACHE_MAX = 5_000
+
+DEFAULT_T0_OPTIMIZER_GRID = {
+    'take_profit_pct': [0.55, 0.65, 0.75],
+    'stop_loss_pct': [0.75, 0.9, 1.0],
+    'vwap_deviation_pct': [0.7, 0.9],
+    'stop_after_cost_floor_pct': [-0.75, -1.0, -1.25],
+    'max_round_trips_per_day': [1, 2],
+    'latest_entry_time': ['13:30', '14:00'],
+}
 
 
 def _float_arg(name: str, default: float):
@@ -460,6 +470,20 @@ def _run_t0_portfolio_with_strategy(
         _T0_PORTFOLIO_PREVIEW_CACHE.clear()
     _T0_PORTFOLIO_PREVIEW_CACHE[cache_key] = dict(result)
     return result
+
+
+def _load_t0_bars_from_body(code: str, body: dict) -> tuple[list[dict], str]:
+    count = _body_int(body, 'count', -1)
+    bars = tdx.get_kline(code, period='1m', count=count, dividend_type='front')
+    bars = bars if isinstance(bars, list) else []
+    data_source = 'tdx_sdk'
+    if not bars:
+        roots = body.get('roots')
+        if roots is not None and not isinstance(roots, list):
+            raise ValueError('roots must be a list of minline directories')
+        bars = load_lc1_bars_for_code(code, roots)
+        data_source = 'local_lc1' if bars else data_source
+    return bars, data_source
 
 
 @api_bp.route('/t0/signal')
@@ -916,20 +940,121 @@ def t0_candidates():
     })
 
 
+@api_bp.route('/t0/optimize', methods=['POST'])
+def t0_optimize():
+    body = request.get_json(silent=True) or {}
+    code = str(body.get('code') or '688981.SH').strip().upper()
+    try:
+        bars, data_source = _load_t0_bars_from_body(code, body)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    if not bars:
+        return jsonify({'error': f'no 1m bars for {code}'}), 404
+
+    initial_capital = _body_float(body, 'initial_capital', 1_000_000.0)
+    strategy_selection_ratio = _body_float(body, 'strategy_selection_ratio', 0.35)
+    selection_bars, _ = _split_bars_for_validation(
+        bars, strategy_selection_ratio,
+    )
+    allocation = choose_t0_allocation(
+        selection_bars,
+        requested_mode=str(body.get('allocation_mode') or 'auto'),
+    )
+    base_position_pct = (
+        _body_float(body, 'base_position_pct', allocation['base_position_pct'])
+        if _has_body_value(body, 'base_position_pct')
+        else allocation['base_position_pct']
+    )
+    t_shares_pct = (
+        _body_float(body, 't_shares_pct', allocation['t_shares_pct'])
+        if _has_body_value(body, 't_shares_pct')
+        else allocation['t_shares_pct']
+    )
+    variants = t0_strategy_variants(allocation)
+    selected = choose_best_t0_result(
+        _run_t0_portfolio_with_strategy(
+            code,
+            selection_bars,
+            allocation=allocation,
+            initial_capital=initial_capital,
+            base_position_pct=base_position_pct,
+            t_shares_pct=t_shares_pct,
+            strategy_params=params,
+        )
+        for params in variants
+    )
+    base_params = next(
+        p for p in variants
+        if p['selected_variant'] == selected['selected_variant']
+    )
+    base_params = {
+        **base_params,
+        'selected_variant': 'optimizer_candidate',
+        'signal_mode': 'hybrid',
+        'execution_style': 'next_bar',
+        'stop_after_daily_loss': True,
+        'fee_bps': _body_float(body, 'fee_bps', 2.5),
+        'sell_tax_bps': _body_float(body, 'sell_tax_bps', 5.0),
+        'slippage_bps': _body_float(body, 'slippage_bps', 2.0),
+    }
+    grid = body.get('grid') or DEFAULT_T0_OPTIMIZER_GRID
+    if not isinstance(grid, dict):
+        return jsonify({'error': 'grid must be an object'}), 400
+
+    optimizer = optimize_t0_parameters(
+        code,
+        bars,
+        base_params=base_params,
+        grid=grid,
+        run_strategy=lambda c, slice_bars, params: _run_t0_portfolio_with_strategy(
+            c,
+            slice_bars,
+            allocation=allocation,
+            initial_capital=initial_capital,
+            base_position_pct=base_position_pct,
+            t_shares_pct=t_shares_pct,
+            strategy_params=params,
+        ),
+        offset=_body_int(body, 'offset', 0),
+        limit=_body_int(body, 'limit', 80),
+        validation_ratio=_body_float(body, 'validation_ratio', 0.35),
+        fold_count=_body_int(body, 'fold_count', 3),
+        constraints=T0OptimizerConstraints(
+            min_full_cost_reduction_pct=_body_float(
+                body, 'min_full_cost_reduction_pct', 0.5,
+            ),
+            min_validation_cost_reduction_pct=_body_float(
+                body, 'min_validation_cost_reduction_pct', 0.5,
+            ),
+            min_full_round_trips=_body_int(body, 'min_full_round_trips', 20),
+            min_validation_round_trips=_body_int(
+                body, 'min_validation_round_trips', 8,
+            ),
+            min_fold_cost_reduction_pct=_body_float(
+                body, 'min_fold_cost_reduction_pct', -1.2,
+            ),
+            min_fold_min_cost_reduction_pct=_body_float(
+                body, 'min_fold_min_cost_reduction_pct', -1.2,
+            ),
+        ),
+    )
+    return jsonify({
+        'code': code,
+        'data_source': data_source,
+        'allocation': allocation,
+        'base_variant': selected['selected_variant'],
+        'optimizer': optimizer,
+    })
+
+
 @api_bp.route('/t0/portfolio', methods=['POST'])
 def t0_portfolio():
     body = request.get_json(silent=True) or {}
     code = str(body.get('code') or '688981.SH').strip().upper()
-    count = _body_int(body, 'count', -1)
-    bars = tdx.get_kline(code, period='1m', count=count, dividend_type='front')
-    bars = bars if isinstance(bars, list) else []
-    data_source = 'tdx_sdk'
-    if not bars:
-        roots = body.get('roots')
-        if roots is not None and not isinstance(roots, list):
-            return jsonify({'error': 'roots must be a list of minline directories'}), 400
-        bars = load_lc1_bars_for_code(code, roots)
-        data_source = 'local_lc1' if bars else data_source
+    try:
+        bars, data_source = _load_t0_bars_from_body(code, body)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     if not bars:
         return jsonify({'error': f'no 1m bars for {code}'}), 404
     strategy_selection_ratio = _body_float(body, 'strategy_selection_ratio', 0.35)
@@ -956,7 +1081,8 @@ def t0_portfolio():
         'stop_loss_pct', 'fee_bps', 'sell_tax_bps', 'slippage_bps',
         'allow_sell_first', 'allow_buy_first', 'max_round_trips_per_day',
         'stop_after_daily_loss', 'stop_after_cost_floor_pct',
-        'signal_mode', 'vwap_deviation_pct', 'execution_style',
+        'signal_mode', 'vwap_deviation_pct', 'vwap_zscore_threshold',
+        'execution_style',
         'earliest_entry_time', 'latest_entry_time',
     }
     manual_strategy = any(_has_body_value(body, k) for k in manual_strategy_keys)
@@ -1015,6 +1141,10 @@ def t0_portfolio():
             'vwap_deviation_pct': _body_float(
                 body, 'vwap_deviation_pct',
                 float(strategy_defaults.get('vwap_deviation_pct', 1.0)),
+            ),
+            'vwap_zscore_threshold': _body_float(
+                body, 'vwap_zscore_threshold',
+                float(strategy_defaults.get('vwap_zscore_threshold', 1.5)),
             ),
             'execution_style': str(
                 body.get('execution_style')

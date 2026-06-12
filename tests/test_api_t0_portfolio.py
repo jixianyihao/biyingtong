@@ -302,6 +302,60 @@ def test_t0_portfolio_endpoint_accepts_execution_style_param(monkeypatch):
     assert body['params']['execution_style'] == 'next_bar'
 
 
+def test_t0_optimize_endpoint_runs_bounded_parameter_batch(monkeypatch):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _FakeTDX())
+    captured = {}
+
+    def fake_optimize(code, bars, **kwargs):
+        captured['code'] = code
+        captured['bar_count'] = len(bars)
+        captured.update(kwargs)
+        return {
+            'total_grid': 2,
+            'offset': kwargs['offset'],
+            'limit': kwargs['limit'],
+            'evaluated': 1,
+            'next_offset': 1,
+            'rows': [{
+                'score': 9.5,
+                'params': {'take_profit_pct': 0.55},
+                'full': {'cost_reduction_pct': 1.2},
+                'validation': {'cost_reduction_pct': 1.0},
+                'folds': [],
+            }],
+            'rejected_full': 0,
+            'rejected_validation': 0,
+            'rejected_fold': 0,
+        }
+
+    monkeypatch.setattr(t0_api, 'optimize_t0_parameters', fake_optimize)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/optimize', json={
+        'code': '688981.SH',
+        'offset': 3,
+        'limit': 1,
+        'grid': {'take_profit_pct': [0.55, 0.65]},
+        'fee_bps': 0,
+        'sell_tax_bps': 0,
+        'slippage_bps': 0,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['code'] == '688981.SH'
+    assert body['data_source'] == 'tdx_sdk'
+    assert body['optimizer']['next_offset'] == 1
+    assert captured['code'] == '688981.SH'
+    assert captured['bar_count'] == 4
+    assert captured['offset'] == 3
+    assert captured['limit'] == 1
+    assert captured['grid'] == {'take_profit_pct': [0.55, 0.65]}
+    assert captured['base_params']['signal_mode'] == 'hybrid'
+    assert captured['base_params']['execution_style'] == 'next_bar'
+
+
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(
     monkeypatch,
     tmp_path,
