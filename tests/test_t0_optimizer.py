@@ -99,6 +99,46 @@ def test_optimize_t0_parameters_sorts_by_cost_path_and_reports_next_offset():
     assert out['rows'][0]['validation']['cost_reduction_pct'] == 1.1
 
 
+def test_optimize_t0_parameters_can_evaluate_base_params_before_grid():
+    bars = [
+        _bar('2026-01-01'), _bar('2026-01-02'),
+        _bar('2026-01-03'), _bar('2026-01-04'),
+    ]
+    seen: list[float] = []
+
+    def run_strategy(code: str, slice_bars: list[dict], params: dict) -> dict:
+        if len({bar['date'][:10] for bar in slice_bars}) == 4:
+            seen.append(params['take_profit_pct'])
+        return _result(cost=1.0, min_cost=-0.2, trips=30)
+
+    out = optimize_t0_parameters(
+        '300951.SZ',
+        bars,
+        base_params={'take_profit_pct': 0.9},
+        grid={'take_profit_pct': [0.5, 0.7]},
+        run_strategy=run_strategy,
+        offset=0,
+        limit=1,
+        validation_ratio=0.25,
+        fold_count=1,
+        include_base_candidate=True,
+        constraints=T0OptimizerConstraints(
+            min_full_cost_reduction_pct=0.5,
+            min_validation_cost_reduction_pct=0.5,
+            min_full_round_trips=20,
+            min_validation_round_trips=8,
+            min_fold_cost_reduction_pct=-1.2,
+            min_fold_min_cost_reduction_pct=-1.2,
+        ),
+    )
+
+    assert out['total_grid'] == 3
+    assert out['evaluated'] == 1
+    assert out['next_offset'] == 1
+    assert seen == [0.9]
+    assert out['rows'][0]['params']['take_profit_pct'] == 0.9
+
+
 def test_optimize_t0_parameters_rejects_candidates_with_bad_fold_cost_path():
     bars = [_bar('2026-01-01'), _bar('2026-01-02'), _bar('2026-01-03'), _bar('2026-01-04')]
     grid = {'take_profit_pct': [0.7], 'stop_loss_pct': [0.8]}
@@ -131,4 +171,3 @@ def test_optimize_t0_parameters_rejects_candidates_with_bad_fold_cost_path():
 
     assert out['rows'] == []
     assert out['rejected_fold'] == 1
-

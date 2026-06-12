@@ -143,9 +143,10 @@ def optimize_t0_parameters(
     validation_ratio: float = 0.35,
     fold_count: int = 3,
     constraints: T0OptimizerConstraints | None = None,
+    include_base_candidate: bool = False,
 ) -> dict[str, Any]:
     constraints = constraints or T0OptimizerConstraints()
-    total_grid = _grid_size(grid)
+    total_grid = _grid_size(grid) + (1 if include_base_candidate else 0)
     train, validation = _split_train_validation(bars, validation_ratio)
     validation_bars = validation or train
     folds = _split_folds(validation_bars, fold_count)
@@ -155,7 +156,31 @@ def optimize_t0_parameters(
     rejected_fold = 0
     evaluated = 0
 
-    for overrides in iter_parameter_grid(grid, offset=offset, limit=limit):
+    candidate_overrides: Iterable[dict[str, Any]]
+    if include_base_candidate:
+        start = max(0, int(offset or 0))
+        stop = None if limit is None else start + max(0, int(limit))
+
+        def _candidates() -> Iterable[dict[str, Any]]:
+            if start == 0:
+                yield {}
+            grid_offset = max(0, start - 1)
+            grid_limit = None if stop is None else max(0, stop - 1 - grid_offset)
+            if grid_limit == 0:
+                return
+            yield from iter_parameter_grid(
+                grid,
+                offset=grid_offset,
+                limit=grid_limit,
+            )
+
+        candidate_overrides = _candidates()
+    else:
+        candidate_overrides = iter_parameter_grid(
+            grid, offset=offset, limit=limit,
+        )
+
+    for overrides in candidate_overrides:
         evaluated += 1
         params = {**base_params, **overrides}
         full = run_strategy(code, bars, params)
@@ -209,4 +234,3 @@ def optimize_t0_parameters(
         'rejected_validation': rejected_validation,
         'rejected_fold': rejected_fold,
     }
-

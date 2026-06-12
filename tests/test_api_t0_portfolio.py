@@ -423,6 +423,7 @@ def test_t0_optimize_endpoint_runs_bounded_parameter_batch(monkeypatch):
     assert captured['offset'] == 3
     assert captured['limit'] == 1
     assert captured['grid'] == {'take_profit_pct': [0.55, 0.65]}
+    assert captured['include_base_candidate'] is True
     assert captured['base_params']['signal_mode'] == 'band'
     assert captured['base_params']['execution_style'] == 'market'
 
@@ -547,6 +548,40 @@ def test_t0_optimize_endpoint_preserves_selected_base_signal_and_execution(
     assert resp.status_code == 200
     assert captured['base_params']['signal_mode'] == 'band'
     assert captured['base_params']['execution_style'] == 'market'
+
+
+def test_default_t0_optimizer_grid_sweeps_signal_and_execution_layers():
+    import api.t0 as t0_api
+
+    assert t0_api.DEFAULT_T0_OPTIMIZER_GRID['signal_mode'] == [
+        'band',
+        'hybrid',
+    ]
+    assert t0_api.DEFAULT_T0_OPTIMIZER_GRID['execution_style'] == [
+        'market',
+        'next_bar',
+    ]
+
+
+def test_default_t0_optimizer_grid_interleaves_signal_and_execution_early():
+    import api.t0 as t0_api
+    from t0.optimizer import iter_parameter_grid
+
+    first_four = list(iter_parameter_grid(
+        t0_api.DEFAULT_T0_OPTIMIZER_GRID,
+        limit=4,
+    ))
+    pairs = {
+        (row['signal_mode'], row['execution_style'])
+        for row in first_four
+    }
+
+    assert pairs == {
+        ('band', 'market'),
+        ('band', 'next_bar'),
+        ('hybrid', 'market'),
+        ('hybrid', 'next_bar'),
+    }
 
 
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(

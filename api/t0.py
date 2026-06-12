@@ -30,6 +30,8 @@ DEFAULT_T0_OPTIMIZER_GRID = {
     'stop_after_cost_floor_pct': [-0.75, -1.0, -1.25],
     'max_round_trips_per_day': [1, 2],
     'latest_entry_time': ['13:30', '14:00'],
+    'signal_mode': ['band', 'hybrid'],
+    'execution_style': ['market', 'next_bar'],
 }
 
 
@@ -1058,6 +1060,7 @@ def t0_optimize():
         limit=_body_int(body, 'limit', 80),
         validation_ratio=_body_float(body, 'validation_ratio', 0.35),
         fold_count=_body_int(body, 'fold_count', 3),
+        include_base_candidate=True,
         constraints=T0OptimizerConstraints(
             min_full_cost_reduction_pct=_body_float(
                 body, 'min_full_cost_reduction_pct', 0.5,
