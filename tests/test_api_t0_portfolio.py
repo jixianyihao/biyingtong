@@ -128,6 +128,7 @@ def test_t0_portfolio_endpoint_auto_allocation_uses_bull_mode(monkeypatch):
     resp = app.test_client().post('/api/t0/portfolio', json={
         'code': '688981.SH',
         'initial_capital': 1_000_000,
+        'strategy_selection_ratio': 0.0,
         'fee_bps': 0,
         'sell_tax_bps': 0,
         'slippage_bps': 0,
@@ -144,6 +145,25 @@ def test_t0_portfolio_endpoint_auto_allocation_uses_bull_mode(monkeypatch):
     assert body['params']['low_band'] == 0.25
     assert body['params']['stop_loss_pct'] == 1.0
     assert body['base_shares'] == 9000
+
+
+def test_t0_portfolio_endpoint_defaults_to_train_slice_selection(monkeypatch):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _LateBullishFakeTDX())
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/portfolio', json={
+        'code': '688981.SH',
+        'initial_capital': 1_000_000,
+        'fee_bps': 0,
+        'sell_tax_bps': 0,
+        'slippage_bps': 0,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['strategy_selection_ratio'] == 0.35
+    assert body['strategy_selection_days'] == 3
 
 
 def test_t0_portfolio_endpoint_can_select_strategy_on_train_slice(monkeypatch):

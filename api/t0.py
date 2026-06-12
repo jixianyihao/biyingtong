@@ -713,7 +713,7 @@ def t0_portfolio():
         data_source = 'local_lc1' if bars else data_source
     if not bars:
         return jsonify({'error': f'no 1m bars for {code}'}), 404
-    strategy_selection_ratio = _body_float(body, 'strategy_selection_ratio', 0.0)
+    strategy_selection_ratio = _body_float(body, 'strategy_selection_ratio', 0.35)
     selection_bars, _ = _split_bars_for_validation(
         bars, strategy_selection_ratio,
     )
