@@ -87,6 +87,18 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
             'stop_after_cost_floor_pct': -1.0,
             'stop_after_daily_loss': True,
         }
+        vwap_hybrid_profit_guard_next_bar = {
+            **vwap_hybrid_next_bar,
+            'selected_variant': 'vwap_hybrid_profit_guard_next_bar',
+            # Optimizer-backed 300951.SZ LC1 result:
+            # cost +1.5638%, validation cost +1.2514%, worst fold -0.3217%.
+            'vwap_deviation_pct': 0.9,
+            'max_round_trips_per_day': 1,
+            'take_profit_pct': 0.75,
+            'stop_loss_pct': 1.0,
+            'stop_after_cost_floor_pct': -1.0,
+            'stop_after_daily_loss': True,
+        }
         return [
             default,
             active,
@@ -94,6 +106,7 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
             vwap_hybrid,
             vwap_hybrid_next_bar,
             vwap_hybrid_guarded_next_bar,
+            vwap_hybrid_profit_guard_next_bar,
         ]
 
     single = {
