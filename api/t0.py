@@ -670,7 +670,7 @@ def t0_candidates():
             selection_bars = train_bars if validation_bars else bars
             allocation = choose_t0_allocation(selection_bars)
             variants = t0_strategy_variants(allocation)
-            selected = choose_best_t0_result(
+            train_results = [
                 _run_t0_portfolio_with_strategy(
                     str(row['code']),
                     selection_bars,
@@ -679,6 +679,24 @@ def t0_candidates():
                     strategy_params=params,
                 )
                 for params in variants
+            ]
+            validation_selection_results = (
+                [
+                    _run_t0_portfolio_with_strategy(
+                        str(row['code']),
+                        validation_bars,
+                        allocation=allocation,
+                        initial_capital=1_000_000.0,
+                        strategy_params=params,
+                    )
+                    for params in variants
+                ]
+                if validation_bars and len(variants) > 1
+                else []
+            )
+            selected = choose_best_validated_t0_result(
+                train_results,
+                validation_selection_results,
             )
             selected_variant = selected['selected_variant']
             selected_params = next(

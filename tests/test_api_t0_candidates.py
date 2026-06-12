@@ -278,6 +278,86 @@ def test_t0_candidates_endpoint_skips_next_bar_stress_when_preview_fails(
     assert next_bar_calls == []
 
 
+def test_t0_candidates_endpoint_uses_validation_aware_variant(monkeypatch):
+    import api.t0 as t0_api
+
+    bars = [
+        {'date': '2026-05-01 09:31', 'close': 100.0},
+        {'date': '2026-05-02 09:31', 'close': 101.0},
+        {'date': '2026-05-03 09:31', 'close': 102.0},
+        {'date': '2026-05-04 09:31', 'close': 103.0},
+    ]
+    monkeypatch.setattr(t0_api, 'scan_lc1_candidates', lambda *a, **k: [{
+        'code': '688981.SH',
+        'bar_count': len(bars),
+        'days': 4,
+    }])
+    monkeypatch.setattr(t0_api, 'load_lc1_bars_for_code', lambda *a, **k: bars)
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda *a, **k: {
+        'base_position_pct': 80.0,
+        't_shares_pct': 20.0,
+    })
+    monkeypatch.setattr(
+        t0_api,
+        't0_strategy_variants',
+        lambda allocation: [
+            {'selected_variant': 'train_only_trap'},
+            {'selected_variant': 'validation_stable'},
+        ],
+    )
+
+    def fake_run(code, run_bars, **kwargs):
+        days = t0_api._count_bar_days(run_bars)
+        first_day = min(t0_api._bar_day(b) for b in run_bars if t0_api._bar_day(b))
+        variant = kwargs['strategy_params']['selected_variant']
+        segment = (
+            'full' if days == 4
+            else 'validation' if first_day.isoformat() >= '2026-05-03'
+            else 'train'
+        )
+        cost = {
+            ('train', 'train_only_trap'): 2.0,
+            ('train', 'validation_stable'): 1.0,
+            ('validation', 'train_only_trap'): -1.0,
+            ('validation', 'validation_stable'): 0.5,
+            ('full', 'train_only_trap'): 2.5,
+            ('full', 'validation_stable'): 1.2,
+        }[(segment, variant)]
+        return {
+            'selected_variant': variant,
+            'total_return_pct': cost,
+            'final_equity': 1_000_000.0 + cost * 1_000.0,
+            'alpha_vs_all_in_hold': 1_000.0,
+            'alpha_vs_base_hold': 1_000.0,
+            'round_trips': 4,
+            'win_rate': 75.0,
+            'max_drawdown_pct': -0.1,
+            'cost_reduction_pct': cost,
+            'cost_reduction_per_share': 0.1,
+            'min_cost_reduction_pct': min(cost, -0.2),
+            'cost_reduction_positive_days_pct': 80.0 if cost >= 0 else 20.0,
+        }
+
+    monkeypatch.setattr(t0_api, '_run_t0_portfolio_with_strategy', fake_run)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'top': 5,
+        'with_backtest': True,
+        'preview_pool': 5,
+        'preview_validation_ratio': 0.5,
+        'min_preview_trips': 0,
+        'min_preview_validation_trips': 0,
+        'min_preview_cost_reduction_pct': 0.0,
+        'min_preview_validation_cost_reduction_pct': 0.0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert row['preview_selected_variant'] == 'validation_stable'
+    assert row['preview_validation_cost_reduction_pct'] == 0.5
+
+
 def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 101.0, 101.0,
