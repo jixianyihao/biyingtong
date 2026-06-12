@@ -609,6 +609,7 @@ export type T0PortfolioRequest = {
   stop_after_cost_floor_pct?: number;
   signal_mode?: 'band' | 'vwap_deviation' | 'hybrid';
   vwap_deviation_pct?: number;
+  execution_style?: 'market' | 'next_bar';
   min_amplitude_pct?: number;
   high_band?: number;
   low_band?: number;

@@ -64,6 +64,7 @@ def run_t0_portfolio_backtest(
     stop_after_cost_floor_pct: float | None = None,
     signal_mode: str = 'band',
     vwap_deviation_pct: float = 1.0,
+    execution_style: str = 'market',
     earliest_entry_time: str = '09:35',
     latest_entry_time: str = '14:00',
 ) -> dict[str, Any]:
@@ -117,6 +118,7 @@ def run_t0_portfolio_backtest(
     earliest_entry = _parse_hhmm(earliest_entry_time, None)
     latest_entry = _parse_hhmm(latest_entry_time, None)
     mode = (signal_mode or 'band').strip().lower()
+    exec_style = (execution_style or 'market').strip().lower()
     signal_config = T0SignalConfig(
         signal_mode=mode,
         high_band=high_band,
@@ -145,6 +147,8 @@ def run_t0_portfolio_backtest(
         base_price = day_rows[0]['close']
         sellable_shares = shares
         open_leg: T0Leg | None = None
+        pending_open_side: str | None = None
+        pending_close_reason: str | None = None
         day_t_pnl = 0.0
         round_trips_today = 0
         stop_trading_today = False
@@ -176,6 +180,34 @@ def run_t0_portfolio_backtest(
             now_time = row['dt'].time()
 
             if open_leg is None:
+                if pending_open_side is not None:
+                    side = pending_open_side
+                    pending_open_side = None
+                    if (
+                        side == 'sell_first' and
+                        sellable_shares >= t_shares and shares >= t_shares
+                    ):
+                        fill = fill_sim.open_leg(
+                            'sell_first', price=price, shares=t_shares,
+                            ts=row['ts'],
+                        )
+                        cash += fill.cash_delta
+                        shares -= t_shares
+                        sellable_shares -= t_shares
+                        open_leg = fill.leg
+                        trades.append(fill.trade)
+                    elif side == 'buy_first' and sellable_shares >= t_shares:
+                        fill = fill_sim.open_leg(
+                            'buy_first', price=price, shares=t_shares,
+                            ts=row['ts'],
+                        )
+                        cost = -fill.cash_delta
+                        if cash >= cost:
+                            cash += fill.cash_delta
+                            shares += t_shares
+                            open_leg = fill.leg
+                            trades.append(fill.trade)
+                    continue
                 if cost_floor_stop_triggered:
                     continue
                 if stop_trading_today:
@@ -193,6 +225,10 @@ def run_t0_portfolio_backtest(
                     and signal.sell
                     and price >= base_price
                 ):
+                    if exec_style == 'next_bar':
+                        if idx != len(day_rows) - 1:
+                            pending_open_side = 'sell_first'
+                        continue
                     fill = fill_sim.open_leg(
                         'sell_first', price=price, shares=t_shares,
                         ts=row['ts'],
@@ -203,6 +239,10 @@ def run_t0_portfolio_backtest(
                     open_leg = fill.leg
                     trades.append(fill.trade)
                 elif allow_buy_first and sellable_shares >= t_shares and signal.buy:
+                    if exec_style == 'next_bar':
+                        if idx != len(day_rows) - 1:
+                            pending_open_side = 'buy_first'
+                        continue
                     fill = fill_sim.open_leg(
                         'buy_first', price=price, shares=t_shares,
                         ts=row['ts'],
@@ -218,27 +258,40 @@ def run_t0_portfolio_backtest(
 
             move_pct = ((price - open_leg.price) / open_leg.price * 100.0
                         if open_leg.price > 0 else 0.0)
-            should_close = False
-            reason = ''
-            if open_leg.side == 'sell_first':
-                if -move_pct >= take_profit_pct:
-                    should_close, reason = True, 'take_profit'
-                elif move_pct >= stop_loss_pct:
-                    should_close, reason = True, 'stop_loss'
-                elif pos <= low_band:
-                    should_close, reason = True, 'near_intraday_low'
+            executing_pending_close = pending_close_reason is not None
+            if executing_pending_close:
+                should_close = True
+                reason = pending_close_reason
+                pending_close_reason = None
             else:
-                if move_pct >= take_profit_pct:
-                    should_close, reason = True, 'take_profit'
-                elif -move_pct >= stop_loss_pct:
-                    should_close, reason = True, 'stop_loss'
-                elif pos >= high_band:
-                    should_close, reason = True, 'near_intraday_high'
+                should_close = False
+                reason = ''
+                if open_leg.side == 'sell_first':
+                    if -move_pct >= take_profit_pct:
+                        should_close, reason = True, 'take_profit'
+                    elif move_pct >= stop_loss_pct:
+                        should_close, reason = True, 'stop_loss'
+                    elif pos <= low_band:
+                        should_close, reason = True, 'near_intraday_low'
+                else:
+                    if move_pct >= take_profit_pct:
+                        should_close, reason = True, 'take_profit'
+                    elif -move_pct >= stop_loss_pct:
+                        should_close, reason = True, 'stop_loss'
+                    elif pos >= high_band:
+                        should_close, reason = True, 'near_intraday_high'
 
             if not should_close and idx != len(day_rows) - 1:
                 continue
             if not should_close:
                 reason = 'forced_close'
+            elif (
+                exec_style == 'next_bar' and
+                not executing_pending_close and
+                idx != len(day_rows) - 1
+            ):
+                pending_close_reason = reason
+                continue
 
             if open_leg.side == 'sell_first':
                 fill = fill_sim.close_leg(
@@ -387,6 +440,7 @@ def run_t0_portfolio_backtest(
             'stop_after_cost_floor_pct': stop_after_cost_floor_pct,
             'signal_mode': mode,
             'vwap_deviation_pct': vwap_deviation_pct,
+            'execution_style': exec_style,
             'earliest_entry_time': earliest_entry_time,
             'latest_entry_time': latest_entry_time,
         },

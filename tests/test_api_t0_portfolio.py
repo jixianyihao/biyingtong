@@ -283,6 +283,25 @@ def test_t0_portfolio_endpoint_accepts_vwap_signal_params(monkeypatch):
     assert body['params']['vwap_deviation_pct'] == 0.9
 
 
+def test_t0_portfolio_endpoint_accepts_execution_style_param(monkeypatch):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _FakeTDX())
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/portfolio', json={
+        'code': '688981.SH',
+        'initial_capital': 1_000_000,
+        'execution_style': 'next_bar',
+        'fee_bps': 0,
+        'sell_tax_bps': 0,
+        'slippage_bps': 0,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['params']['execution_style'] == 'next_bar'
+
+
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(
     monkeypatch,
     tmp_path,

@@ -69,7 +69,12 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
             'take_profit_pct': max(0.45, min(base_take_profit, 0.7)),
             'stop_loss_pct': min(base_stop_loss, 0.9),
         }
-        return [default, active, guarded, vwap_hybrid]
+        vwap_hybrid_next_bar = {
+            **vwap_hybrid,
+            'selected_variant': 'vwap_hybrid_next_bar',
+            'execution_style': 'next_bar',
+        }
+        return [default, active, guarded, vwap_hybrid, vwap_hybrid_next_bar]
 
     single = {
         **defaults,

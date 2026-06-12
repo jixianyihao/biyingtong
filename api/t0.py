@@ -346,6 +346,7 @@ def _run_t0_portfolio_with_strategy(
         vwap_deviation_pct=float(
             strategy_params.get('vwap_deviation_pct', 1.0),
         ),
+        execution_style=str(strategy_params.get('execution_style') or 'market'),
         earliest_entry_time=str(strategy_params.get('earliest_entry_time', '09:35')),
         latest_entry_time=str(strategy_params.get('latest_entry_time', '14:00')),
     )
@@ -737,8 +738,8 @@ def t0_portfolio():
         'stop_loss_pct', 'fee_bps', 'sell_tax_bps', 'slippage_bps',
         'allow_sell_first', 'allow_buy_first', 'max_round_trips_per_day',
         'stop_after_daily_loss', 'stop_after_cost_floor_pct',
-        'signal_mode', 'vwap_deviation_pct', 'earliest_entry_time',
-        'latest_entry_time',
+        'signal_mode', 'vwap_deviation_pct', 'execution_style',
+        'earliest_entry_time', 'latest_entry_time',
     }
     manual_strategy = any(_has_body_value(body, k) for k in manual_strategy_keys)
     if manual_strategy:
@@ -796,6 +797,11 @@ def t0_portfolio():
             'vwap_deviation_pct': _body_float(
                 body, 'vwap_deviation_pct',
                 float(strategy_defaults.get('vwap_deviation_pct', 1.0)),
+            ),
+            'execution_style': str(
+                body.get('execution_style')
+                or strategy_defaults.get('execution_style')
+                or 'market'
             ),
             'earliest_entry_time': str(body.get('earliest_entry_time') or '09:35'),
             'latest_entry_time': str(

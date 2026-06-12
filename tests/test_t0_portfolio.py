@@ -286,3 +286,40 @@ def test_vwap_deviation_signal_can_open_buy_first_without_low_band_touch():
     assert [t['action'] for t in result['trades']] == ['buy_t', 'sell_back']
     assert result['params']['signal_mode'] == 'vwap_deviation'
     assert result['params']['vwap_deviation_pct'] == 1.0
+
+
+def test_next_bar_execution_uses_following_minute_for_open_and_close():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0, high=100.0, low=100.0),
+        _bar('2026-01-26 09:35:00', 98.0, high=100.0, low=97.8),
+        _bar('2026-01-26 09:36:00', 96.0, high=100.0, low=95.8),
+        _bar('2026-01-26 10:05:00', 100.0, high=100.0, low=95.8),
+        _bar('2026-01-26 10:06:00', 99.0, high=100.0, low=95.8),
+        _bar('2026-01-26 15:00:00', 99.0, high=100.0, low=95.8),
+    ]
+
+    result = run_t0_portfolio_backtest(
+        '688981.SH',
+        bars,
+        initial_capital=100_000,
+        base_position_pct=0.80,
+        t_shares_pct=0.25,
+        allow_sell_first=False,
+        allow_buy_first=True,
+        execution_style='next_bar',
+        min_amplitude_pct=1.0,
+        low_band=0.25,
+        high_band=0.80,
+        take_profit_pct=1.0,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    assert result['round_trips'] == 1
+    assert result['t_pnl'] == pytest.approx(600.0)
+    assert result['params']['execution_style'] == 'next_bar'
+    assert [(t['ts'], t['action'], t['price']) for t in result['trades']] == [
+        ('2026-01-26 09:36:00', 'buy_t', 96.0),
+        ('2026-01-26 10:06:00', 'sell_back', 99.0),
+    ]
