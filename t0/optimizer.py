@@ -131,6 +131,32 @@ def _score(full: dict, validation: dict, fold_results: list[dict]) -> float:
     )
 
 
+def _fold_summary(fold_results: list[dict]) -> dict[str, float | int]:
+    if not fold_results:
+        return {
+            'fold_count': 0,
+            'fold_pass_count': 0,
+            'fold_pass_rate_pct': 0.0,
+            'worst_fold_cost_reduction_pct': 0.0,
+            'worst_fold_min_cost_reduction_pct': 0.0,
+            'avg_fold_cost_reduction_pct': 0.0,
+        }
+    costs = [float(row.get('cost_reduction_pct') or 0.0) for row in fold_results]
+    min_costs = [
+        float(row.get('min_cost_reduction_pct') or 0.0)
+        for row in fold_results
+    ]
+    pass_count = sum(1 for cost in costs if cost >= 0.0)
+    return {
+        'fold_count': len(fold_results),
+        'fold_pass_count': pass_count,
+        'fold_pass_rate_pct': round(pass_count / len(fold_results) * 100.0, 4),
+        'worst_fold_cost_reduction_pct': round(min(costs), 4),
+        'worst_fold_min_cost_reduction_pct': round(min(min_costs), 4),
+        'avg_fold_cost_reduction_pct': round(sum(costs) / len(costs), 4),
+    }
+
+
 def optimize_t0_parameters(
     code: str,
     bars: list[dict],
@@ -218,6 +244,7 @@ def optimize_t0_parameters(
             'full': full,
             'validation': validation_result,
             'folds': fold_results,
+            **_fold_summary(fold_results),
         })
 
     rows.sort(key=lambda row: row['score'], reverse=True)

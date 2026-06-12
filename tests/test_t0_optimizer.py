@@ -171,3 +171,49 @@ def test_optimize_t0_parameters_rejects_candidates_with_bad_fold_cost_path():
 
     assert out['rows'] == []
     assert out['rejected_fold'] == 1
+
+
+def test_optimize_t0_parameters_reports_fold_stability_summary():
+    bars = [
+        _bar('2026-01-01'), _bar('2026-01-02'), _bar('2026-01-03'),
+        _bar('2026-01-04'), _bar('2026-01-05'), _bar('2026-01-06'),
+    ]
+    grid = {'take_profit_pct': [0.7]}
+
+    def run_strategy(code: str, slice_bars: list[dict], params: dict) -> dict:
+        days = sorted({bar['date'][:10] for bar in slice_bars})
+        if len(days) == 6:
+            return _result(cost=1.5, min_cost=-0.3, trips=40)
+        if len(days) == 3:
+            return _result(cost=1.2, min_cost=-0.2, trips=18)
+        if days == ['2026-01-04']:
+            return _result(cost=0.5, min_cost=-0.1, trips=6)
+        if days == ['2026-01-05']:
+            return _result(cost=-0.4, min_cost=-0.6, trips=6)
+        return _result(cost=0.8, min_cost=-0.2, trips=6)
+
+    out = optimize_t0_parameters(
+        '300951.SZ',
+        bars,
+        base_params={},
+        grid=grid,
+        run_strategy=run_strategy,
+        validation_ratio=0.5,
+        fold_count=3,
+        constraints=T0OptimizerConstraints(
+            min_full_cost_reduction_pct=0.5,
+            min_validation_cost_reduction_pct=0.5,
+            min_full_round_trips=20,
+            min_validation_round_trips=8,
+            min_fold_cost_reduction_pct=-1.2,
+            min_fold_min_cost_reduction_pct=-1.2,
+        ),
+    )
+
+    row = out['rows'][0]
+    assert row['fold_count'] == 3
+    assert row['fold_pass_count'] == 2
+    assert row['fold_pass_rate_pct'] == 66.6667
+    assert row['worst_fold_cost_reduction_pct'] == -0.4
+    assert row['worst_fold_min_cost_reduction_pct'] == -0.6
+    assert row['avg_fold_cost_reduction_pct'] == 0.3

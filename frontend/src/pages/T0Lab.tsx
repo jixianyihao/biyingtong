@@ -523,12 +523,21 @@ export function T0Lab() {
                 </div>
                 {optimizer.data.optimizer.rows.slice(0, 4).map((row, idx) => (
                   <div key={`${row.score}-${idx}`} style={{ lineHeight: 1.45 }}>
-                    #{idx + 1} score {fmtNum(row.score, 2)}
-                    {' '}成本 {fmtPct(Number(row.full.cost_reduction_pct ?? 0))}
-                    {' '}验证 {fmtPct(Number(row.validation.cost_reduction_pct ?? 0))}
-                    {' '}tp {String(row.params.take_profit_pct ?? '-')}
-                    {' '}sl {String(row.params.stop_loss_pct ?? '-')}
-                    {' '}vwap {String(row.params.vwap_deviation_pct ?? '-')}
+                    <div>
+                      #{idx + 1} score {fmtNum(row.score, 2)}
+                      {' '}成本 {fmtPct(Number(row.full.cost_reduction_pct ?? 0))}
+                      {' '}验证 {fmtPct(Number(row.validation.cost_reduction_pct ?? 0))}
+                      {' '}tp {String(row.params.take_profit_pct ?? '-')}
+                      {' '}sl {String(row.params.stop_loss_pct ?? '-')}
+                      {' '}vwap {String(row.params.vwap_deviation_pct ?? '-')}
+                    </div>
+                    {row.fold_count != null && (
+                      <div style={{ color: 'var(--text-ghost)' }}>
+                        WF {row.fold_pass_count ?? 0}/{row.fold_count}
+                        {' '}· 最差 {fmtPct(Number(row.worst_fold_cost_reduction_pct ?? 0))}
+                        {' '}· 均值 {fmtPct(Number(row.avg_fold_cost_reduction_pct ?? 0))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

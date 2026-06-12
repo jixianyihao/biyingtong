@@ -662,6 +662,12 @@ export type T0OptimizeRow = {
   full: Record<string, number | string | boolean | null>;
   validation: Record<string, number | string | boolean | null>;
   folds: Array<Record<string, number | string | boolean | null>>;
+  fold_count?: number;
+  fold_pass_count?: number;
+  fold_pass_rate_pct?: number;
+  worst_fold_cost_reduction_pct?: number;
+  worst_fold_min_cost_reduction_pct?: number;
+  avg_fold_cost_reduction_pct?: number;
 };
 
 export type T0OptimizeResponse = {
