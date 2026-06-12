@@ -218,6 +218,23 @@ function CandidateList({
               )}
             </div>
           )}
+          {r.optimizer_evaluated != null && (
+            <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-faint)' }}>
+              OPT {r.optimizer_row_count ?? 0}/{r.optimizer_evaluated}
+              {r.optimizer_best_cost_reduction_pct != null && (
+                <> · 成本↓{fmtPct(r.optimizer_best_cost_reduction_pct)}</>
+              )}
+              {r.optimizer_best_validation_cost_reduction_pct != null && (
+                <> · 验证{fmtPct(r.optimizer_best_validation_cost_reduction_pct)}</>
+              )}
+              {r.optimizer_best_fold_pass_rate_pct != null && (
+                <> · WF{fmtPct(r.optimizer_best_fold_pass_rate_pct)}</>
+              )}
+              {r.optimizer_best_worst_fold_cost_reduction_pct != null && (
+                <> · 最差{fmtPct(r.optimizer_best_worst_fold_cost_reduction_pct)}</>
+              )}
+            </div>
+          )}
         </button>
         );
       })}
@@ -288,7 +305,9 @@ export function T0Lab() {
       max_files: 500,
       score_profile: 'stable_t',
       with_backtest: true,
+      with_optimizer: true,
       with_next_bar_stress: true,
+      optimizer_limit: 40,
       preview_pool: 60,
       min_preview_trips: 1,
       min_preview_win_rate: 50,

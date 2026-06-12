@@ -577,8 +577,10 @@ def t0_candidates():
         return jsonify({'error': 'roots must be a list of minline directories'}), 400
     top = max(1, min(100, _body_int(body, 'top', 30)))
     max_files = max(1, min(20_000, _body_int(body, 'max_files', 2_000)))
-    with_backtest = _body_bool(body, 'with_backtest', False)
+    with_optimizer = _body_bool(body, 'with_optimizer', False)
+    with_backtest = _body_bool(body, 'with_backtest', False) or with_optimizer
     with_next_bar_stress = _body_bool(body, 'with_next_bar_stress', False)
+    optimizer_limit = max(1, min(200, _body_int(body, 'optimizer_limit', 40)))
     preview_pool = max(top, min(800, _body_int(body, 'preview_pool', top * 5)))
     rows = scan_lc1_candidates(
         roots,
@@ -951,6 +953,95 @@ def t0_candidates():
                                 'preview_validation_next_bar_pass_rate_pct'
                             ] >= min_preview_validation_next_bar_pass_rate_pct
                         )
+            if validation_pass and with_optimizer:
+                optimizer_base_params = {
+                    **selected_params,
+                    'selected_variant': 'optimizer_candidate',
+                    'signal_mode': selected_params.get('signal_mode', 'band'),
+                    'execution_style': selected_params.get(
+                        'execution_style', 'market',
+                    ),
+                    'stop_after_daily_loss': True,
+                }
+                optimizer = optimize_t0_parameters(
+                    str(row['code']),
+                    bars,
+                    base_params=optimizer_base_params,
+                    grid=DEFAULT_T0_OPTIMIZER_GRID,
+                    run_strategy=(
+                        lambda c, slice_bars, params:
+                        _run_t0_portfolio_with_strategy(
+                            c,
+                            slice_bars,
+                            allocation=allocation,
+                            initial_capital=1_000_000.0,
+                            strategy_params=params,
+                        )
+                    ),
+                    offset=0,
+                    limit=optimizer_limit,
+                    validation_ratio=validation_ratio,
+                    fold_count=preview_validation_folds,
+                    include_base_candidate=True,
+                    constraints=T0OptimizerConstraints(
+                        min_full_cost_reduction_pct=(
+                            min_preview_cost_reduction_pct
+                            if min_preview_cost_reduction_pct != float('-inf')
+                            else 0.5
+                        ),
+                        min_validation_cost_reduction_pct=(
+                            min_preview_validation_cost_reduction_pct
+                            if (
+                                min_preview_validation_cost_reduction_pct !=
+                                float('-inf')
+                            )
+                            else 0.2
+                        ),
+                        min_full_round_trips=max(1, min_preview_trips),
+                        min_validation_round_trips=max(
+                            1, min_preview_validation_trips,
+                        ),
+                        min_fold_cost_reduction_pct=(
+                            min_preview_validation_fold_cost_reduction_pct
+                            if (
+                                min_preview_validation_fold_cost_reduction_pct !=
+                                float('-inf')
+                            )
+                            else -1.2
+                        ),
+                        min_fold_min_cost_reduction_pct=(
+                            min_preview_validation_min_cost_reduction_pct
+                            if (
+                                min_preview_validation_min_cost_reduction_pct !=
+                                float('-inf')
+                            )
+                            else -1.2
+                        ),
+                    ),
+                )
+                row.update({
+                    'optimizer_evaluated': optimizer['evaluated'],
+                    'optimizer_next_offset': optimizer['next_offset'],
+                    'optimizer_row_count': len(optimizer['rows']),
+                })
+                if optimizer['rows']:
+                    best = optimizer['rows'][0]
+                    row.update({
+                        'optimizer_best_score': best['score'],
+                        'optimizer_best_params': best['params'],
+                        'optimizer_best_cost_reduction_pct': (
+                            best['full'].get('cost_reduction_pct')
+                        ),
+                        'optimizer_best_validation_cost_reduction_pct': (
+                            best['validation'].get('cost_reduction_pct')
+                        ),
+                        'optimizer_best_fold_pass_rate_pct': best.get(
+                            'fold_pass_rate_pct',
+                        ),
+                        'optimizer_best_worst_fold_cost_reduction_pct': (
+                            best.get('worst_fold_cost_reduction_pct')
+                        ),
+                    })
             if validation_pass:
                 previewed.append(row)
         previewed.sort(

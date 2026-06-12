@@ -572,6 +572,15 @@ export type T0CandidateRow = {
   preview_next_bar_min_cost_reduction_pct?: number;
   preview_next_bar_cost_reduction_positive_days_pct?: number;
   preview_next_bar_selected_variant?: string;
+  optimizer_evaluated?: number;
+  optimizer_next_offset?: number | null;
+  optimizer_row_count?: number;
+  optimizer_best_score?: number;
+  optimizer_best_params?: Record<string, unknown>;
+  optimizer_best_cost_reduction_pct?: number;
+  optimizer_best_validation_cost_reduction_pct?: number;
+  optimizer_best_fold_pass_rate_pct?: number;
+  optimizer_best_worst_fold_cost_reduction_pct?: number;
 };
 
 export type T0CandidatesRequest = {
@@ -579,7 +588,9 @@ export type T0CandidatesRequest = {
   max_files?: number;
   score_profile?: 'raw_opportunity' | 'stable_t';
   with_backtest?: boolean;
+  with_optimizer?: boolean;
   with_next_bar_stress?: boolean;
+  optimizer_limit?: number;
   preview_pool?: number;
   min_preview_trips?: number;
   min_preview_win_rate?: number;

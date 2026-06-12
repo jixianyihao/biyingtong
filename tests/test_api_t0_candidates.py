@@ -358,6 +358,104 @@ def test_t0_candidates_endpoint_uses_validation_aware_variant(monkeypatch):
     assert row['preview_validation_cost_reduction_pct'] == 0.5
 
 
+def test_t0_candidates_endpoint_can_attach_optimizer_preview(monkeypatch):
+    import api.t0 as t0_api
+    captured = {}
+
+    bars = [
+        {'date': '2026-05-01 09:31', 'close': 100.0},
+        {'date': '2026-05-02 09:31', 'close': 101.0},
+        {'date': '2026-05-03 09:31', 'close': 102.0},
+        {'date': '2026-05-04 09:31', 'close': 103.0},
+    ]
+    monkeypatch.setattr(t0_api, 'scan_lc1_candidates', lambda *a, **k: [{
+        'code': '688981.SH',
+        'bar_count': len(bars),
+        'days': 4,
+    }])
+    monkeypatch.setattr(t0_api, 'load_lc1_bars_for_code', lambda *a, **k: bars)
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda *a, **k: {
+        'base_position_pct': 80.0,
+        't_shares_pct': 20.0,
+    })
+    monkeypatch.setattr(
+        t0_api,
+        't0_strategy_variants',
+        lambda allocation: [{'selected_variant': 'default'}],
+    )
+
+    def fake_run(code, run_bars, **kwargs):
+        return {
+            'selected_variant': kwargs['strategy_params'].get(
+                'selected_variant', 'default',
+            ),
+            'total_return_pct': 1.0,
+            'final_equity': 1_010_000.0,
+            'alpha_vs_all_in_hold': 1_000.0,
+            'alpha_vs_base_hold': 1_000.0,
+            'round_trips': 4,
+            'win_rate': 75.0,
+            'max_drawdown_pct': -0.1,
+            'cost_reduction_pct': 1.0,
+            'cost_reduction_per_share': 0.1,
+            'min_cost_reduction_pct': -0.2,
+            'cost_reduction_positive_days_pct': 80.0,
+        }
+
+    def fake_optimize(code, opt_bars, **kwargs):
+        captured['code'] = code
+        captured.update(kwargs)
+        return {
+            'total_grid': 2,
+            'offset': 0,
+            'limit': kwargs['limit'],
+            'evaluated': 2,
+            'next_offset': None,
+            'rejected_full': 0,
+            'rejected_validation': 0,
+            'rejected_fold': 0,
+            'rows': [{
+                'score': 12.34,
+                'params': {'take_profit_pct': 0.55},
+                'full': {'cost_reduction_pct': 2.2},
+                'validation': {'cost_reduction_pct': 1.1},
+                'folds': [],
+                'fold_count': 3,
+                'fold_pass_count': 3,
+                'fold_pass_rate_pct': 100.0,
+                'worst_fold_cost_reduction_pct': 0.2,
+                'worst_fold_min_cost_reduction_pct': -0.1,
+                'avg_fold_cost_reduction_pct': 0.5,
+            }],
+        }
+
+    monkeypatch.setattr(t0_api, '_run_t0_portfolio_with_strategy', fake_run)
+    monkeypatch.setattr(t0_api, 'optimize_t0_parameters', fake_optimize)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'top': 5,
+        'with_backtest': True,
+        'with_optimizer': True,
+        'optimizer_limit': 2,
+        'preview_pool': 5,
+        'min_preview_trips': 0,
+        'min_preview_validation_trips': 0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert captured['code'] == '688981.SH'
+    assert captured['include_base_candidate'] is True
+    assert row['optimizer_evaluated'] == 2
+    assert row['optimizer_best_score'] == 12.34
+    assert row['optimizer_best_cost_reduction_pct'] == 2.2
+    assert row['optimizer_best_validation_cost_reduction_pct'] == 1.1
+    assert row['optimizer_best_fold_pass_rate_pct'] == 100.0
+    assert row['optimizer_best_worst_fold_cost_reduction_pct'] == 0.2
+    assert row['optimizer_best_params'] == {'take_profit_pct': 0.55}
+
+
 def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 101.0, 101.0,
