@@ -260,11 +260,16 @@ export function T0Lab() {
     return `${c.first} → ${c.last} · ${c.bar_count.toLocaleString('zh-CN')} bars`;
   }, [data]);
 
-  function setActiveCode(nextCode: string) {
-    setCode(nextCode);
+  function resetAnalysis() {
     grid.reset();
     portfolio.reset();
     optimizer.reset();
+    candidates.reset();
+  }
+
+  function setActiveCode(nextCode: string) {
+    setCode(nextCode);
+    resetAnalysis();
   }
 
   function run() {
@@ -426,6 +431,21 @@ export function T0Lab() {
             >
               <Icon name="backtest" size={13} />
               {grid.isPending ? '正在回测…' : '运行参数网格'}
+            </button>
+
+            <button
+              className="btn"
+              onClick={resetAnalysis}
+              disabled={
+                grid.isPending ||
+                portfolio.isPending ||
+                optimizer.isPending ||
+                candidates.isPending
+              }
+              style={{ height: 30, justifyContent: 'center' }}
+              title="清空当前页面的网格、候选、组合和优化结果；不改标的代码"
+            >
+              清空结果
             </button>
           </div>
 
