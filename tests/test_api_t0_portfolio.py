@@ -206,16 +206,24 @@ def test_t0_portfolio_endpoint_selects_variant_on_train_slice(monkeypatch):
     def fake_run(code, bars, *, allocation, initial_capital, strategy_params,
                  base_position_pct=None, t_shares_pct=None):
         days = t0_api._count_bar_days(bars)
+        first_day = min(t0_api._bar_day(b) for b in bars if t0_api._bar_day(b))
         variant = strategy_params['selected_variant']
         # Training slice says train_cost_cut lowers cost better. Full sample
         # would pick full_sample_trap if the endpoint still selected variants
         # with future data.
+        segment = (
+            'full' if days == 4
+            else 'validation' if first_day.isoformat() >= '2026-01-28'
+            else 'train'
+        )
         cost = {
-            (2, 'train_cost_cut'): 2.0,
-            (2, 'full_sample_trap'): 0.5,
-            (4, 'train_cost_cut'): 1.0,
-            (4, 'full_sample_trap'): 3.0,
-        }[(days, variant)]
+            ('train', 'train_cost_cut'): 2.0,
+            ('train', 'full_sample_trap'): 0.5,
+            ('validation', 'train_cost_cut'): 1.0,
+            ('validation', 'full_sample_trap'): 0.5,
+            ('full', 'train_cost_cut'): 1.0,
+            ('full', 'full_sample_trap'): 3.0,
+        }[(segment, variant)]
         return {
             'code': code,
             'selected_variant': variant,
@@ -239,6 +247,69 @@ def test_t0_portfolio_endpoint_selects_variant_on_train_slice(monkeypatch):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body['selected_variant'] == 'train_cost_cut'
+    assert body['cost_reduction_pct'] == 1.0
+
+
+def test_t0_portfolio_endpoint_validation_slice_rejects_train_only_variant(
+    monkeypatch,
+):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _LateBullishFakeTDX())
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda bars, requested_mode='auto': {
+        'mode': 'balanced_range',
+        'base_position_pct': 0.70,
+        't_shares_pct': 0.20,
+        'strategy_params': {},
+    })
+    variants = [
+        {'selected_variant': 'train_only_trap'},
+        {'selected_variant': 'validation_stable'},
+    ]
+    monkeypatch.setattr(t0_api, 't0_strategy_variants', lambda allocation: variants)
+
+    def fake_run(code, bars, *, allocation, initial_capital, strategy_params,
+                 base_position_pct=None, t_shares_pct=None):
+        days = t0_api._count_bar_days(bars)
+        first_day = min(t0_api._bar_day(b) for b in bars if t0_api._bar_day(b))
+        variant = strategy_params['selected_variant']
+        segment = (
+            'full' if days == 4
+            else 'validation' if first_day.isoformat() >= '2026-01-28'
+            else 'train'
+        )
+        cost = {
+            ('train', 'train_only_trap'): 2.2,
+            ('train', 'validation_stable'): 1.4,
+            ('validation', 'train_only_trap'): -1.3,
+            ('validation', 'validation_stable'): 0.8,
+            ('full', 'train_only_trap'): 2.8,
+            ('full', 'validation_stable'): 1.0,
+        }[(segment, variant)]
+        return {
+            'code': code,
+            'selected_variant': variant,
+            'total_return_pct': cost,
+            'alpha_vs_all_in_hold': 10_000.0,
+            'cost_reduction_pct': cost,
+            'min_cost_reduction_pct': min(cost, -0.2),
+            'cost_reduction_positive_days_pct': 70.0 if cost >= 0 else 20.0,
+            'win_rate': 60.0,
+            'max_drawdown_pct': -5.0,
+            'params': {'selected_variant': variant},
+        }
+
+    monkeypatch.setattr(t0_api, '_run_t0_portfolio_with_strategy', fake_run)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/portfolio', json={
+        'code': '688981.SH',
+        'initial_capital': 1_000_000,
+        'strategy_selection_ratio': 0.5,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['selected_variant'] == 'validation_stable'
     assert body['cost_reduction_pct'] == 1.0
 
 
@@ -354,6 +425,78 @@ def test_t0_optimize_endpoint_runs_bounded_parameter_batch(monkeypatch):
     assert captured['grid'] == {'take_profit_pct': [0.55, 0.65]}
     assert captured['base_params']['signal_mode'] == 'hybrid'
     assert captured['base_params']['execution_style'] == 'next_bar'
+
+
+def test_t0_optimize_endpoint_uses_validation_aware_base_variant(monkeypatch):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _LateBullishFakeTDX())
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda bars, requested_mode='auto': {
+        'mode': 'balanced_range',
+        'base_position_pct': 0.70,
+        't_shares_pct': 0.20,
+        'strategy_params': {},
+    })
+    variants = [
+        {'selected_variant': 'train_only_trap'},
+        {'selected_variant': 'validation_stable'},
+    ]
+    monkeypatch.setattr(t0_api, 't0_strategy_variants', lambda allocation: variants)
+
+    def fake_run(code, bars, *, allocation, initial_capital, strategy_params,
+                 base_position_pct=None, t_shares_pct=None):
+        days = t0_api._count_bar_days(bars)
+        first_day = min(t0_api._bar_day(b) for b in bars if t0_api._bar_day(b))
+        variant = strategy_params['selected_variant']
+        segment = (
+            'full' if days == 4
+            else 'validation' if first_day.isoformat() >= '2026-01-28'
+            else 'train'
+        )
+        cost = {
+            ('train', 'train_only_trap'): 2.2,
+            ('train', 'validation_stable'): 1.4,
+            ('validation', 'train_only_trap'): -1.3,
+            ('validation', 'validation_stable'): 0.8,
+            ('full', 'train_only_trap'): 2.8,
+            ('full', 'validation_stable'): 1.0,
+        }[(segment, variant)]
+        return {
+            'code': code,
+            'selected_variant': variant,
+            'total_return_pct': cost,
+            'alpha_vs_all_in_hold': 10_000.0,
+            'cost_reduction_pct': cost,
+            'min_cost_reduction_pct': min(cost, -0.2),
+            'cost_reduction_positive_days_pct': 70.0 if cost >= 0 else 20.0,
+            'win_rate': 60.0,
+            'max_drawdown_pct': -5.0,
+            'params': {'selected_variant': variant},
+        }
+
+    monkeypatch.setattr(t0_api, '_run_t0_portfolio_with_strategy', fake_run)
+    monkeypatch.setattr(t0_api, 'optimize_t0_parameters', lambda *args, **kwargs: {
+        'total_grid': 1,
+        'offset': 0,
+        'limit': 1,
+        'evaluated': 1,
+        'next_offset': None,
+        'rows': [],
+        'rejected_full': 0,
+        'rejected_validation': 0,
+        'rejected_fold': 0,
+    })
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/optimize', json={
+        'code': '688981.SH',
+        'strategy_selection_ratio': 0.5,
+        'grid': {'take_profit_pct': [0.55]},
+        'limit': 1,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['base_variant'] == 'validation_stable'
 
 
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(

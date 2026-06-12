@@ -160,3 +160,82 @@ def choose_best_t0_result(results: Iterable[dict[str, Any]]) -> dict[str, Any]:
     if not rows:
         raise ValueError('no T0 results to choose from')
     return max(rows, key=_result_rank)
+
+
+def _validated_result_rank(
+    train_result: dict[str, Any],
+    validation_result: dict[str, Any] | None,
+) -> tuple[float, float, float, float, float, float, float]:
+    """Rank a train-selected variant with out-of-sample cost-basis evidence."""
+    if validation_result is None:
+        return (
+            float(train_result.get('cost_reduction_pct') or 0.0),
+            float(train_result.get('cost_reduction_pct') or 0.0),
+            float(train_result.get('min_cost_reduction_pct') or 0.0),
+            float(train_result.get('cost_reduction_positive_days_pct') or 0.0),
+            float(train_result.get('cost_reduction_positive_days_pct') or 0.0),
+            float(train_result.get('alpha_vs_all_in_hold') or 0.0),
+            float(train_result.get('total_return_pct') or 0.0),
+        )
+
+    validation_cost = float(validation_result.get('cost_reduction_pct') or 0.0)
+    validation_min = float(
+        validation_result.get('min_cost_reduction_pct') or 0.0,
+    )
+    validation_positive_days = float(
+        validation_result.get('cost_reduction_positive_days_pct') or 0.0,
+    )
+    train_cost = float(train_result.get('cost_reduction_pct') or 0.0)
+    train_min = float(train_result.get('min_cost_reduction_pct') or 0.0)
+    alpha = float(train_result.get('alpha_vs_all_in_hold') or 0.0)
+    return (
+        min(train_cost, validation_cost),
+        train_cost + validation_cost,
+        min(train_min, validation_min),
+        validation_positive_days,
+        float(train_result.get('cost_reduction_positive_days_pct') or 0.0),
+        alpha,
+        float(train_result.get('total_return_pct') or 0.0),
+    )
+
+
+def choose_best_validated_t0_result(
+    train_results: Iterable[dict[str, Any]],
+    validation_results: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    """Choose a T0 variant using train data plus validation cost path.
+
+    The endpoint still returns the selected training result so callers can reuse
+    its variant and params, but variants that damage validation cost basis are
+    ranked below slightly weaker train winners.
+    """
+    train_rows = list(train_results)
+    if not train_rows:
+        raise ValueError('no T0 results to choose from')
+    validation_by_variant = {
+        row.get('selected_variant'): row
+        for row in validation_results
+        if row.get('selected_variant') is not None
+    }
+    if not validation_by_variant:
+        return choose_best_t0_result(train_rows)
+    stable_rows = [
+        row for row in train_rows
+        if (
+            float(row.get('cost_reduction_pct') or 0.0) >= 0.0 and
+            (validation := validation_by_variant.get(
+                row.get('selected_variant'),
+            )) is not None and
+            float(validation.get('cost_reduction_pct') or 0.0) >= 0.0 and
+            float(validation.get('min_cost_reduction_pct') or 0.0) >= -1.0
+        )
+    ]
+    if not stable_rows:
+        return choose_best_t0_result(train_rows)
+    return max(
+        stable_rows,
+        key=lambda row: _validated_result_rank(
+            row,
+            validation_by_variant.get(row.get('selected_variant')),
+        ),
+    )

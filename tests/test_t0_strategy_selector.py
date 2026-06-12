@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from t0.strategy_selector import choose_best_t0_result, t0_strategy_variants
+from t0.strategy_selector import (
+    choose_best_t0_result,
+    choose_best_validated_t0_result,
+    t0_strategy_variants,
+)
 
 
 def test_choose_best_t0_result_prefers_positive_alpha_over_overtrading():
@@ -88,6 +92,129 @@ def test_choose_best_t0_result_prefers_smoother_cost_path_on_tie():
     }
 
     assert choose_best_t0_result([choppy, smoother]) is smoother
+
+
+def test_choose_best_validated_t0_result_rejects_train_only_cost_trap():
+    train_trap = {
+        'selected_variant': 'train_only_trap',
+        'total_return_pct': 8.0,
+        'alpha_vs_all_in_hold': 20_000.0,
+        'cost_reduction_pct': 2.4,
+        'min_cost_reduction_pct': 0.2,
+        'cost_reduction_positive_days_pct': 90.0,
+        'win_rate': 70.0,
+        'max_drawdown_pct': -8.0,
+    }
+    train_stable = {
+        'selected_variant': 'validation_stable',
+        'total_return_pct': 7.0,
+        'alpha_vs_all_in_hold': 18_000.0,
+        'cost_reduction_pct': 1.5,
+        'min_cost_reduction_pct': -0.1,
+        'cost_reduction_positive_days_pct': 80.0,
+        'win_rate': 65.0,
+        'max_drawdown_pct': -8.5,
+    }
+    validation_trap = {
+        **train_trap,
+        'cost_reduction_pct': -1.1,
+        'min_cost_reduction_pct': -1.4,
+        'cost_reduction_positive_days_pct': 35.0,
+    }
+    validation_stable = {
+        **train_stable,
+        'cost_reduction_pct': 0.8,
+        'min_cost_reduction_pct': -0.2,
+        'cost_reduction_positive_days_pct': 70.0,
+    }
+
+    selected = choose_best_validated_t0_result(
+        [train_trap, train_stable],
+        [validation_trap, validation_stable],
+    )
+
+    assert selected is train_stable
+
+
+def test_choose_best_validated_t0_result_falls_back_without_validation():
+    train_a = {
+        'selected_variant': 'a',
+        'cost_reduction_pct': 0.5,
+        'alpha_vs_all_in_hold': 1.0,
+        'total_return_pct': 1.0,
+    }
+    train_b = {
+        'selected_variant': 'b',
+        'cost_reduction_pct': 1.5,
+        'alpha_vs_all_in_hold': 1.0,
+        'total_return_pct': 1.0,
+    }
+
+    assert choose_best_validated_t0_result([train_a, train_b], []) is train_b
+
+
+def test_choose_best_validated_t0_result_requires_train_and_validation_cost():
+    train_negative_validation_good = {
+        'selected_variant': 'validation_only',
+        'cost_reduction_pct': -0.5,
+        'min_cost_reduction_pct': -0.5,
+        'cost_reduction_positive_days_pct': 40.0,
+        'alpha_vs_all_in_hold': 1.0,
+        'total_return_pct': 1.0,
+    }
+    train_positive_validation_ok = {
+        'selected_variant': 'stable',
+        'cost_reduction_pct': 0.8,
+        'min_cost_reduction_pct': -0.2,
+        'cost_reduction_positive_days_pct': 70.0,
+        'alpha_vs_all_in_hold': 1.0,
+        'total_return_pct': 1.0,
+    }
+    validation_only = {
+        **train_negative_validation_good,
+        'cost_reduction_pct': 2.0,
+        'min_cost_reduction_pct': -0.1,
+    }
+    validation_stable = {
+        **train_positive_validation_ok,
+        'cost_reduction_pct': 0.6,
+        'min_cost_reduction_pct': -0.2,
+    }
+
+    selected = choose_best_validated_t0_result(
+        [train_negative_validation_good, train_positive_validation_ok],
+        [validation_only, validation_stable],
+    )
+
+    assert selected is train_positive_validation_ok
+
+
+def test_choose_best_validated_t0_result_falls_back_when_validation_all_fails():
+    train_winner = {
+        'selected_variant': 'train_winner',
+        'cost_reduction_pct': 1.2,
+        'min_cost_reduction_pct': -0.2,
+        'cost_reduction_positive_days_pct': 80.0,
+        'alpha_vs_all_in_hold': 1.0,
+        'total_return_pct': 1.0,
+    }
+    train_loser = {
+        'selected_variant': 'train_loser',
+        'cost_reduction_pct': 0.7,
+        'min_cost_reduction_pct': -0.1,
+        'cost_reduction_positive_days_pct': 90.0,
+        'alpha_vs_all_in_hold': 1.0,
+        'total_return_pct': 1.0,
+    }
+    validation_winner = {**train_winner, 'cost_reduction_pct': -0.3}
+    validation_loser = {**train_loser, 'cost_reduction_pct': -0.1}
+
+    selected = choose_best_validated_t0_result(
+        [train_winner, train_loser],
+        [validation_winner, validation_loser],
+    )
+
+    assert selected is train_winner
 
 
 def test_t0_strategy_variants_for_strong_bull_include_single_and_multi():

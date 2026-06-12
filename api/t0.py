@@ -10,7 +10,11 @@ from t0.grid import run_grid_search
 from t0.local_lc1 import load_lc1_bars_for_code, scan_lc1_candidates
 from t0.optimizer import T0OptimizerConstraints, optimize_t0_parameters
 from t0.portfolio import run_t0_portfolio_backtest
-from t0.strategy_selector import choose_best_t0_result, t0_strategy_variants
+from t0.strategy_selector import (
+    choose_best_t0_result,
+    choose_best_validated_t0_result,
+    t0_strategy_variants,
+)
 from tdx_service import tdx
 
 from . import api_bp
@@ -953,7 +957,7 @@ def t0_optimize():
 
     initial_capital = _body_float(body, 'initial_capital', 1_000_000.0)
     strategy_selection_ratio = _body_float(body, 'strategy_selection_ratio', 0.35)
-    selection_bars, _ = _split_bars_for_validation(
+    selection_bars, validation_bars = _split_bars_for_validation(
         bars, strategy_selection_ratio,
     )
     allocation = choose_t0_allocation(
@@ -971,7 +975,7 @@ def t0_optimize():
         else allocation['t_shares_pct']
     )
     variants = t0_strategy_variants(allocation)
-    selected = choose_best_t0_result(
+    train_results = [
         _run_t0_portfolio_with_strategy(
             code,
             selection_bars,
@@ -982,7 +986,24 @@ def t0_optimize():
             strategy_params=params,
         )
         for params in variants
+    ]
+    validation_results = (
+        [
+            _run_t0_portfolio_with_strategy(
+                code,
+                validation_bars,
+                allocation=allocation,
+                initial_capital=initial_capital,
+                base_position_pct=base_position_pct,
+                t_shares_pct=t_shares_pct,
+                strategy_params=params,
+            )
+            for params in variants
+        ]
+        if validation_bars and len(variants) > 1
+        else []
     )
+    selected = choose_best_validated_t0_result(train_results, validation_results)
     base_params = next(
         p for p in variants
         if p['selected_variant'] == selected['selected_variant']
@@ -1058,7 +1079,7 @@ def t0_portfolio():
     if not bars:
         return jsonify({'error': f'no 1m bars for {code}'}), 404
     strategy_selection_ratio = _body_float(body, 'strategy_selection_ratio', 0.35)
-    selection_bars, _ = _split_bars_for_validation(
+    selection_bars, validation_bars = _split_bars_for_validation(
         bars, strategy_selection_ratio,
     )
     allocation = choose_t0_allocation(
@@ -1160,7 +1181,7 @@ def t0_portfolio():
         }]
     else:
         variants = t0_strategy_variants(allocation)
-    selected = choose_best_t0_result(
+    train_results = [
         _run_t0_portfolio_with_strategy(
             code,
             selection_bars,
@@ -1171,7 +1192,26 @@ def t0_portfolio():
             strategy_params=params,
         )
         for params in variants
+    ]
+    validation_results = (
+        [
+            _run_t0_portfolio_with_strategy(
+                code,
+                validation_bars,
+                allocation=allocation,
+                initial_capital=_body_float(
+                    body, 'initial_capital', 1_000_000.0,
+                ),
+                base_position_pct=base_position_pct,
+                t_shares_pct=t_shares_pct,
+                strategy_params=params,
+            )
+            for params in variants
+        ]
+        if validation_bars and len(variants) > 1
+        else []
     )
+    selected = choose_best_validated_t0_result(train_results, validation_results)
     selected_variant = selected['selected_variant']
     selected_params = next(
         p for p in variants if p['selected_variant'] == selected_variant
@@ -1194,4 +1234,5 @@ def t0_portfolio():
         0.0, min(0.8, strategy_selection_ratio),
     )
     result['strategy_selection_days'] = _count_bar_days(selection_bars)
+    result['strategy_validation_days'] = _count_bar_days(validation_bars)
     return jsonify(result)
