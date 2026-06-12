@@ -180,6 +180,9 @@ function CandidateList({
             {r.preview_cost_reduction_positive_days_pct != null && (
               <> · 正天{fmtPct(r.preview_cost_reduction_positive_days_pct)}</>
             )}
+            {r.preview_next_bar_cost_reduction_pct != null && (
+              <> · NB成本{fmtPct(r.preview_next_bar_cost_reduction_pct)}</>
+            )}
           </div>
           {validationReturn != null && (
             <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-ghost)' }}>
@@ -256,6 +259,7 @@ export function T0Lab() {
       max_files: 10_000,
       score_profile: 'stable_t',
       with_backtest: true,
+      with_next_bar_stress: true,
       preview_pool: 500,
       min_preview_trips: 1,
       min_preview_win_rate: 50,
@@ -264,6 +268,7 @@ export function T0Lab() {
       min_preview_cost_reduction_pct: 0,
       min_preview_min_cost_reduction_pct: -1.5,
       min_preview_cost_reduction_positive_days_pct: 55,
+      min_preview_next_bar_cost_reduction_pct: 0,
       max_preview_drawdown_pct: 30,
       preview_validation_ratio: 0.35,
       preview_validation_folds: 3,

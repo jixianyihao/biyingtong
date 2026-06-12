@@ -101,6 +101,60 @@ def test_t0_candidates_endpoint_can_attach_portfolio_preview(tmp_path):
     assert row['preview_cost_reduction_positive_days_pct'] is not None
 
 
+def test_t0_candidates_endpoint_can_attach_next_bar_stress_preview(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 2,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'with_next_bar_stress': True,
+        'preview_pool': 5,
+        'min_preview_trips': 0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert row['preview_next_bar_total_return_pct'] is not None
+    assert row['preview_next_bar_cost_reduction_pct'] is not None
+    assert row['preview_next_bar_min_cost_reduction_pct'] is not None
+    assert row['preview_next_bar_round_trips'] >= 0
+    assert row['preview_next_bar_selected_variant'] == (
+        f"{row['preview_selected_variant']}_next_bar_stress"
+    )
+
+
+def test_t0_candidates_endpoint_filters_by_next_bar_stress_cost(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 2,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'with_next_bar_stress': True,
+        'preview_pool': 5,
+        'min_preview_trips': 0,
+        'min_preview_next_bar_cost_reduction_pct': 999.0,
+    })
+
+    assert resp.status_code == 200
+    assert resp.get_json()['rows'] == []
+
+
 def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 101.0, 101.0,
@@ -422,6 +476,43 @@ def test_previewed_candidates_sort_by_validation_fold_stability_first():
     rows.sort(key=_preview_sort_key, reverse=True)
 
     assert rows[0]['code'] == 'lower-tail-stable-folds'
+
+
+def test_previewed_candidates_sort_by_next_bar_stress_cost_first():
+    rows = [
+        {
+            'code': 'market-good-next-bar-bad',
+            'preview_total_return_pct': 10.0,
+            'preview_alpha_vs_all_in': 10_000.0,
+            'preview_cost_reduction_pct': 3.0,
+            'preview_validation_cost_reduction_pct': 2.0,
+            'preview_validation_pass_rate_pct': 100.0,
+            'preview_validation_worst_cost_reduction_pct': 1.0,
+            'preview_validation_worst_min_cost_reduction_pct': 0.0,
+            'preview_validation_avg_cost_reduction_pct': 1.5,
+            'preview_next_bar_cost_reduction_pct': -1.0,
+            'preview_next_bar_min_cost_reduction_pct': -1.2,
+            'preview_round_trips': 80,
+        },
+        {
+            'code': 'market-lower-next-bar-good',
+            'preview_total_return_pct': 7.0,
+            'preview_alpha_vs_all_in': 8_000.0,
+            'preview_cost_reduction_pct': 1.5,
+            'preview_validation_cost_reduction_pct': 1.2,
+            'preview_validation_pass_rate_pct': 100.0,
+            'preview_validation_worst_cost_reduction_pct': 0.8,
+            'preview_validation_worst_min_cost_reduction_pct': -0.1,
+            'preview_validation_avg_cost_reduction_pct': 1.1,
+            'preview_next_bar_cost_reduction_pct': 0.8,
+            'preview_next_bar_min_cost_reduction_pct': -0.3,
+            'preview_round_trips': 40,
+        },
+    ]
+
+    rows.sort(key=_preview_sort_key, reverse=True)
+
+    assert rows[0]['code'] == 'market-lower-next-bar-good'
 
 
 def test_preview_drawdown_filter_uses_absolute_drawdown_limit():

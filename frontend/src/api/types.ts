@@ -558,6 +558,14 @@ export type T0CandidateRow = {
   preview_validation_worst_cost_reduction_pct?: number;
   preview_validation_worst_min_cost_reduction_pct?: number;
   preview_validation_avg_cost_reduction_pct?: number;
+  preview_next_bar_total_return_pct?: number;
+  preview_next_bar_alpha_vs_all_in?: number;
+  preview_next_bar_round_trips?: number;
+  preview_next_bar_win_rate?: number;
+  preview_next_bar_cost_reduction_pct?: number;
+  preview_next_bar_min_cost_reduction_pct?: number;
+  preview_next_bar_cost_reduction_positive_days_pct?: number;
+  preview_next_bar_selected_variant?: string;
 };
 
 export type T0CandidatesRequest = {
@@ -565,6 +573,7 @@ export type T0CandidatesRequest = {
   max_files?: number;
   score_profile?: 'raw_opportunity' | 'stable_t';
   with_backtest?: boolean;
+  with_next_bar_stress?: boolean;
   preview_pool?: number;
   min_preview_trips?: number;
   min_preview_win_rate?: number;
@@ -573,6 +582,7 @@ export type T0CandidatesRequest = {
   min_preview_cost_reduction_pct?: number;
   min_preview_min_cost_reduction_pct?: number;
   min_preview_cost_reduction_positive_days_pct?: number;
+  min_preview_next_bar_cost_reduction_pct?: number;
   max_preview_drawdown_pct?: number;
   preview_validation_ratio?: number;
   preview_validation_folds?: number;

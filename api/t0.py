@@ -95,7 +95,7 @@ def _has_body_value(body: dict, name: str) -> bool:
 def _preview_sort_key(
     row: dict,
 ) -> tuple[
-    float, float, float, float, float,
+    float, float, float, float, float, float, float, float,
     float, float, float, float, float, float, float, int,
 ]:
     """Rank candidates by out-of-sample outcome when available.
@@ -137,7 +137,13 @@ def _preview_sort_key(
         'preview_validation_avg_cost_reduction_pct',
         primary_cost_reduction,
     )
+    next_bar_cost = row.get('preview_next_bar_cost_reduction_pct')
+    next_bar_min_cost = row.get('preview_next_bar_min_cost_reduction_pct')
+    has_next_bar_stress = 1.0 if next_bar_cost is not None else 0.0
     return (
+        has_next_bar_stress,
+        float(next_bar_cost or 0.0),
+        float(next_bar_min_cost or 0.0),
         float(fold_pass_rate or 0.0),
         float(fold_worst_cost or 0.0),
         float(fold_worst_min_cost or 0.0),
@@ -440,6 +446,7 @@ def t0_candidates():
     top = max(1, min(100, _body_int(body, 'top', 30)))
     max_files = max(1, min(20_000, _body_int(body, 'max_files', 2_000)))
     with_backtest = _body_bool(body, 'with_backtest', False)
+    with_next_bar_stress = _body_bool(body, 'with_next_bar_stress', False)
     preview_pool = max(top, min(800, _body_int(body, 'preview_pool', top * 5)))
     rows = scan_lc1_candidates(
         roots,
@@ -472,6 +479,9 @@ def t0_candidates():
         min_preview_win_rate = _body_float(body, 'min_preview_win_rate', 0.0)
         max_preview_drawdown_pct = _body_float(
             body, 'max_preview_drawdown_pct', float('inf'),
+        )
+        min_preview_next_bar_cost_reduction_pct = _body_float(
+            body, 'min_preview_next_bar_cost_reduction_pct', float('-inf'),
         )
         validation_ratio = _body_float(body, 'preview_validation_ratio', 0.0)
         min_preview_validation_trips = max(
@@ -559,6 +569,53 @@ def t0_candidates():
                     result['cost_reduction_positive_days_pct']
                 ),
             })
+            next_bar_stress_pass = True
+            if with_next_bar_stress:
+                stress_params = {
+                    **selected_params,
+                    'selected_variant': (
+                        f"{selected_params.get('selected_variant', 'default')}"
+                        "_next_bar_stress"
+                    ),
+                    'execution_style': 'next_bar',
+                }
+                stress_result = _run_t0_portfolio_with_strategy(
+                    str(row['code']),
+                    bars,
+                    allocation=allocation,
+                    initial_capital=1_000_000.0,
+                    strategy_params=stress_params,
+                )
+                row.update({
+                    'preview_next_bar_total_return_pct': (
+                        stress_result['total_return_pct']
+                    ),
+                    'preview_next_bar_alpha_vs_all_in': (
+                        stress_result['alpha_vs_all_in_hold']
+                    ),
+                    'preview_next_bar_round_trips': (
+                        stress_result['round_trips']
+                    ),
+                    'preview_next_bar_win_rate': stress_result['win_rate'],
+                    'preview_next_bar_cost_reduction_pct': (
+                        stress_result['cost_reduction_pct']
+                    ),
+                    'preview_next_bar_min_cost_reduction_pct': (
+                        stress_result['min_cost_reduction_pct']
+                    ),
+                    'preview_next_bar_cost_reduction_positive_days_pct': (
+                        stress_result[
+                            'cost_reduction_positive_days_pct'
+                        ]
+                    ),
+                    'preview_next_bar_selected_variant': (
+                        stress_result['selected_variant']
+                    ),
+                })
+                next_bar_stress_pass = (
+                    stress_result['cost_reduction_pct'] >=
+                    min_preview_next_bar_cost_reduction_pct
+                )
             validation_pass = True
             if validation_bars:
                 validation_result = _run_t0_portfolio_with_strategy(
@@ -684,7 +741,8 @@ def t0_candidates():
                 _preview_drawdown_allowed(
                     result['max_drawdown_pct'], max_preview_drawdown_pct,
                 ) and
-                validation_pass
+                validation_pass and
+                next_bar_stress_pass
             ):
                 previewed.append(row)
         previewed.sort(
