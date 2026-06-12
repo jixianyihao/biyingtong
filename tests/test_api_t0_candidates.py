@@ -5,7 +5,7 @@ from pathlib import Path
 
 from flask import Flask
 
-from api.t0 import _preview_sort_key
+from api.t0 import _preview_drawdown_allowed, _preview_sort_key
 
 
 def _fresh_flask_app():
@@ -214,3 +214,10 @@ def test_previewed_candidates_sort_by_validation_return_when_available():
     rows.sort(key=_preview_sort_key, reverse=True)
 
     assert rows[0]['code'] == 'lower-full-return-good-validation'
+
+
+def test_preview_drawdown_filter_uses_absolute_drawdown_limit():
+    assert _preview_drawdown_allowed(-7.5, 8.0)
+    assert _preview_drawdown_allowed(0.0, 8.0)
+    assert not _preview_drawdown_allowed(-8.1, 8.0)
+    assert _preview_drawdown_allowed(-99.0, float('inf'))

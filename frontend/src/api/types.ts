@@ -552,9 +552,11 @@ export type T0CandidatesRequest = {
   min_preview_trips?: number;
   min_preview_return_pct?: number;
   min_preview_alpha_vs_all_in?: number;
+  max_preview_drawdown_pct?: number;
   preview_validation_ratio?: number;
   min_preview_validation_return_pct?: number;
   min_preview_validation_alpha_vs_all_in?: number;
+  max_preview_validation_drawdown_pct?: number;
   min_days?: number;
   min_avg_amp_pct?: number;
   max_avg_amp_pct?: number;

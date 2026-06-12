@@ -116,6 +116,12 @@ def _preview_sort_key(row: dict) -> tuple[float, float, float, float, int]:
     )
 
 
+def _preview_drawdown_allowed(drawdown_pct: float, max_abs_pct: float) -> bool:
+    if max_abs_pct == float('inf'):
+        return True
+    return float(drawdown_pct or 0.0) >= -abs(float(max_abs_pct))
+
+
 def _split_bars_for_validation(
     bars: list[dict],
     validation_ratio: float,
@@ -295,12 +301,18 @@ def t0_candidates():
         min_preview_alpha_vs_all_in = _body_float(
             body, 'min_preview_alpha_vs_all_in', float('-inf'),
         )
+        max_preview_drawdown_pct = _body_float(
+            body, 'max_preview_drawdown_pct', float('inf'),
+        )
         validation_ratio = _body_float(body, 'preview_validation_ratio', 0.0)
         min_preview_validation_return_pct = _body_float(
             body, 'min_preview_validation_return_pct', float('-inf'),
         )
         min_preview_validation_alpha_vs_all_in = _body_float(
             body, 'min_preview_validation_alpha_vs_all_in', float('-inf'),
+        )
+        max_preview_validation_drawdown_pct = _body_float(
+            body, 'max_preview_validation_drawdown_pct', float('inf'),
         )
         previewed = []
         for row in rows:
@@ -373,12 +385,19 @@ def t0_candidates():
                     validation_result['total_return_pct'] >=
                     min_preview_validation_return_pct and
                     validation_result['alpha_vs_all_in_hold'] >=
-                    min_preview_validation_alpha_vs_all_in
+                    min_preview_validation_alpha_vs_all_in and
+                    _preview_drawdown_allowed(
+                        validation_result['max_drawdown_pct'],
+                        max_preview_validation_drawdown_pct,
+                    )
                 )
             if (
                 result['round_trips'] >= min_preview_trips and
                 result['total_return_pct'] >= min_preview_return_pct and
                 result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in and
+                _preview_drawdown_allowed(
+                    result['max_drawdown_pct'], max_preview_drawdown_pct,
+                ) and
                 validation_pass
             ):
                 previewed.append(row)
