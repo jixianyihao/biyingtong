@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import struct
 from pathlib import Path
 from statistics import median
@@ -265,13 +266,18 @@ def _sample_paths_evenly(paths: list[Path], max_files: int) -> list[Path]:
     limit = max(1, int(max_files))
     if len(paths) <= limit:
         return paths
-    if limit == 1:
-        return [paths[0]]
-    last = len(paths) - 1
-    return [
-        paths[round(idx * last / (limit - 1))]
-        for idx in range(limit)
-    ]
+    sampled = sorted(
+        paths,
+        key=lambda path: (
+            hashlib.blake2b(
+                _code_from_path(path).encode('ascii', errors='ignore'),
+                digest_size=8,
+            ).hexdigest(),
+            _code_from_path(path),
+            str(path),
+        ),
+    )[:limit]
+    return sorted(sampled, key=lambda p: (_code_from_path(p), str(p)))
 
 
 def scan_lc1_candidates(

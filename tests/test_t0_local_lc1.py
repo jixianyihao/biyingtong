@@ -8,6 +8,7 @@ import pytest
 from t0.local_lc1 import (
     _LC1_BARS_CACHE,
     _LC1_METRICS_CACHE,
+    _sample_paths_evenly,
     load_lc1_bars_for_code,
     parse_lc1_file,
     scan_lc1_candidates,
@@ -122,11 +123,11 @@ def test_scan_lc1_candidates_max_files_samples_across_market_not_by_size(tmp_pat
         )
     _write_lc1(
         tmp_path,
-        '000009.SZ',
+        '000011.SZ',
         [30 + i * 0.06 for i in range(16)],
         intraday_amp_pct=4.0,
     )
-    for raw in ['000011', '000013']:
+    for raw in ['000009', '000013']:
         _write_lc1(
             tmp_path,
             f'{raw}.SZ',
@@ -145,7 +146,16 @@ def test_scan_lc1_candidates_max_files_samples_across_market_not_by_size(tmp_pat
         score_profile='stable_t',
     )
 
-    assert [r['code'] for r in rows] == ['000009.SZ']
+    assert [r['code'] for r in rows] == ['000011.SZ']
+
+
+def test_sample_paths_evenly_is_monotonic_when_limit_expands():
+    paths = [Path(f'sz{i:06d}.lc1') for i in range(1, 31)]
+
+    smaller = _sample_paths_evenly(paths, 6)
+    larger = _sample_paths_evenly(paths, 12)
+
+    assert set(smaller).issubset(set(larger))
 
 
 def test_scan_lc1_candidates_reuses_metrics_until_file_changes(
