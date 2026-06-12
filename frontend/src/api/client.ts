@@ -27,6 +27,8 @@ import type {
   StrategyRating,
   T0GridRequest,
   T0GridResponse,
+  T0OptimizeRequest,
+  T0OptimizeResponse,
   T0CandidatesRequest,
   T0CandidatesResponse,
   T0PortfolioRequest,
@@ -216,6 +218,11 @@ export const api = {
     }),
   t0Portfolio: (body: T0PortfolioRequest) =>
     request<T0PortfolioResponse>('/api/t0/portfolio', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  t0Optimize: (body: T0OptimizeRequest) =>
+    request<T0OptimizeResponse>('/api/t0/optimize', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

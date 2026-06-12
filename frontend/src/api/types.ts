@@ -638,6 +638,50 @@ export type T0PortfolioRequest = {
   latest_entry_time?: string;
 };
 
+export type T0OptimizeRequest = {
+  code: string;
+  initial_capital?: number;
+  allocation_mode?: 'auto' | 'bull' | 'balanced' | 'defensive';
+  strategy_selection_ratio?: number;
+  offset?: number;
+  limit?: number;
+  validation_ratio?: number;
+  fold_count?: number;
+  grid?: Record<string, Array<number | string>>;
+  min_full_cost_reduction_pct?: number;
+  min_validation_cost_reduction_pct?: number;
+  min_full_round_trips?: number;
+  min_validation_round_trips?: number;
+  min_fold_cost_reduction_pct?: number;
+  min_fold_min_cost_reduction_pct?: number;
+};
+
+export type T0OptimizeRow = {
+  score: number;
+  params: Record<string, unknown>;
+  full: Record<string, number | string | boolean | null>;
+  validation: Record<string, number | string | boolean | null>;
+  folds: Array<Record<string, number | string | boolean | null>>;
+};
+
+export type T0OptimizeResponse = {
+  code: string;
+  data_source: string;
+  base_variant: string;
+  allocation: T0Allocation;
+  optimizer: {
+    total_grid: number;
+    offset: number;
+    limit: number;
+    evaluated: number;
+    next_offset: number | null;
+    rows: T0OptimizeRow[];
+    rejected_full: number;
+    rejected_validation: number;
+    rejected_fold: number;
+  };
+};
+
 export type T0Allocation = {
   mode: 'bull_high_base' | 'strong_bull_sell_rebalance' | 'balanced_range' | 'defensive_low_base';
   base_position_pct: number;

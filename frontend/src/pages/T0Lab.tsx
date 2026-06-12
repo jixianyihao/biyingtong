@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
-import { useT0Candidates, useT0Grid, useT0Portfolio } from '../api/hooks';
+import { useT0Candidates, useT0Grid, useT0Optimize, useT0Portfolio } from '../api/hooks';
 import type { T0CandidateRow, T0GridRow } from '../api/types';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -231,6 +231,7 @@ export function T0Lab() {
   const [top, setTop] = useState(20);
   const grid = useT0Grid();
   const portfolio = useT0Portfolio();
+  const optimizer = useT0Optimize();
   const candidates = useT0Candidates();
   const data = grid.data;
 
@@ -259,6 +260,18 @@ export function T0Lab() {
       initial_capital: 1_000_000,
       allocation_mode: 'auto',
       strategy_selection_ratio: 0.35,
+    });
+  }
+
+  function runOptimizerBatch() {
+    optimizer.mutate({
+      code: code.trim().toUpperCase(),
+      initial_capital: 1_000_000,
+      strategy_selection_ratio: 0.35,
+      offset: optimizer.data?.optimizer.next_offset ?? 0,
+      limit: 80,
+      validation_ratio: 0.35,
+      fold_count: 3,
     });
   }
 
@@ -476,6 +489,47 @@ export function T0Lab() {
             {candidates.isError && (
               <div style={{ color: 'var(--down)', fontSize: 11 }}>
                 候选扫描失败：{candidates.error instanceof Error ? candidates.error.message : String(candidates.error)}
+              </div>
+            )}
+          </div>
+
+          <div
+            className="grid gap-2"
+            style={{ padding: 12, borderTop: '1px solid var(--panel-border-soft)' }}
+          >
+            <div className="text-[11px] text-text-faint">参数优化批次</div>
+            <button
+              className="btn"
+              onClick={runOptimizerBatch}
+              disabled={optimizer.isPending}
+              style={{ justifyContent: 'center', height: 32 }}
+            >
+              {optimizer.isPending ? '优化中…' : '优化一批做T参数'}
+            </button>
+            {optimizer.data && (
+              <div className="grid gap-1 mono text-[11px]" style={{ color: 'var(--text-dim)' }}>
+                <div>
+                  基准 {optimizer.data.base_variant} · 已评估 {optimizer.data.optimizer.evaluated}/
+                  {optimizer.data.optimizer.total_grid}
+                  {optimizer.data.optimizer.next_offset != null && (
+                    <> · 下批 {optimizer.data.optimizer.next_offset}</>
+                  )}
+                </div>
+                {optimizer.data.optimizer.rows.slice(0, 4).map((row, idx) => (
+                  <div key={`${row.score}-${idx}`} style={{ lineHeight: 1.45 }}>
+                    #{idx + 1} score {fmtNum(row.score, 2)}
+                    {' '}成本 {fmtPct(Number(row.full.cost_reduction_pct ?? 0))}
+                    {' '}验证 {fmtPct(Number(row.validation.cost_reduction_pct ?? 0))}
+                    {' '}tp {String(row.params.take_profit_pct ?? '-')}
+                    {' '}sl {String(row.params.stop_loss_pct ?? '-')}
+                    {' '}vwap {String(row.params.vwap_deviation_pct ?? '-')}
+                  </div>
+                ))}
+              </div>
+            )}
+            {optimizer.isError && (
+              <div style={{ color: 'var(--down)', fontSize: 11 }}>
+                参数优化失败：{optimizer.error instanceof Error ? optimizer.error.message : String(optimizer.error)}
               </div>
             )}
           </div>

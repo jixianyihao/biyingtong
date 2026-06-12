@@ -4,6 +4,7 @@ import { api } from './client';
 import type {
   BacktestEvent, JobStatus, ScreenerFilter,
   T0CandidatesRequest, T0GridRequest, T0PortfolioRequest,
+  T0OptimizeRequest,
   UpdateAgentBody, UpdatePersonaBody,
 } from './types';
 
@@ -501,5 +502,11 @@ export function useT0Candidates() {
 export function useT0Portfolio() {
   return useMutation({
     mutationFn: (body: T0PortfolioRequest) => api.t0Portfolio(body),
+  });
+}
+
+export function useT0Optimize() {
+  return useMutation({
+    mutationFn: (body: T0OptimizeRequest) => api.t0Optimize(body),
   });
 }
