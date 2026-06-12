@@ -108,8 +108,10 @@ def test_t0_strategy_variants_for_strong_bull_include_single_and_multi():
     ]
     assert variants[0]['max_round_trips_per_day'] == 1
     assert variants[0]['stop_after_daily_loss'] is False
+    assert variants[0]['stop_after_cost_floor_pct'] == -2.0
     assert variants[1]['max_round_trips_per_day'] == 3
     assert variants[1]['stop_after_daily_loss'] is True
+    assert variants[1]['stop_after_cost_floor_pct'] == -1.0
 
 
 def test_t0_strategy_variants_for_balanced_include_cost_basis_choices():
@@ -136,3 +138,6 @@ def test_t0_strategy_variants_for_balanced_include_cost_basis_choices():
     assert variants[1]['take_profit_pct'] < 0.8
     assert variants[2]['stop_loss_pct'] < 1.2
     assert variants[2]['high_band'] > 0.82
+    assert variants[0]['stop_after_cost_floor_pct'] == -2.0
+    assert variants[1]['stop_after_cost_floor_pct'] == -1.5
+    assert variants[2]['stop_after_cost_floor_pct'] == -0.8

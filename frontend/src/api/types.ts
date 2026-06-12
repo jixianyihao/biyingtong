@@ -598,6 +598,7 @@ export type T0PortfolioRequest = {
   t_shares_pct?: number;
   max_round_trips_per_day?: number;
   stop_after_daily_loss?: boolean;
+  stop_after_cost_floor_pct?: number;
   min_amplitude_pct?: number;
   high_band?: number;
   low_band?: number;
@@ -638,6 +639,7 @@ export type T0PortfolioResponse = {
   cost_reduction_pct: number;
   min_cost_reduction_pct: number;
   cost_reduction_positive_days_pct: number;
+  cost_floor_stop_triggered: boolean;
   base_shares: number;
   t_shares: number;
   initial_cash: number;

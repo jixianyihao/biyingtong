@@ -24,14 +24,22 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
     base_high_band = _clamped_float(defaults.get('high_band'), 0.82)
     base_low_band = _clamped_float(defaults.get('low_band'), 0.25)
     base_rounds = _clamped_int(defaults.get('max_round_trips_per_day'), 1)
+    base_cost_floor = _clamped_float(
+        defaults.get('stop_after_cost_floor_pct'), -2.0,
+    )
 
     if allocation.get('mode') != 'strong_bull_sell_rebalance':
-        default = {'selected_variant': 'default', **defaults}
+        default = {
+            'selected_variant': 'default',
+            'stop_after_cost_floor_pct': base_cost_floor,
+            **defaults,
+        }
         active = {
             **defaults,
             'selected_variant': 'cost_basis_active',
             'max_round_trips_per_day': max(2, base_rounds),
             'stop_after_daily_loss': True,
+            'stop_after_cost_floor_pct': -1.5,
             # Faster profit-taking monetizes smaller intraday reversions into
             # realized T PnL, which is what lowers effective base cost.
             'take_profit_pct': max(0.45, min(base_take_profit, 0.65)),
@@ -42,6 +50,7 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
             'selected_variant': 'cost_basis_guarded',
             'max_round_trips_per_day': max(2, base_rounds),
             'stop_after_daily_loss': True,
+            'stop_after_cost_floor_pct': -0.8,
             # Require a more stretched price before opening; this trades less
             # often but avoids cost-basis damage on noisy, trendless chops.
             'high_band': min(0.92, max(base_high_band, 0.86)),
@@ -56,6 +65,7 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
         'selected_variant': 'single_round',
         'max_round_trips_per_day': 1,
         'stop_after_daily_loss': False,
+        'stop_after_cost_floor_pct': base_cost_floor,
     }
     multi = {
         **defaults,
@@ -64,6 +74,7 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
             2, int(defaults.get('max_round_trips_per_day') or 3),
         ),
         'stop_after_daily_loss': True,
+        'stop_after_cost_floor_pct': -1.0,
     }
     return [single, multi]
 

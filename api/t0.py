@@ -227,6 +227,11 @@ def _run_t0_portfolio_with_strategy(
         allow_buy_first=bool(strategy_params.get('allow_buy_first', True)),
         max_round_trips_per_day=int(strategy_params.get('max_round_trips_per_day', 1)),
         stop_after_daily_loss=bool(strategy_params.get('stop_after_daily_loss', False)),
+        stop_after_cost_floor_pct=(
+            float(strategy_params['stop_after_cost_floor_pct'])
+            if strategy_params.get('stop_after_cost_floor_pct') is not None
+            else None
+        ),
         earliest_entry_time=str(strategy_params.get('earliest_entry_time', '09:35')),
         latest_entry_time=str(strategy_params.get('latest_entry_time', '14:00')),
     )
@@ -578,7 +583,8 @@ def t0_portfolio():
         'min_amplitude_pct', 'high_band', 'low_band', 'take_profit_pct',
         'stop_loss_pct', 'fee_bps', 'sell_tax_bps', 'slippage_bps',
         'allow_sell_first', 'allow_buy_first', 'max_round_trips_per_day',
-        'stop_after_daily_loss', 'earliest_entry_time', 'latest_entry_time',
+        'stop_after_daily_loss', 'stop_after_cost_floor_pct',
+        'earliest_entry_time', 'latest_entry_time',
     }
     manual_strategy = any(_has_body_value(body, k) for k in manual_strategy_keys)
     if manual_strategy:
@@ -622,6 +628,11 @@ def t0_portfolio():
             'stop_after_daily_loss': _body_bool(
                 body, 'stop_after_daily_loss',
                 bool(strategy_defaults.get('stop_after_daily_loss', False)),
+            ),
+            'stop_after_cost_floor_pct': (
+                _body_float(body, 'stop_after_cost_floor_pct', 0.0)
+                if _has_body_value(body, 'stop_after_cost_floor_pct')
+                else strategy_defaults.get('stop_after_cost_floor_pct')
             ),
             'earliest_entry_time': str(body.get('earliest_entry_time') or '09:35'),
             'latest_entry_time': str(

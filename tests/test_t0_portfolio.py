@@ -209,3 +209,42 @@ def test_stop_after_daily_loss_blocks_second_same_day_t_attempt():
     assert result['round_trips'] == 1
     assert result['losses'] == 1
     assert [t['action'] for t in result['trades']] == ['sell_t', 'buy_back']
+
+
+def test_stop_after_cost_floor_blocks_future_t_attempts():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0),
+        _bar('2026-01-26 09:35:00', 103.0, high=103.0, low=100.0),
+        _bar('2026-01-26 10:00:00', 104.2, high=104.2, low=100.0),
+        _bar('2026-01-26 15:00:00', 104.2),
+        _bar('2026-01-27 09:31:00', 100.0),
+        _bar('2026-01-27 09:35:00', 103.0, high=103.0, low=100.0),
+        _bar('2026-01-27 10:00:00', 104.2, high=104.2, low=100.0),
+        _bar('2026-01-27 15:00:00', 104.2),
+    ]
+
+    result = run_t0_portfolio_backtest(
+        '688981.SH',
+        bars,
+        initial_capital=100_000,
+        base_position_pct=0.80,
+        t_shares_pct=0.25,
+        max_round_trips_per_day=1,
+        allow_sell_first=True,
+        allow_buy_first=False,
+        min_amplitude_pct=1.0,
+        high_band=0.80,
+        low_band=0.25,
+        take_profit_pct=1.0,
+        stop_loss_pct=1.0,
+        stop_after_cost_floor_pct=-0.2,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    assert result['round_trips'] == 1
+    assert result['t_pnl'] == pytest.approx(-240.0)
+    assert result['cost_floor_stop_triggered'] is True
+    assert result['min_cost_reduction_pct'] == pytest.approx(-0.3)
+    assert [t['action'] for t in result['trades']] == ['sell_t', 'buy_back']

@@ -222,6 +222,26 @@ def test_t0_portfolio_endpoint_selects_variant_on_train_slice(monkeypatch):
     assert body['cost_reduction_pct'] == 1.0
 
 
+def test_t0_portfolio_endpoint_accepts_cost_floor_stop_param(monkeypatch):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _FakeTDX())
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/portfolio', json={
+        'code': '688981.SH',
+        'initial_capital': 1_000_000,
+        'stop_after_cost_floor_pct': -0.2,
+        'fee_bps': 0,
+        'sell_tax_bps': 0,
+        'slippage_bps': 0,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['params']['stop_after_cost_floor_pct'] == -0.2
+    assert body['cost_floor_stop_triggered'] is False
+
+
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(
     monkeypatch,
     tmp_path,

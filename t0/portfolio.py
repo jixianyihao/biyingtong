@@ -59,6 +59,7 @@ def run_t0_portfolio_backtest(
     allow_buy_first: bool = True,
     max_round_trips_per_day: int = 2,
     stop_after_daily_loss: bool = False,
+    stop_after_cost_floor_pct: float | None = None,
     earliest_entry_time: str = '09:35',
     latest_entry_time: str = '14:00',
 ) -> dict[str, Any]:
@@ -78,6 +79,7 @@ def run_t0_portfolio_backtest(
             'total_return_pct': 0.0, 't_pnl': 0.0,
             'min_cost_reduction_pct': 0.0,
             'cost_reduction_positive_days_pct': 0.0,
+            'cost_floor_stop_triggered': False,
             'round_trips': 0, 'wins': 0, 'losses': 0,
             'win_rate': 0.0, 'trades': [], 'daily': [],
         }
@@ -116,6 +118,7 @@ def run_t0_portfolio_backtest(
     wins = 0
     losses = 0
     t_pnl = 0.0
+    cost_floor_stop_triggered = False
 
     for day in sorted(grouped):
         day_rows = grouped[day]
@@ -139,6 +142,8 @@ def run_t0_portfolio_backtest(
             now_time = row['dt'].time()
 
             if open_leg is None:
+                if cost_floor_stop_triggered:
+                    continue
                 if stop_trading_today:
                     continue
                 if t_shares <= 0 or round_trips_today >= max_round_trips_per_day:
@@ -254,6 +259,22 @@ def run_t0_portfolio_backtest(
             pnl = open_leg['cash_open'] + cash_close
             t_pnl += pnl
             day_t_pnl += pnl
+            current_effective_cost = (
+                (base_cost_with_fee - t_pnl) / base_shares
+                if base_shares > 0 else 0.0
+            )
+            current_cost_reduction = (
+                initial_cost_per_share - current_effective_cost
+            )
+            current_cost_reduction_pct = (
+                current_cost_reduction / initial_cost_per_share * 100.0
+                if initial_cost_per_share > 0 else 0.0
+            )
+            if (
+                stop_after_cost_floor_pct is not None and
+                current_cost_reduction_pct < float(stop_after_cost_floor_pct)
+            ):
+                cost_floor_stop_triggered = True
             if pnl > 0:
                 wins += 1
             else:
@@ -363,9 +384,11 @@ def run_t0_portfolio_backtest(
             'allow_buy_first': allow_buy_first,
             'max_round_trips_per_day': max_round_trips_per_day,
             'stop_after_daily_loss': stop_after_daily_loss,
+            'stop_after_cost_floor_pct': stop_after_cost_floor_pct,
             'earliest_entry_time': earliest_entry_time,
             'latest_entry_time': latest_entry_time,
         },
+        'cost_floor_stop_triggered': cost_floor_stop_triggered,
         'daily': daily,
         'trades': trades,
     }

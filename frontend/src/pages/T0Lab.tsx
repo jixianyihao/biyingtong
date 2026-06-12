@@ -505,6 +505,11 @@ export function T0Lab() {
                     最差 {fmtPct(portfolio.data.min_cost_reduction_pct)}
                   </span>
                   {' '}· 正向天数 {fmtPct(portfolio.data.cost_reduction_positive_days_pct)}
+                  {portfolio.data.cost_floor_stop_triggered && (
+                    <span style={{ color: 'var(--down)' }}>
+                      {' '}· 成本刹车已触发
+                    </span>
+                  )}
                 </div>
                 <div>
                   跑赢全仓{' '}
