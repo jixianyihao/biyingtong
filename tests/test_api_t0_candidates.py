@@ -6,6 +6,7 @@ from pathlib import Path
 from flask import Flask
 
 from api.t0 import (
+    _T0_PORTFOLIO_PREVIEW_CACHE,
     _fold_min_trips,
     _preview_cost_path_allowed,
     _preview_drawdown_allowed,
@@ -101,6 +102,52 @@ def test_t0_candidates_endpoint_can_attach_portfolio_preview(tmp_path):
     assert row['preview_cost_reduction_per_share'] is not None
     assert row['preview_min_cost_reduction_pct'] is not None
     assert row['preview_cost_reduction_positive_days_pct'] is not None
+
+
+def test_run_t0_portfolio_with_strategy_reuses_same_preview(monkeypatch):
+    import api.t0 as t0_api
+    _T0_PORTFOLIO_PREVIEW_CACHE.clear()
+    calls = 0
+
+    def fake_backtest(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return {
+            'total_return_pct': 1.23,
+            'final_equity': 1_012_300.0,
+            'alpha_vs_all_in_hold': 100.0,
+            'alpha_vs_base_hold': 100.0,
+            'round_trips': 3,
+            'win_rate': 66.7,
+            'max_drawdown_pct': -0.5,
+            'cost_reduction_pct': 0.8,
+            'cost_reduction_per_share': 0.1,
+            'min_cost_reduction_pct': -0.2,
+            'cost_reduction_positive_days_pct': 80.0,
+        }
+
+    monkeypatch.setattr(t0_api, 'run_t0_portfolio_backtest', fake_backtest)
+    bars = [
+        {'date': '2026-05-01 09:31', 'open': 10, 'high': 11, 'low': 9, 'close': 10, 'vol': 100},
+        {'date': '2026-05-01 09:32', 'open': 10, 'high': 11, 'low': 9, 'close': 10.5, 'vol': 110},
+    ]
+    kwargs = {
+        'allocation': {'base_position_pct': 80.0, 't_shares_pct': 20.0},
+        'initial_capital': 1_000_000.0,
+        'strategy_params': {
+            'selected_variant': 'default',
+            'signal_mode': 'band',
+            'execution_style': 'next_bar',
+        },
+    }
+
+    first = t0_api._run_t0_portfolio_with_strategy('688981.SH', bars, **kwargs)
+    first['total_return_pct'] = -99.0
+    second = t0_api._run_t0_portfolio_with_strategy('688981.SH', bars, **kwargs)
+
+    assert calls == 1
+    assert second['total_return_pct'] == 1.23
+    assert second['selected_variant'] == 'default'
 
 
 def test_t0_candidates_endpoint_can_attach_next_bar_stress_preview(tmp_path):

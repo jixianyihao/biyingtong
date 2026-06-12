@@ -15,6 +15,10 @@ from tdx_service import tdx
 from . import api_bp
 
 
+_T0_PORTFOLIO_PREVIEW_CACHE: dict[tuple, dict] = {}
+_T0_PORTFOLIO_PREVIEW_CACHE_MAX = 5_000
+
+
 def _float_arg(name: str, default: float):
     raw = request.args.get(name)
     if raw is None or raw == '':
@@ -353,6 +357,38 @@ def _count_bar_days(bars: list[dict]) -> int:
     return len({d for d in (_bar_day(bar) for bar in bars) if d is not None})
 
 
+def _bars_cache_signature(bars: list[dict]) -> tuple:
+    if not bars:
+        return (0,)
+    first = bars[0]
+    last = bars[-1]
+    close_sum = round(
+        sum(float(bar.get('close') or 0.0) for bar in bars),
+        6,
+    )
+    return (
+        len(bars),
+        str(first.get('date') or ''),
+        float(first.get('open') or 0.0),
+        float(first.get('high') or 0.0),
+        float(first.get('low') or 0.0),
+        float(first.get('close') or 0.0),
+        str(last.get('date') or ''),
+        float(last.get('open') or 0.0),
+        float(last.get('high') or 0.0),
+        float(last.get('low') or 0.0),
+        float(last.get('close') or 0.0),
+        close_sum,
+    )
+
+
+def _strategy_cache_signature(strategy_params: dict) -> tuple:
+    return tuple(
+        (str(key), repr(value))
+        for key, value in sorted(strategy_params.items())
+    )
+
+
 def _run_t0_portfolio_with_strategy(
     code: str,
     bars: list[dict],
@@ -363,20 +399,34 @@ def _run_t0_portfolio_with_strategy(
     base_position_pct: float | None = None,
     t_shares_pct: float | None = None,
 ) -> dict:
+    base_pct = (
+        float(base_position_pct)
+        if base_position_pct is not None
+        else float(allocation['base_position_pct'])
+    )
+    t_pct = (
+        float(t_shares_pct)
+        if t_shares_pct is not None
+        else float(allocation['t_shares_pct'])
+    )
+    cache_key = (
+        str(code).upper(),
+        _bars_cache_signature(bars),
+        float(initial_capital),
+        base_pct,
+        t_pct,
+        _strategy_cache_signature(strategy_params),
+    )
+    cached = _T0_PORTFOLIO_PREVIEW_CACHE.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+
     result = run_t0_portfolio_backtest(
         code,
         bars,
         initial_capital=initial_capital,
-        base_position_pct=(
-            float(base_position_pct)
-            if base_position_pct is not None
-            else float(allocation['base_position_pct'])
-        ),
-        t_shares_pct=(
-            float(t_shares_pct)
-            if t_shares_pct is not None
-            else float(allocation['t_shares_pct'])
-        ),
+        base_position_pct=base_pct,
+        t_shares_pct=t_pct,
         min_amplitude_pct=float(strategy_params.get('min_amplitude_pct', 1.0)),
         high_band=float(strategy_params.get('high_band', 0.82)),
         low_band=float(strategy_params.get('low_band', 0.25)),
@@ -403,6 +453,9 @@ def _run_t0_portfolio_with_strategy(
         latest_entry_time=str(strategy_params.get('latest_entry_time', '14:00')),
     )
     result['selected_variant'] = strategy_params.get('selected_variant', 'default')
+    if len(_T0_PORTFOLIO_PREVIEW_CACHE) >= _T0_PORTFOLIO_PREVIEW_CACHE_MAX:
+        _T0_PORTFOLIO_PREVIEW_CACHE.clear()
+    _T0_PORTFOLIO_PREVIEW_CACHE[cache_key] = dict(result)
     return result
 
 
