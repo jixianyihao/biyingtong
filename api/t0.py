@@ -92,13 +92,58 @@ def _has_body_value(body: dict, name: str) -> bool:
     return name in body and body.get(name) not in (None, '')
 
 
-def _preview_sort_key(row: dict) -> tuple[float, float, int]:
-    """Rank already-filtered candidates by actual portfolio outcome first."""
+def _preview_sort_key(row: dict) -> tuple[float, float, float, float, int]:
+    """Rank candidates by out-of-sample outcome when available.
+
+    If walk-forward preview fields are present, validation return/alpha take
+    priority. Otherwise this preserves the original full-period return-first
+    ranking.
+    """
+    primary_return = row.get(
+        'preview_validation_total_return_pct',
+        row.get('preview_total_return_pct'),
+    )
+    primary_alpha = row.get(
+        'preview_validation_alpha_vs_all_in',
+        row.get('preview_alpha_vs_all_in'),
+    )
     return (
+        float(primary_return or 0.0),
+        float(primary_alpha or 0.0),
         float(row.get('preview_total_return_pct') or 0.0),
         float(row.get('preview_alpha_vs_all_in') or 0.0),
         int(row.get('preview_round_trips') or 0),
     )
+
+
+def _split_bars_for_validation(
+    bars: list[dict],
+    validation_ratio: float,
+) -> tuple[list[dict], list[dict]]:
+    ratio = max(0.0, min(0.8, validation_ratio))
+    if ratio <= 0.0:
+        return bars, []
+
+    ordered_days: list[date] = []
+    seen: set[date] = set()
+    for bar in bars:
+        day = _bar_day(bar)
+        if day is None or day in seen:
+            continue
+        seen.add(day)
+        ordered_days.append(day)
+
+    if len(ordered_days) < 2:
+        return bars, []
+
+    validation_days = max(1, round(len(ordered_days) * ratio))
+    validation_days = min(validation_days, len(ordered_days) - 1)
+    validation_day_set = set(ordered_days[-validation_days:])
+    train = [bar for bar in bars if _bar_day(bar) not in validation_day_set]
+    validation = [bar for bar in bars if _bar_day(bar) in validation_day_set]
+    if not train or not validation:
+        return bars, []
+    return train, validation
 
 
 def _run_t0_portfolio_with_strategy(
@@ -250,21 +295,44 @@ def t0_candidates():
         min_preview_alpha_vs_all_in = _body_float(
             body, 'min_preview_alpha_vs_all_in', float('-inf'),
         )
+        validation_ratio = _body_float(body, 'preview_validation_ratio', 0.0)
+        min_preview_validation_return_pct = _body_float(
+            body, 'min_preview_validation_return_pct', float('-inf'),
+        )
+        min_preview_validation_alpha_vs_all_in = _body_float(
+            body, 'min_preview_validation_alpha_vs_all_in', float('-inf'),
+        )
         previewed = []
         for row in rows:
             bars = load_lc1_bars_for_code(str(row['code']), roots)
             if not bars:
                 continue
-            allocation = choose_t0_allocation(bars)
-            result = choose_best_t0_result(
+            train_bars, validation_bars = _split_bars_for_validation(
+                bars, validation_ratio,
+            )
+            selection_bars = train_bars if validation_bars else bars
+            allocation = choose_t0_allocation(selection_bars)
+            variants = t0_strategy_variants(allocation)
+            selected = choose_best_t0_result(
                 _run_t0_portfolio_with_strategy(
                     str(row['code']),
-                    bars,
+                    selection_bars,
                     allocation=allocation,
                     initial_capital=1_000_000.0,
                     strategy_params=params,
                 )
-                for params in t0_strategy_variants(allocation)
+                for params in variants
+            )
+            selected_variant = selected['selected_variant']
+            selected_params = next(
+                p for p in variants if p['selected_variant'] == selected_variant
+            )
+            result = _run_t0_portfolio_with_strategy(
+                str(row['code']),
+                bars,
+                allocation=allocation,
+                initial_capital=1_000_000.0,
+                strategy_params=selected_params,
             )
             row = dict(row)
             row.update({
@@ -277,10 +345,41 @@ def t0_candidates():
                 'preview_max_drawdown_pct': result['max_drawdown_pct'],
                 'preview_selected_variant': result['selected_variant'],
             })
+            validation_pass = True
+            if validation_bars:
+                validation_result = _run_t0_portfolio_with_strategy(
+                    str(row['code']),
+                    validation_bars,
+                    allocation=allocation,
+                    initial_capital=1_000_000.0,
+                    strategy_params=selected_params,
+                )
+                row.update({
+                    'preview_train_total_return_pct': selected['total_return_pct'],
+                    'preview_train_alpha_vs_all_in': selected['alpha_vs_all_in_hold'],
+                    'preview_validation_total_return_pct': (
+                        validation_result['total_return_pct']
+                    ),
+                    'preview_validation_alpha_vs_all_in': (
+                        validation_result['alpha_vs_all_in_hold']
+                    ),
+                    'preview_validation_round_trips': validation_result['round_trips'],
+                    'preview_validation_win_rate': validation_result['win_rate'],
+                    'preview_validation_max_drawdown_pct': (
+                        validation_result['max_drawdown_pct']
+                    ),
+                })
+                validation_pass = (
+                    validation_result['total_return_pct'] >=
+                    min_preview_validation_return_pct and
+                    validation_result['alpha_vs_all_in_hold'] >=
+                    min_preview_validation_alpha_vs_all_in
+                )
             if (
                 result['round_trips'] >= min_preview_trips and
                 result['total_return_pct'] >= min_preview_return_pct and
-                result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in
+                result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in and
+                validation_pass
             ):
                 previewed.append(row)
         previewed.sort(

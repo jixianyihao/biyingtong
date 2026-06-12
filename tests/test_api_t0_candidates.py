@@ -92,6 +92,35 @@ def test_t0_candidates_endpoint_can_attach_portfolio_preview(tmp_path):
     assert row['preview_round_trips'] >= 0
 
 
+def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+        104.0, 102.0, 105.0, 105.0,
+        106.0, 104.0, 107.0, 107.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 4,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'preview_pool': 5,
+        'preview_validation_ratio': 0.5,
+        'min_preview_trips': 0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert row['preview_train_total_return_pct'] is not None
+    assert row['preview_train_alpha_vs_all_in'] is not None
+    assert row['preview_validation_total_return_pct'] is not None
+    assert row['preview_validation_alpha_vs_all_in'] is not None
+
+
 def test_t0_candidates_endpoint_can_filter_negative_preview_returns(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 97.0, 96.0,
@@ -160,3 +189,28 @@ def test_previewed_candidates_sort_by_return_after_alpha_filter():
         'high-return-positive-alpha',
         'low-return-high-alpha',
     ]
+
+
+def test_previewed_candidates_sort_by_validation_return_when_available():
+    rows = [
+        {
+            'code': 'high-full-return-bad-validation',
+            'preview_total_return_pct': 20.0,
+            'preview_alpha_vs_all_in': 50_000.0,
+            'preview_validation_total_return_pct': -1.0,
+            'preview_validation_alpha_vs_all_in': -3_000.0,
+            'preview_round_trips': 80,
+        },
+        {
+            'code': 'lower-full-return-good-validation',
+            'preview_total_return_pct': 8.0,
+            'preview_alpha_vs_all_in': 12_000.0,
+            'preview_validation_total_return_pct': 2.0,
+            'preview_validation_alpha_vs_all_in': 2_000.0,
+            'preview_round_trips': 30,
+        },
+    ]
+
+    rows.sort(key=_preview_sort_key, reverse=True)
+
+    assert rows[0]['code'] == 'lower-full-return-good-validation'

@@ -534,6 +534,13 @@ export type T0CandidateRow = {
   preview_win_rate?: number;
   preview_max_drawdown_pct?: number;
   preview_selected_variant?: string;
+  preview_train_total_return_pct?: number;
+  preview_train_alpha_vs_all_in?: number;
+  preview_validation_total_return_pct?: number;
+  preview_validation_alpha_vs_all_in?: number;
+  preview_validation_round_trips?: number;
+  preview_validation_win_rate?: number;
+  preview_validation_max_drawdown_pct?: number;
 };
 
 export type T0CandidatesRequest = {
@@ -545,6 +552,9 @@ export type T0CandidatesRequest = {
   min_preview_trips?: number;
   min_preview_return_pct?: number;
   min_preview_alpha_vs_all_in?: number;
+  preview_validation_ratio?: number;
+  min_preview_validation_return_pct?: number;
+  min_preview_validation_alpha_vs_all_in?: number;
   min_days?: number;
   min_avg_amp_pct?: number;
   max_avg_amp_pct?: number;

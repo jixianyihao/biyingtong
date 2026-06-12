@@ -133,7 +133,10 @@ function CandidateList({
   if (rows.length === 0) return null;
   return (
     <div className="grid gap-1" style={{ maxHeight: 210, overflowY: 'auto' }}>
-      {rows.slice(0, 12).map((r) => (
+      {rows.slice(0, 12).map((r) => {
+        const validationReturn = r.preview_validation_total_return_pct;
+        const displayReturn = validationReturn ?? r.preview_total_return_pct ?? r.period_return_pct;
+        return (
         <button
           key={r.code}
           onClick={() => onPick(r.code)}
@@ -150,9 +153,15 @@ function CandidateList({
         >
           <div className="flex items-center gap-2">
             <span style={{ color: 'var(--text-hi)', fontWeight: 700 }}>{r.code}</span>
-            <span style={{ color: (r.preview_total_return_pct ?? r.period_return_pct) >= 0 ? 'var(--up)' : 'var(--down)' }}>
-              {fmtPct(r.preview_total_return_pct ?? r.period_return_pct)}
+            <span style={{ color: displayReturn >= 0 ? 'var(--up)' : 'var(--down)' }}>
+              {validationReturn == null ? 'FULL ' : 'VAL '}
+              {fmtPct(displayReturn)}
             </span>
+            {r.preview_selected_variant && (
+              <span className="pill" style={{ fontSize: 9, color: 'var(--text-faint)' }}>
+                {r.preview_selected_variant}
+              </span>
+            )}
             <span style={{ marginLeft: 'auto', color: 'var(--text-faint)' }}>
               振幅 {fmtPct(r.avg_intraday_amp_pct)}
             </span>
@@ -163,8 +172,17 @@ function CandidateList({
               <> · 跑赢全仓¥{fmtMoney(r.preview_alpha_vs_all_in)}</>
             )}
           </div>
+          {validationReturn != null && (
+            <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-ghost)' }}>
+              VAL T {r.preview_validation_round_trips ?? 0}
+              {r.preview_validation_alpha_vs_all_in != null && (
+                <> · VAL α¥{fmtMoney(r.preview_validation_alpha_vs_all_in)}</>
+              )}
+            </div>
+          )}
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -215,6 +233,9 @@ export function T0Lab() {
       min_preview_trips: 1,
       min_preview_return_pct: 0,
       min_preview_alpha_vs_all_in: 0,
+      preview_validation_ratio: 0.35,
+      min_preview_validation_return_pct: 0,
+      min_preview_validation_alpha_vs_all_in: 0,
       min_days: 50,
       min_avg_amp_pct: 3.0,
       max_avg_amp_pct: 15.0,
