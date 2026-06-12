@@ -5,6 +5,7 @@ from math import floor
 from typing import Any
 
 from .backtest import _exec_price, _fee, _normalise_bars, _parse_hhmm
+from .signals import IntradaySignalState, T0SignalConfig, evaluate_t0_signal
 
 
 def _round_lot(shares: float) -> int:
@@ -115,8 +116,12 @@ def run_t0_portfolio_backtest(
     earliest_entry = _parse_hhmm(earliest_entry_time, None)
     latest_entry = _parse_hhmm(latest_entry_time, None)
     mode = (signal_mode or 'band').strip().lower()
-    use_band_signal = mode in {'band', 'hybrid'}
-    use_vwap_signal = mode in {'vwap_deviation', 'hybrid'}
+    signal_config = T0SignalConfig(
+        signal_mode=mode,
+        high_band=high_band,
+        low_band=low_band,
+        vwap_deviation_pct=vwap_deviation_pct,
+    )
 
     trades: list[dict[str, Any]] = []
     daily: list[dict[str, Any]] = []
@@ -147,12 +152,19 @@ def run_t0_portfolio_backtest(
             cum_notional += price * volume
             cum_volume += volume
             vwap = cum_notional / cum_volume if cum_volume > 0 else price
-            vwap_dev_pct = (
-                (price / vwap - 1.0) * 100.0 if vwap > 0 else 0.0
-            )
             rng = day_high - day_low
             amplitude_pct = rng / base_price * 100.0 if base_price > 0 else 0.0
-            pos = (price - day_low) / rng if rng > 0 else 0.5
+            signal = evaluate_t0_signal(
+                IntradaySignalState(
+                    price=price,
+                    day_low=day_low,
+                    day_high=day_high,
+                    vwap=vwap,
+                    amplitude_pct=amplitude_pct,
+                ),
+                signal_config,
+            )
+            pos = signal.position
             now_time = row['dt'].time()
 
             if open_leg is None:
@@ -166,19 +178,11 @@ def run_t0_portfolio_backtest(
                     continue
                 if amplitude_pct < min_amplitude_pct:
                     continue
-                sell_signal = (
-                    (use_band_signal and pos >= high_band) or
-                    (use_vwap_signal and vwap_dev_pct >= vwap_deviation_pct)
-                )
-                buy_signal = (
-                    (use_band_signal and pos <= low_band) or
-                    (use_vwap_signal and vwap_dev_pct <= -vwap_deviation_pct)
-                )
                 if (
                     allow_sell_first
                     and sellable_shares >= t_shares
                     and shares >= t_shares
-                    and sell_signal
+                    and signal.sell
                     and price >= base_price
                 ):
                     sell_price = _exec_price(price, is_buy=False,
@@ -199,7 +203,7 @@ def run_t0_portfolio_backtest(
                         'shares': t_shares, 'price': round(sell_price, 4),
                         'fee': round(sell_fee, 4),
                     })
-                elif allow_buy_first and sellable_shares >= t_shares and buy_signal:
+                elif allow_buy_first and sellable_shares >= t_shares and signal.buy:
                     buy_price = _exec_price(price, is_buy=True,
                                             slippage_bps=slippage_bps)
                     buy_fee = _fee(buy_price, t_shares, fee_bps=fee_bps,
