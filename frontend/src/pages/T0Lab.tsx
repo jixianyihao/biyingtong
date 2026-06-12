@@ -243,6 +243,13 @@ export function T0Lab() {
     return `${c.first} → ${c.last} · ${c.bar_count.toLocaleString('zh-CN')} bars`;
   }, [data]);
 
+  function setActiveCode(nextCode: string) {
+    setCode(nextCode);
+    grid.reset();
+    portfolio.reset();
+    optimizer.reset();
+  }
+
   function run() {
     const cleanCode = code.trim().toUpperCase();
     if (!cleanCode) return;
@@ -338,7 +345,7 @@ export function T0Lab() {
               <span className="text-[11px] text-text-faint">标的代码</span>
               <input
                 value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                onChange={(e) => setActiveCode(e.target.value.toUpperCase())}
                 className="mono"
                 style={{
                   background: 'var(--bg-2)',
@@ -481,8 +488,7 @@ export function T0Lab() {
               <CandidateList
                 rows={candidates.data.rows}
                 onPick={(nextCode) => {
-                  setCode(nextCode);
-                  portfolio.reset();
+                  setActiveCode(nextCode);
                 }}
               />
             )}
