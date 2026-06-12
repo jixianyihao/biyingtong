@@ -558,6 +558,12 @@ export type T0CandidateRow = {
   preview_validation_worst_cost_reduction_pct?: number;
   preview_validation_worst_min_cost_reduction_pct?: number;
   preview_validation_avg_cost_reduction_pct?: number;
+  preview_validation_next_bar_fold_count?: number;
+  preview_validation_next_bar_pass_count?: number;
+  preview_validation_next_bar_pass_rate_pct?: number;
+  preview_validation_next_bar_worst_cost_reduction_pct?: number;
+  preview_validation_next_bar_worst_min_cost_reduction_pct?: number;
+  preview_validation_next_bar_avg_cost_reduction_pct?: number;
   preview_next_bar_total_return_pct?: number;
   preview_next_bar_alpha_vs_all_in?: number;
   preview_next_bar_round_trips?: number;
@@ -591,9 +597,12 @@ export type T0CandidatesRequest = {
   min_preview_validation_return_pct?: number;
   min_preview_validation_alpha_vs_all_in?: number;
   min_preview_validation_cost_reduction_pct?: number;
+  min_preview_validation_fold_cost_reduction_pct?: number;
   min_preview_validation_min_cost_reduction_pct?: number;
   min_preview_validation_cost_reduction_positive_days_pct?: number;
   min_preview_validation_pass_rate_pct?: number;
+  min_preview_validation_next_bar_cost_reduction_pct?: number;
+  min_preview_validation_next_bar_pass_rate_pct?: number;
   max_preview_validation_drawdown_pct?: number;
   min_days?: number;
   min_avg_amp_pct?: number;

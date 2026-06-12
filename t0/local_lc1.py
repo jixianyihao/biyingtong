@@ -218,6 +218,19 @@ def _candidate_metrics_from_file(code: str, path: Path) -> dict[str, Any] | None
     }
 
 
+def _sample_paths_evenly(paths: list[Path], max_files: int) -> list[Path]:
+    limit = max(1, int(max_files))
+    if len(paths) <= limit:
+        return paths
+    if limit == 1:
+        return [paths[0]]
+    last = len(paths) - 1
+    return [
+        paths[round(idx * last / (limit - 1))]
+        for idx in range(limit)
+    ]
+
+
 def scan_lc1_candidates(
     roots: Iterable[str | Path] | None = None,
     *,
@@ -237,13 +250,16 @@ def scan_lc1_candidates(
         r = Path(root)
         if r.exists():
             paths.extend(r.glob('*.lc1'))
-    paths = sorted(paths, key=lambda p: (-p.stat().st_size, str(p)))[:max_files]
+    paths = [
+        path for path in paths
+        if _is_normal_a_share(_code_from_path(path))
+    ]
+    paths = sorted(paths, key=lambda p: (_code_from_path(p), str(p)))
+    paths = _sample_paths_evenly(paths, max_files)
 
     rows: list[dict[str, Any]] = []
     for path in paths:
         code = _code_from_path(path)
-        if not _is_normal_a_share(code):
-            continue
         metrics = _candidate_metrics_from_file(code, path)
         if not metrics:
             continue

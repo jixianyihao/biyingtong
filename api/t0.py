@@ -95,8 +95,8 @@ def _has_body_value(body: dict, name: str) -> bool:
 def _preview_sort_key(
     row: dict,
 ) -> tuple[
-    float, float, float, float, float, float, float, float,
-    float, float, float, float, float, float, float, int,
+    float, float, float, float, float, float, float, float, float, float,
+    float, float, float, float, float, float, float, float, float, int,
 ]:
     """Rank candidates by out-of-sample outcome when available.
 
@@ -140,8 +140,27 @@ def _preview_sort_key(
     next_bar_cost = row.get('preview_next_bar_cost_reduction_pct')
     next_bar_min_cost = row.get('preview_next_bar_min_cost_reduction_pct')
     has_next_bar_stress = 1.0 if next_bar_cost is not None else 0.0
+    next_bar_fold_pass_rate = row.get(
+        'preview_validation_next_bar_pass_rate_pct', 0.0,
+    )
+    next_bar_fold_worst_cost = row.get(
+        'preview_validation_next_bar_worst_cost_reduction_pct',
+        next_bar_cost,
+    )
+    next_bar_fold_worst_min_cost = row.get(
+        'preview_validation_next_bar_worst_min_cost_reduction_pct',
+        next_bar_min_cost,
+    )
+    next_bar_fold_avg_cost = row.get(
+        'preview_validation_next_bar_avg_cost_reduction_pct',
+        next_bar_cost,
+    )
     return (
         has_next_bar_stress,
+        float(next_bar_fold_pass_rate or 0.0),
+        float(next_bar_fold_worst_cost or 0.0),
+        float(next_bar_fold_worst_min_cost or 0.0),
+        float(next_bar_fold_avg_cost or 0.0),
         float(next_bar_cost or 0.0),
         float(next_bar_min_cost or 0.0),
         float(fold_pass_rate or 0.0),
@@ -181,6 +200,14 @@ def _preview_cost_path_allowed(
         float(min_cost_reduction_pct or 0.0) >= float(min_floor_pct) and
         float(positive_days_pct or 0.0) >= float(min_positive_days_pct or 0.0)
     )
+
+
+def _fold_min_trips(total_min_trips: int, folds: int) -> int:
+    total = max(0, int(total_min_trips or 0))
+    if total <= 1:
+        return total
+    fold_count = max(1, int(folds or 1))
+    return max(1, (total + fold_count - 1) // fold_count)
 
 
 def _split_bars_for_validation(
@@ -267,18 +294,37 @@ def _preview_result_passes(
     )
 
 
+def _preview_fold_result_passes(
+    result: dict,
+    *,
+    min_trips: int,
+    min_cost_reduction_pct: float,
+    min_min_cost_reduction_pct: float,
+    max_drawdown_pct: float,
+) -> bool:
+    """Small validation folds are stability checks, not full strategy ratings."""
+    return (
+        result['round_trips'] >= min_trips and
+        result['cost_reduction_pct'] >= min_cost_reduction_pct and
+        result['min_cost_reduction_pct'] >= min_min_cost_reduction_pct and
+        _preview_drawdown_allowed(result['max_drawdown_pct'], max_drawdown_pct)
+    )
+
+
 def _validation_fold_summary(
     results: list[dict],
     pass_flags: list[bool],
+    *,
+    prefix: str = 'preview_validation',
 ) -> dict:
     if not results:
         return {
-            'preview_validation_fold_count': 0,
-            'preview_validation_pass_count': 0,
-            'preview_validation_pass_rate_pct': 0.0,
-            'preview_validation_worst_cost_reduction_pct': 0.0,
-            'preview_validation_worst_min_cost_reduction_pct': 0.0,
-            'preview_validation_avg_cost_reduction_pct': 0.0,
+            f'{prefix}_fold_count': 0,
+            f'{prefix}_pass_count': 0,
+            f'{prefix}_pass_rate_pct': 0.0,
+            f'{prefix}_worst_cost_reduction_pct': 0.0,
+            f'{prefix}_worst_min_cost_reduction_pct': 0.0,
+            f'{prefix}_avg_cost_reduction_pct': 0.0,
         }
     cost_values = [float(r.get('cost_reduction_pct') or 0.0) for r in results]
     min_cost_values = [
@@ -286,18 +332,18 @@ def _validation_fold_summary(
     ]
     pass_count = sum(1 for flag in pass_flags if flag)
     return {
-        'preview_validation_fold_count': len(results),
-        'preview_validation_pass_count': pass_count,
-        'preview_validation_pass_rate_pct': round(
+        f'{prefix}_fold_count': len(results),
+        f'{prefix}_pass_count': pass_count,
+        f'{prefix}_pass_rate_pct': round(
             pass_count / len(results) * 100.0, 4,
         ),
-        'preview_validation_worst_cost_reduction_pct': round(
+        f'{prefix}_worst_cost_reduction_pct': round(
             min(cost_values), 4,
         ),
-        'preview_validation_worst_min_cost_reduction_pct': round(
+        f'{prefix}_worst_min_cost_reduction_pct': round(
             min(min_cost_values), 4,
         ),
-        'preview_validation_avg_cost_reduction_pct': round(
+        f'{prefix}_avg_cost_reduction_pct': round(
             sum(cost_values) / len(cost_values), 4,
         ),
     }
@@ -499,6 +545,11 @@ def t0_candidates():
         min_preview_validation_cost_reduction_pct = _body_float(
             body, 'min_preview_validation_cost_reduction_pct', float('-inf'),
         )
+        min_preview_validation_fold_cost_reduction_pct = _body_float(
+            body,
+            'min_preview_validation_fold_cost_reduction_pct',
+            min_preview_validation_cost_reduction_pct,
+        )
         min_preview_validation_min_cost_reduction_pct = _body_float(
             body, 'min_preview_validation_min_cost_reduction_pct',
             float('-inf'),
@@ -515,6 +566,14 @@ def t0_candidates():
         )
         min_preview_validation_pass_rate_pct = _body_float(
             body, 'min_preview_validation_pass_rate_pct', 0.0,
+        )
+        min_preview_validation_next_bar_cost_reduction_pct = _body_float(
+            body,
+            'min_preview_validation_next_bar_cost_reduction_pct',
+            min_preview_next_bar_cost_reduction_pct,
+        )
+        min_preview_validation_next_bar_pass_rate_pct = _body_float(
+            body, 'min_preview_validation_next_bar_pass_rate_pct', 0.0,
         )
         previewed = []
         for row in rows:
@@ -569,6 +628,26 @@ def t0_candidates():
                     result['cost_reduction_positive_days_pct']
                 ),
             })
+            preview_pass = (
+                result['round_trips'] >= min_preview_trips and
+                _preview_win_rate_allowed(
+                    result['win_rate'], min_preview_win_rate,
+                ) and
+                result['total_return_pct'] >= min_preview_return_pct and
+                result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in and
+                result['cost_reduction_pct'] >= min_preview_cost_reduction_pct and
+                _preview_cost_path_allowed(
+                    result['min_cost_reduction_pct'],
+                    result['cost_reduction_positive_days_pct'],
+                    min_preview_min_cost_reduction_pct,
+                    min_preview_cost_reduction_positive_days_pct,
+                ) and
+                _preview_drawdown_allowed(
+                    result['max_drawdown_pct'], max_preview_drawdown_pct,
+                )
+            )
+            if not preview_pass:
+                continue
             next_bar_stress_pass = True
             if with_next_bar_stress:
                 stress_params = {
@@ -616,6 +695,8 @@ def t0_candidates():
                     stress_result['cost_reduction_pct'] >=
                     min_preview_next_bar_cost_reduction_pct
                 )
+                if not next_bar_stress_pass:
+                    continue
             validation_pass = True
             if validation_bars:
                 validation_result = _run_t0_portfolio_with_strategy(
@@ -681,6 +762,13 @@ def t0_candidates():
                     max_drawdown_pct=max_preview_validation_drawdown_pct,
                 )
                 if preview_validation_folds > 1:
+                    validation_folds = _split_validation_folds(
+                        validation_bars, preview_validation_folds,
+                    )
+                    fold_min_trips = _fold_min_trips(
+                        min_preview_validation_trips,
+                        len(validation_folds),
+                    )
                     fold_results = [
                         _run_t0_portfolio_with_strategy(
                             str(row['code']),
@@ -689,27 +777,17 @@ def t0_candidates():
                             initial_capital=1_000_000.0,
                             strategy_params=selected_params,
                         )
-                        for fold_bars in _split_validation_folds(
-                            validation_bars, preview_validation_folds,
-                        )
+                        for fold_bars in validation_folds
                     ]
                     fold_pass_flags = [
-                        _preview_result_passes(
+                        _preview_fold_result_passes(
                             fold_result,
-                            min_trips=min_preview_validation_trips,
-                            min_win_rate=min_preview_validation_win_rate,
-                            min_return_pct=min_preview_validation_return_pct,
-                            min_alpha_vs_all_in=(
-                                min_preview_validation_alpha_vs_all_in
-                            ),
+                            min_trips=fold_min_trips,
                             min_cost_reduction_pct=(
-                                min_preview_validation_cost_reduction_pct
+                                min_preview_validation_fold_cost_reduction_pct
                             ),
                             min_min_cost_reduction_pct=(
                                 min_preview_validation_min_cost_reduction_pct
-                            ),
-                            min_cost_reduction_positive_days_pct=(
-                                min_preview_validation_cost_reduction_positive_days_pct
                             ),
                             max_drawdown_pct=max_preview_validation_drawdown_pct,
                         )
@@ -724,26 +802,52 @@ def t0_candidates():
                         fold_summary['preview_validation_pass_rate_pct'] >=
                         min_preview_validation_pass_rate_pct
                     )
-            if (
-                result['round_trips'] >= min_preview_trips and
-                _preview_win_rate_allowed(
-                    result['win_rate'], min_preview_win_rate,
-                ) and
-                result['total_return_pct'] >= min_preview_return_pct and
-                result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in and
-                result['cost_reduction_pct'] >= min_preview_cost_reduction_pct and
-                _preview_cost_path_allowed(
-                    result['min_cost_reduction_pct'],
-                    result['cost_reduction_positive_days_pct'],
-                    min_preview_min_cost_reduction_pct,
-                    min_preview_cost_reduction_positive_days_pct,
-                ) and
-                _preview_drawdown_allowed(
-                    result['max_drawdown_pct'], max_preview_drawdown_pct,
-                ) and
-                validation_pass and
-                next_bar_stress_pass
-            ):
+                    if with_next_bar_stress:
+                        fold_stress_params = {
+                            **selected_params,
+                            'selected_variant': (
+                                f"{selected_params.get('selected_variant', 'default')}"
+                                "_next_bar_validation_stress"
+                            ),
+                            'execution_style': 'next_bar',
+                        }
+                        next_bar_fold_results = [
+                            _run_t0_portfolio_with_strategy(
+                                str(row['code']),
+                                fold_bars,
+                                allocation=allocation,
+                                initial_capital=1_000_000.0,
+                                strategy_params=fold_stress_params,
+                            )
+                            for fold_bars in validation_folds
+                        ]
+                        next_bar_fold_pass_flags = [
+                            _preview_fold_result_passes(
+                                fold_result,
+                                min_trips=fold_min_trips,
+                                min_cost_reduction_pct=(
+                                    min_preview_validation_next_bar_cost_reduction_pct
+                                ),
+                                min_min_cost_reduction_pct=(
+                                    min_preview_validation_min_cost_reduction_pct
+                                ),
+                                max_drawdown_pct=max_preview_validation_drawdown_pct,
+                            )
+                            for fold_result in next_bar_fold_results
+                        ]
+                        next_bar_fold_summary = _validation_fold_summary(
+                            next_bar_fold_results,
+                            next_bar_fold_pass_flags,
+                            prefix='preview_validation_next_bar',
+                        )
+                        row.update(next_bar_fold_summary)
+                        validation_pass = (
+                            validation_pass and
+                            next_bar_fold_summary[
+                                'preview_validation_next_bar_pass_rate_pct'
+                            ] >= min_preview_validation_next_bar_pass_rate_pct
+                        )
+            if validation_pass:
                 previewed.append(row)
         previewed.sort(
             key=_preview_sort_key,

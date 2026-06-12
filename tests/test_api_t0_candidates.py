@@ -6,8 +6,10 @@ from pathlib import Path
 from flask import Flask
 
 from api.t0 import (
+    _fold_min_trips,
     _preview_cost_path_allowed,
     _preview_drawdown_allowed,
+    _preview_fold_result_passes,
     _preview_sort_key,
     _preview_win_rate_allowed,
 )
@@ -155,6 +157,80 @@ def test_t0_candidates_endpoint_filters_by_next_bar_stress_cost(tmp_path):
     assert resp.get_json()['rows'] == []
 
 
+def test_t0_candidates_endpoint_skips_next_bar_stress_when_preview_fails(
+    monkeypatch,
+):
+    import api.t0 as t0_api
+    next_bar_calls = []
+
+    monkeypatch.setattr(t0_api, 'scan_lc1_candidates', lambda *a, **k: [{
+        'code': '688981.SH',
+        'bar_count': 8,
+        'days': 2,
+    }])
+    monkeypatch.setattr(t0_api, 'load_lc1_bars_for_code', lambda *a, **k: [
+        {'date': '2026-05-01 09:31', 'close': 100.0},
+        {'date': '2026-05-01 09:32', 'close': 99.0},
+        {'date': '2026-05-02 09:31', 'close': 98.0},
+        {'date': '2026-05-02 09:32', 'close': 97.0},
+    ])
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda *a, **k: {
+        'base_position_pct': 80.0,
+        't_shares_pct': 20.0,
+    })
+    monkeypatch.setattr(
+        t0_api,
+        't0_strategy_variants',
+        lambda allocation: [{'selected_variant': 'default'}],
+    )
+    monkeypatch.setattr(
+        t0_api,
+        'choose_best_t0_result',
+        lambda results: {
+            'selected_variant': 'default',
+            'total_return_pct': 1.0,
+            'alpha_vs_all_in_hold': 1_000.0,
+            'cost_reduction_pct': 1.0,
+            'min_cost_reduction_pct': 1.0,
+            'cost_reduction_positive_days_pct': 100.0,
+        },
+    )
+
+    def fake_run(*args, **kwargs):
+        params = kwargs['strategy_params']
+        if params.get('execution_style') == 'next_bar':
+            next_bar_calls.append(params)
+        return {
+            'selected_variant': params.get('selected_variant', 'default'),
+            'total_return_pct': -9.0,
+            'final_equity': 910_000.0,
+            'alpha_vs_all_in_hold': -10_000.0,
+            'alpha_vs_base_hold': -10_000.0,
+            'round_trips': 1,
+            'win_rate': 0.0,
+            'max_drawdown_pct': -9.0,
+            'cost_reduction_pct': -1.0,
+            'cost_reduction_per_share': -0.1,
+            'min_cost_reduction_pct': -1.0,
+            'cost_reduction_positive_days_pct': 0.0,
+        }
+
+    monkeypatch.setattr(t0_api, '_run_t0_portfolio_with_strategy', fake_run)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'top': 5,
+        'with_backtest': True,
+        'with_next_bar_stress': True,
+        'preview_pool': 5,
+        'min_preview_return_pct': 0.0,
+    })
+
+    assert resp.status_code == 200
+    assert resp.get_json()['rows'] == []
+    assert next_bar_calls == []
+
+
 def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 101.0, 101.0,
@@ -228,6 +304,44 @@ def test_t0_candidates_endpoint_reports_validation_fold_stability(tmp_path):
     assert row['preview_validation_avg_cost_reduction_pct'] is not None
 
 
+def test_t0_candidates_endpoint_reports_validation_next_bar_fold_stress(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+        104.0, 102.0, 105.0, 105.0,
+        106.0, 104.0, 107.0, 107.0,
+        108.0, 106.0, 109.0, 109.0,
+        110.0, 108.0, 111.0, 111.0,
+        112.0, 110.0, 113.0, 113.0,
+        114.0, 112.0, 115.0, 115.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 8,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'with_next_bar_stress': True,
+        'preview_pool': 5,
+        'preview_validation_ratio': 0.75,
+        'preview_validation_folds': 3,
+        'min_preview_trips': 0,
+        'min_preview_validation_pass_rate_pct': 0.0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert row['preview_validation_next_bar_fold_count'] == 3
+    assert row['preview_validation_next_bar_pass_count'] == 3
+    assert row['preview_validation_next_bar_pass_rate_pct'] == 100.0
+    assert row['preview_validation_next_bar_worst_cost_reduction_pct'] is not None
+    assert row['preview_validation_next_bar_worst_min_cost_reduction_pct'] is not None
+    assert row['preview_validation_next_bar_avg_cost_reduction_pct'] is not None
+
+
 def test_t0_candidates_endpoint_filters_by_validation_fold_pass_rate(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 101.0, 101.0,
@@ -249,6 +363,116 @@ def test_t0_candidates_endpoint_filters_by_validation_fold_pass_rate(tmp_path):
         'preview_validation_folds': 2,
         'min_preview_trips': 0,
         'min_preview_validation_pass_rate_pct': 101.0,
+    })
+
+    assert resp.status_code == 200
+    assert resp.get_json()['rows'] == []
+
+
+def test_t0_candidates_endpoint_allows_looser_fold_cost_than_validation_total(
+    monkeypatch,
+):
+    import api.t0 as t0_api
+
+    bars = [
+        {'date': '2026-05-01 09:31', 'close': 100.0},
+        {'date': '2026-05-02 09:31', 'close': 101.0},
+        {'date': '2026-05-03 09:31', 'close': 102.0},
+        {'date': '2026-05-04 09:31', 'close': 103.0},
+    ]
+    monkeypatch.setattr(t0_api, 'scan_lc1_candidates', lambda *a, **k: [{
+        'code': '688981.SH',
+        'bar_count': len(bars),
+        'days': 4,
+    }])
+    monkeypatch.setattr(t0_api, 'load_lc1_bars_for_code', lambda *a, **k: bars)
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda *a, **k: {
+        'base_position_pct': 80.0,
+        't_shares_pct': 20.0,
+    })
+    monkeypatch.setattr(
+        t0_api,
+        't0_strategy_variants',
+        lambda allocation: [{'selected_variant': 'default'}],
+    )
+    monkeypatch.setattr(
+        t0_api,
+        'choose_best_t0_result',
+        lambda results: {
+            'selected_variant': 'default',
+            'total_return_pct': 1.0,
+            'alpha_vs_all_in_hold': 1_000.0,
+            'cost_reduction_pct': 1.0,
+            'min_cost_reduction_pct': 1.0,
+            'cost_reduction_positive_days_pct': 100.0,
+        },
+    )
+
+    def fake_run(code, run_bars, **kwargs):
+        cost = -0.5 if len(run_bars) == 1 else 1.0
+        return {
+            'selected_variant': kwargs['strategy_params'].get(
+                'selected_variant', 'default',
+            ),
+            'total_return_pct': 1.0,
+            'final_equity': 1_010_000.0,
+            'alpha_vs_all_in_hold': 1_000.0,
+            'alpha_vs_base_hold': 1_000.0,
+            'round_trips': max(1, len(run_bars)),
+            'win_rate': 100.0,
+            'max_drawdown_pct': -0.1,
+            'cost_reduction_pct': cost,
+            'cost_reduction_per_share': 0.1,
+            'min_cost_reduction_pct': cost,
+            'cost_reduction_positive_days_pct': 100.0,
+        }
+
+    monkeypatch.setattr(t0_api, '_run_t0_portfolio_with_strategy', fake_run)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'top': 5,
+        'with_backtest': True,
+        'preview_pool': 5,
+        'preview_validation_ratio': 0.5,
+        'preview_validation_folds': 2,
+        'min_preview_trips': 0,
+        'min_preview_validation_trips': 2,
+        'min_preview_validation_cost_reduction_pct': 0.0,
+        'min_preview_validation_fold_cost_reduction_pct': -1.0,
+        'min_preview_validation_pass_rate_pct': 100.0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert row['preview_validation_cost_reduction_pct'] == 1.0
+    assert row['preview_validation_worst_cost_reduction_pct'] == -0.5
+    assert row['preview_validation_pass_rate_pct'] == 100.0
+
+
+def test_t0_candidates_endpoint_filters_by_validation_next_bar_fold_pass_rate(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+        104.0, 102.0, 105.0, 105.0,
+        106.0, 104.0, 107.0, 107.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 4,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'with_next_bar_stress': True,
+        'preview_pool': 5,
+        'preview_validation_ratio': 0.5,
+        'preview_validation_folds': 2,
+        'min_preview_trips': 0,
+        'min_preview_validation_pass_rate_pct': 0.0,
+        'min_preview_validation_next_bar_pass_rate_pct': 101.0,
     })
 
     assert resp.status_code == 200
@@ -540,6 +764,34 @@ def test_preview_cost_path_filter_requires_floor_and_positive_days():
         positive_days_pct=59.9,
         min_floor_pct=-1.0,
         min_positive_days_pct=60.0,
+    )
+
+
+def test_fold_min_trips_scales_total_validation_requirement_per_fold():
+    assert _fold_min_trips(0, 3) == 0
+    assert _fold_min_trips(1, 3) == 1
+    assert _fold_min_trips(8, 4) == 2
+    assert _fold_min_trips(8, 3) == 3
+
+
+def test_preview_fold_result_passes_focuses_on_cost_path_not_tiny_fold_alpha():
+    fold_result = {
+        'round_trips': 3,
+        'total_return_pct': -5.0,
+        'alpha_vs_all_in_hold': -20_000.0,
+        'win_rate': 25.0,
+        'cost_reduction_pct': -0.6,
+        'min_cost_reduction_pct': -0.8,
+        'cost_reduction_positive_days_pct': 10.0,
+        'max_drawdown_pct': -2.0,
+    }
+
+    assert _preview_fold_result_passes(
+        fold_result,
+        min_trips=2,
+        min_cost_reduction_pct=-1.2,
+        min_min_cost_reduction_pct=-1.2,
+        max_drawdown_pct=12.0,
     )
 
 

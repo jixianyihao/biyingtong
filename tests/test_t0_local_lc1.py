@@ -100,3 +100,43 @@ def test_scan_lc1_candidates_stable_t_profile_prefers_moderate_trends(tmp_path):
 
     assert [r['code'] for r in rows] == ['688981.SH', '002885.SZ']
     assert rows[0]['stable_t_score'] > rows[1]['stable_t_score']
+
+
+def test_scan_lc1_candidates_max_files_samples_across_market_not_by_size(tmp_path):
+    # The real TDX folder can have thousands of files. A max_files cap should
+    # spread across the market instead of choosing only the largest files,
+    # otherwise old/large histories dominate and smaller but valid T names are
+    # never inspected.
+    for raw in ['000001', '000003', '000005']:
+        _write_lc1(
+            tmp_path,
+            f'{raw}.SZ',
+            [100 + i * 0.01 for i in range(80)],
+            intraday_amp_pct=0.5,
+        )
+    _write_lc1(
+        tmp_path,
+        '000009.SZ',
+        [30 + i * 0.06 for i in range(16)],
+        intraday_amp_pct=4.0,
+    )
+    for raw in ['000011', '000013']:
+        _write_lc1(
+            tmp_path,
+            f'{raw}.SZ',
+            [100 + i * 0.01 for i in range(80)],
+            intraday_amp_pct=0.5,
+        )
+
+    rows = scan_lc1_candidates(
+        [tmp_path / 'sz' / 'minline'],
+        top_n=5,
+        max_files=4,
+        min_days=4,
+        min_avg_amp_pct=1.0,
+        max_avg_amp_pct=20.0,
+        max_return_pct=150.0,
+        score_profile='stable_t',
+    )
+
+    assert [r['code'] for r in rows] == ['000009.SZ']

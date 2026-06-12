@@ -207,6 +207,15 @@ function CandidateList({
                   )}
                 </>
               )}
+              {r.preview_validation_next_bar_fold_count != null && (
+                <>
+                  {' '}· NB-WF {r.preview_validation_next_bar_pass_count ?? 0}
+                  /{r.preview_validation_next_bar_fold_count}
+                  {r.preview_validation_next_bar_worst_cost_reduction_pct != null && (
+                    <> · NB最差{fmtPct(r.preview_validation_next_bar_worst_cost_reduction_pct)}</>
+                  )}
+                </>
+              )}
             </div>
           )}
         </button>
@@ -256,11 +265,11 @@ export function T0Lab() {
   function scanCandidates() {
     candidates.mutate({
       top: 30,
-      max_files: 10_000,
+      max_files: 500,
       score_profile: 'stable_t',
       with_backtest: true,
       with_next_bar_stress: true,
-      preview_pool: 500,
+      preview_pool: 60,
       min_preview_trips: 1,
       min_preview_win_rate: 50,
       min_preview_return_pct: 0,
@@ -277,9 +286,12 @@ export function T0Lab() {
       min_preview_validation_return_pct: 0,
       min_preview_validation_alpha_vs_all_in: 0,
       min_preview_validation_cost_reduction_pct: 0,
-      min_preview_validation_min_cost_reduction_pct: -1.0,
+      min_preview_validation_fold_cost_reduction_pct: -1.2,
+      min_preview_validation_min_cost_reduction_pct: -1.2,
       min_preview_validation_cost_reduction_positive_days_pct: 60,
       min_preview_validation_pass_rate_pct: 66,
+      min_preview_validation_next_bar_cost_reduction_pct: -1.2,
+      min_preview_validation_next_bar_pass_rate_pct: 66,
       max_preview_validation_drawdown_pct: 12,
       min_days: 50,
       min_avg_amp_pct: 3.0,
