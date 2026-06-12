@@ -85,3 +85,29 @@ def test_t0_strategy_variants_for_strong_bull_include_single_and_multi():
     assert variants[0]['stop_after_daily_loss'] is False
     assert variants[1]['max_round_trips_per_day'] == 3
     assert variants[1]['stop_after_daily_loss'] is True
+
+
+def test_t0_strategy_variants_for_balanced_include_cost_basis_choices():
+    allocation = {
+        'mode': 'balanced_range',
+        'strategy_params': {
+            'max_round_trips_per_day': 1,
+            'take_profit_pct': 0.8,
+            'stop_loss_pct': 1.2,
+            'high_band': 0.82,
+            'low_band': 0.25,
+        },
+    }
+
+    variants = t0_strategy_variants(allocation)
+
+    assert [v['selected_variant'] for v in variants] == [
+        'default',
+        'cost_basis_active',
+        'cost_basis_guarded',
+    ]
+    assert variants[1]['max_round_trips_per_day'] >= 2
+    assert variants[1]['stop_after_daily_loss'] is True
+    assert variants[1]['take_profit_pct'] < 0.8
+    assert variants[2]['stop_loss_pct'] < 1.2
+    assert variants[2]['high_band'] > 0.82

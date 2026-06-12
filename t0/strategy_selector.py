@@ -3,10 +3,53 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 
+def _clamped_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _clamped_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
     defaults = dict(allocation.get('strategy_params') or {})
+    base_take_profit = _clamped_float(defaults.get('take_profit_pct'), 0.8)
+    base_stop_loss = _clamped_float(defaults.get('stop_loss_pct'), 1.2)
+    base_high_band = _clamped_float(defaults.get('high_band'), 0.82)
+    base_low_band = _clamped_float(defaults.get('low_band'), 0.25)
+    base_rounds = _clamped_int(defaults.get('max_round_trips_per_day'), 1)
+
     if allocation.get('mode') != 'strong_bull_sell_rebalance':
-        return [{'selected_variant': 'default', **defaults}]
+        default = {'selected_variant': 'default', **defaults}
+        active = {
+            **defaults,
+            'selected_variant': 'cost_basis_active',
+            'max_round_trips_per_day': max(2, base_rounds),
+            'stop_after_daily_loss': True,
+            # Faster profit-taking monetizes smaller intraday reversions into
+            # realized T PnL, which is what lowers effective base cost.
+            'take_profit_pct': max(0.45, min(base_take_profit, 0.65)),
+            'stop_loss_pct': min(base_stop_loss, 1.0),
+        }
+        guarded = {
+            **defaults,
+            'selected_variant': 'cost_basis_guarded',
+            'max_round_trips_per_day': max(2, base_rounds),
+            'stop_after_daily_loss': True,
+            # Require a more stretched price before opening; this trades less
+            # often but avoids cost-basis damage on noisy, trendless chops.
+            'high_band': min(0.92, max(base_high_band, 0.86)),
+            'low_band': max(0.12, min(base_low_band, 0.18)),
+            'take_profit_pct': max(0.5, min(base_take_profit, 0.7)),
+            'stop_loss_pct': min(base_stop_loss, 0.8),
+        }
+        return [default, active, guarded]
 
     single = {
         **defaults,
