@@ -137,6 +137,70 @@ def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
     assert row['preview_validation_cost_reduction_positive_days_pct'] is not None
 
 
+def test_t0_candidates_endpoint_reports_validation_fold_stability(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+        104.0, 102.0, 105.0, 105.0,
+        106.0, 104.0, 107.0, 107.0,
+        108.0, 106.0, 109.0, 109.0,
+        110.0, 108.0, 111.0, 111.0,
+        112.0, 110.0, 113.0, 113.0,
+        114.0, 112.0, 115.0, 115.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 8,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'preview_pool': 5,
+        'preview_validation_ratio': 0.75,
+        'preview_validation_folds': 3,
+        'min_preview_trips': 0,
+        'min_preview_validation_pass_rate_pct': 0.0,
+    })
+
+    assert resp.status_code == 200
+    row = resp.get_json()['rows'][0]
+    assert row['preview_validation_fold_count'] == 3
+    assert row['preview_validation_pass_count'] == 3
+    assert row['preview_validation_pass_rate_pct'] == 100.0
+    assert row['preview_validation_worst_cost_reduction_pct'] is not None
+    assert row['preview_validation_worst_min_cost_reduction_pct'] is not None
+    assert row['preview_validation_avg_cost_reduction_pct'] is not None
+
+
+def test_t0_candidates_endpoint_filters_by_validation_fold_pass_rate(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 101.0, 101.0,
+        102.0, 100.0, 103.0, 103.0,
+        104.0, 102.0, 105.0, 105.0,
+        106.0, 104.0, 107.0, 107.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 4,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'preview_pool': 5,
+        'preview_validation_ratio': 0.5,
+        'preview_validation_folds': 2,
+        'min_preview_trips': 0,
+        'min_preview_validation_pass_rate_pct': 101.0,
+    })
+
+    assert resp.status_code == 200
+    assert resp.get_json()['rows'] == []
+
+
 def test_t0_candidates_endpoint_can_filter_negative_preview_returns(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 97.0, 96.0,
@@ -317,6 +381,47 @@ def test_previewed_candidates_sort_by_validation_cost_path_on_tie():
     rows.sort(key=_preview_sort_key, reverse=True)
 
     assert rows[0]['code'] == 'smooth-cost-cut'
+
+
+def test_previewed_candidates_sort_by_validation_fold_stability_first():
+    rows = [
+        {
+            'code': 'strong-tail-unstable-folds',
+            'preview_total_return_pct': 10.0,
+            'preview_alpha_vs_all_in': 10_000.0,
+            'preview_cost_reduction_pct': 2.0,
+            'preview_validation_total_return_pct': 6.0,
+            'preview_validation_alpha_vs_all_in': 6_000.0,
+            'preview_validation_cost_reduction_pct': 3.0,
+            'preview_validation_min_cost_reduction_pct': 0.2,
+            'preview_validation_cost_reduction_positive_days_pct': 80.0,
+            'preview_validation_fold_count': 3,
+            'preview_validation_pass_rate_pct': 33.3333,
+            'preview_validation_worst_cost_reduction_pct': -1.2,
+            'preview_validation_worst_min_cost_reduction_pct': -2.0,
+            'preview_round_trips': 80,
+        },
+        {
+            'code': 'lower-tail-stable-folds',
+            'preview_total_return_pct': 7.0,
+            'preview_alpha_vs_all_in': 8_000.0,
+            'preview_cost_reduction_pct': 1.5,
+            'preview_validation_total_return_pct': 3.0,
+            'preview_validation_alpha_vs_all_in': 3_000.0,
+            'preview_validation_cost_reduction_pct': 1.4,
+            'preview_validation_min_cost_reduction_pct': 0.1,
+            'preview_validation_cost_reduction_positive_days_pct': 75.0,
+            'preview_validation_fold_count': 3,
+            'preview_validation_pass_rate_pct': 100.0,
+            'preview_validation_worst_cost_reduction_pct': 0.3,
+            'preview_validation_worst_min_cost_reduction_pct': -0.4,
+            'preview_round_trips': 50,
+        },
+    ]
+
+    rows.sort(key=_preview_sort_key, reverse=True)
+
+    assert rows[0]['code'] == 'lower-tail-stable-folds'
 
 
 def test_preview_drawdown_filter_uses_absolute_drawdown_limit():

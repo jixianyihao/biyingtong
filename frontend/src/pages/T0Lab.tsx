@@ -196,6 +196,14 @@ function CandidateList({
               {r.preview_validation_cost_reduction_positive_days_pct != null && (
                 <> · 正天{fmtPct(r.preview_validation_cost_reduction_positive_days_pct)}</>
               )}
+              {r.preview_validation_fold_count != null && (
+                <>
+                  {' '}· WF {r.preview_validation_pass_count ?? 0}/{r.preview_validation_fold_count}
+                  {r.preview_validation_worst_cost_reduction_pct != null && (
+                    <> · WF最差{fmtPct(r.preview_validation_worst_cost_reduction_pct)}</>
+                  )}
+                </>
+              )}
             </div>
           )}
         </button>
@@ -258,6 +266,7 @@ export function T0Lab() {
       min_preview_cost_reduction_positive_days_pct: 55,
       max_preview_drawdown_pct: 30,
       preview_validation_ratio: 0.35,
+      preview_validation_folds: 3,
       min_preview_validation_trips: 8,
       min_preview_validation_win_rate: 50,
       min_preview_validation_return_pct: 0,
@@ -265,6 +274,7 @@ export function T0Lab() {
       min_preview_validation_cost_reduction_pct: 0,
       min_preview_validation_min_cost_reduction_pct: -1.0,
       min_preview_validation_cost_reduction_positive_days_pct: 60,
+      min_preview_validation_pass_rate_pct: 66,
       max_preview_validation_drawdown_pct: 12,
       min_days: 50,
       min_avg_amp_pct: 3.0,
