@@ -5,6 +5,7 @@ from math import floor
 from typing import Any
 
 from .backtest import _exec_price, _fee, _normalise_bars, _parse_hhmm
+from .fill_simulator import MarketFillSimulator, T0FillConfig, T0Leg
 from .signals import IntradaySignalState, T0SignalConfig, evaluate_t0_signal
 
 
@@ -129,6 +130,13 @@ def run_t0_portfolio_backtest(
     losses = 0
     t_pnl = 0.0
     cost_floor_stop_triggered = False
+    fill_sim = MarketFillSimulator(
+        T0FillConfig(
+            fee_bps=fee_bps,
+            sell_tax_bps=sell_tax_bps,
+            slippage_bps=slippage_bps,
+        ),
+    )
 
     for day in sorted(grouped):
         day_rows = grouped[day]
@@ -136,7 +144,7 @@ def run_t0_portfolio_backtest(
         day_low = day_rows[0]['low']
         base_price = day_rows[0]['close']
         sellable_shares = shares
-        open_leg: dict[str, Any] | None = None
+        open_leg: T0Leg | None = None
         day_t_pnl = 0.0
         round_trips_today = 0
         stop_trading_today = False
@@ -185,52 +193,34 @@ def run_t0_portfolio_backtest(
                     and signal.sell
                     and price >= base_price
                 ):
-                    sell_price = _exec_price(price, is_buy=False,
-                                             slippage_bps=slippage_bps)
-                    sell_fee = _fee(sell_price, t_shares, fee_bps=fee_bps,
-                                    sell_tax_bps=sell_tax_bps, is_sell=True)
-                    cash += sell_price * t_shares - sell_fee
+                    fill = fill_sim.open_leg(
+                        'sell_first', price=price, shares=t_shares,
+                        ts=row['ts'],
+                    )
+                    cash += fill.cash_delta
                     shares -= t_shares
                     sellable_shares -= t_shares
-                    open_leg = {
-                        'side': 'sell_first',
-                        'price': sell_price,
-                        'shares': t_shares,
-                        'cash_open': sell_price * t_shares - sell_fee,
-                    }
-                    trades.append({
-                        'ts': row['ts'], 'action': 'sell_t',
-                        'shares': t_shares, 'price': round(sell_price, 4),
-                        'fee': round(sell_fee, 4),
-                    })
+                    open_leg = fill.leg
+                    trades.append(fill.trade)
                 elif allow_buy_first and sellable_shares >= t_shares and signal.buy:
-                    buy_price = _exec_price(price, is_buy=True,
-                                            slippage_bps=slippage_bps)
-                    buy_fee = _fee(buy_price, t_shares, fee_bps=fee_bps,
-                                   sell_tax_bps=sell_tax_bps, is_sell=False)
-                    cost = buy_price * t_shares + buy_fee
+                    fill = fill_sim.open_leg(
+                        'buy_first', price=price, shares=t_shares,
+                        ts=row['ts'],
+                    )
+                    cost = -fill.cash_delta
                     if cash < cost:
                         continue
-                    cash -= cost
+                    cash += fill.cash_delta
                     shares += t_shares
-                    open_leg = {
-                        'side': 'buy_first',
-                        'price': buy_price,
-                        'shares': t_shares,
-                        'cash_open': -cost,
-                    }
-                    trades.append({
-                        'ts': row['ts'], 'action': 'buy_t',
-                        'shares': t_shares, 'price': round(buy_price, 4),
-                        'fee': round(buy_fee, 4),
-                    })
+                    open_leg = fill.leg
+                    trades.append(fill.trade)
                 continue
 
-            move_pct = ((price - open_leg['price']) / open_leg['price'] * 100.0
-                        if open_leg['price'] > 0 else 0.0)
+            move_pct = ((price - open_leg.price) / open_leg.price * 100.0
+                        if open_leg.price > 0 else 0.0)
             should_close = False
             reason = ''
-            if open_leg['side'] == 'sell_first':
+            if open_leg.side == 'sell_first':
                 if -move_pct >= take_profit_pct:
                     should_close, reason = True, 'take_profit'
                 elif move_pct >= stop_loss_pct:
@@ -250,39 +240,28 @@ def run_t0_portfolio_backtest(
             if not should_close:
                 reason = 'forced_close'
 
-            if open_leg['side'] == 'sell_first':
-                buy_price = _exec_price(price, is_buy=True,
-                                        slippage_bps=slippage_bps)
-                buy_fee = _fee(buy_price, open_leg['shares'], fee_bps=fee_bps,
-                               sell_tax_bps=sell_tax_bps, is_sell=False)
-                cost = buy_price * open_leg['shares'] + buy_fee
+            if open_leg.side == 'sell_first':
+                fill = fill_sim.close_leg(
+                    open_leg, price=price, ts=row['ts'], reason=reason,
+                )
+                cost = -fill.cash_delta
                 if cash < cost:
                     reason = 'cash_deficit_for_buyback'
                     continue
-                cash -= cost
-                shares += open_leg['shares']
-                cash_close = -cost
-                action = 'buy_back'
-                close_price = buy_price
-                close_fee = buy_fee
+                cash += fill.cash_delta
+                shares += open_leg.shares
             else:
-                if sellable_shares < open_leg['shares']:
+                if sellable_shares < open_leg.shares:
                     reason = 'sellable_deficit_for_sellback'
                     continue
-                sell_price = _exec_price(price, is_buy=False,
-                                         slippage_bps=slippage_bps)
-                sell_fee = _fee(sell_price, open_leg['shares'], fee_bps=fee_bps,
-                                sell_tax_bps=sell_tax_bps, is_sell=True)
-                proceeds = sell_price * open_leg['shares'] - sell_fee
-                cash += proceeds
-                shares -= open_leg['shares']
-                sellable_shares -= open_leg['shares']
-                cash_close = proceeds
-                action = 'sell_back'
-                close_price = sell_price
-                close_fee = sell_fee
+                fill = fill_sim.close_leg(
+                    open_leg, price=price, ts=row['ts'], reason=reason,
+                )
+                cash += fill.cash_delta
+                shares -= open_leg.shares
+                sellable_shares -= open_leg.shares
 
-            pnl = open_leg['cash_open'] + cash_close
+            pnl = fill.pnl
             t_pnl += pnl
             day_t_pnl += pnl
             current_effective_cost = (
@@ -308,12 +287,7 @@ def run_t0_portfolio_backtest(
                 if stop_after_daily_loss:
                     stop_trading_today = True
             round_trips_today += 1
-            trades.append({
-                'ts': row['ts'], 'action': action,
-                'shares': open_leg['shares'], 'price': round(close_price, 4),
-                'fee': round(close_fee, 4), 'pnl': round(pnl, 4),
-                'reason': reason,
-            })
+            trades.append(fill.trade)
             open_leg = None
 
         close_price = day_rows[-1]['close']
