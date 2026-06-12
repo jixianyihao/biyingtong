@@ -92,13 +92,17 @@ def _has_body_value(body: dict, name: str) -> bool:
     return name in body and body.get(name) not in (None, '')
 
 
-def _preview_sort_key(row: dict) -> tuple[float, float, float, float, int]:
+def _preview_sort_key(row: dict) -> tuple[float, float, float, float, float, int]:
     """Rank candidates by out-of-sample outcome when available.
 
-    If walk-forward preview fields are present, validation return/alpha take
-    priority. Otherwise this preserves the original full-period return-first
-    ranking.
+    If walk-forward preview fields are present, validation cost-reduction is
+    the primary objective. Otherwise use full-period cost-reduction. Returns
+    and alpha remain tie-breakers instead of the main goal.
     """
+    primary_cost_reduction = row.get(
+        'preview_validation_cost_reduction_pct',
+        row.get('preview_cost_reduction_pct'),
+    )
     primary_return = row.get(
         'preview_validation_total_return_pct',
         row.get('preview_total_return_pct'),
@@ -108,10 +112,11 @@ def _preview_sort_key(row: dict) -> tuple[float, float, float, float, int]:
         row.get('preview_alpha_vs_all_in'),
     )
     return (
+        float(primary_cost_reduction or 0.0),
         float(primary_return or 0.0),
         float(primary_alpha or 0.0),
+        float(row.get('preview_cost_reduction_pct') or 0.0),
         float(row.get('preview_total_return_pct') or 0.0),
-        float(row.get('preview_alpha_vs_all_in') or 0.0),
         int(row.get('preview_round_trips') or 0),
     )
 
@@ -309,6 +314,9 @@ def t0_candidates():
         min_preview_alpha_vs_all_in = _body_float(
             body, 'min_preview_alpha_vs_all_in', float('-inf'),
         )
+        min_preview_cost_reduction_pct = _body_float(
+            body, 'min_preview_cost_reduction_pct', float('-inf'),
+        )
         min_preview_win_rate = _body_float(body, 'min_preview_win_rate', 0.0)
         max_preview_drawdown_pct = _body_float(
             body, 'max_preview_drawdown_pct', float('inf'),
@@ -325,6 +333,9 @@ def t0_candidates():
         )
         min_preview_validation_alpha_vs_all_in = _body_float(
             body, 'min_preview_validation_alpha_vs_all_in', float('-inf'),
+        )
+        min_preview_validation_cost_reduction_pct = _body_float(
+            body, 'min_preview_validation_cost_reduction_pct', float('-inf'),
         )
         max_preview_validation_drawdown_pct = _body_float(
             body, 'max_preview_validation_drawdown_pct', float('inf'),
@@ -417,6 +428,8 @@ def t0_candidates():
                     min_preview_validation_return_pct and
                     validation_result['alpha_vs_all_in_hold'] >=
                     min_preview_validation_alpha_vs_all_in and
+                    validation_result['cost_reduction_pct'] >=
+                    min_preview_validation_cost_reduction_pct and
                     _preview_drawdown_allowed(
                         validation_result['max_drawdown_pct'],
                         max_preview_validation_drawdown_pct,
@@ -429,6 +442,7 @@ def t0_candidates():
                 ) and
                 result['total_return_pct'] >= min_preview_return_pct and
                 result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in and
+                result['cost_reduction_pct'] >= min_preview_cost_reduction_pct and
                 _preview_drawdown_allowed(
                     result['max_drawdown_pct'], max_preview_drawdown_pct,
                 ) and
@@ -539,10 +553,10 @@ def t0_portfolio():
         }]
     else:
         variants = t0_strategy_variants(allocation)
-    result = choose_best_t0_result(
+    selected = choose_best_t0_result(
         _run_t0_portfolio_with_strategy(
             code,
-            bars,
+            selection_bars,
             allocation=allocation,
             initial_capital=_body_float(body, 'initial_capital', 1_000_000.0),
             base_position_pct=base_position_pct,
@@ -550,6 +564,22 @@ def t0_portfolio():
             strategy_params=params,
         )
         for params in variants
+    )
+    selected_variant = selected['selected_variant']
+    selected_params = next(
+        p for p in variants if p['selected_variant'] == selected_variant
+    )
+    result = (
+        selected if selection_bars is bars else
+        _run_t0_portfolio_with_strategy(
+            code,
+            bars,
+            allocation=allocation,
+            initial_capital=_body_float(body, 'initial_capital', 1_000_000.0),
+            base_position_pct=base_position_pct,
+            t_shares_pct=t_shares_pct,
+            strategy_params=selected_params,
+        )
     )
     result['allocation'] = allocation
     result['data_source'] = data_source

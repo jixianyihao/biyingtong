@@ -41,6 +41,30 @@ def test_choose_best_t0_result_uses_multi_when_it_improves_return_and_alpha():
     assert choose_best_t0_result([single, multi]) is multi
 
 
+def test_choose_best_t0_result_prefers_cost_reduction_over_raw_return():
+    high_return_low_cost_cut = {
+        'selected_variant': 'chases_raw_return',
+        'total_return_pct': 18.0,
+        'alpha_vs_all_in_hold': 40_000.0,
+        'cost_reduction_pct': 0.8,
+        'win_rate': 80.0,
+        'max_drawdown_pct': -12.0,
+    }
+    lower_return_better_cost_cut = {
+        'selected_variant': 'lowers_cost_basis',
+        'total_return_pct': 12.0,
+        'alpha_vs_all_in_hold': 30_000.0,
+        'cost_reduction_pct': 2.5,
+        'win_rate': 70.0,
+        'max_drawdown_pct': -13.0,
+    }
+
+    assert choose_best_t0_result([
+        high_return_low_cost_cut,
+        lower_return_better_cost_cut,
+    ]) is lower_return_better_cost_cut
+
+
 def test_t0_strategy_variants_for_strong_bull_include_single_and_multi():
     allocation = {
         'mode': 'strong_bull_sell_rebalance',

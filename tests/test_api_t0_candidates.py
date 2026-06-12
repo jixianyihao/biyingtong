@@ -152,6 +152,31 @@ def test_t0_candidates_endpoint_can_filter_negative_preview_returns(tmp_path):
     assert resp.get_json()['rows'] == []
 
 
+def test_t0_candidates_endpoint_can_filter_insufficient_preview_cost_reduction(tmp_path):
+    root = _write_lc1(tmp_path, '688981.SH', [
+        100.0, 98.0, 97.0, 96.0,
+        95.0, 94.0, 93.0, 92.0,
+    ])
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/candidates', json={
+        'roots': [str(root)],
+        'top': 5,
+        'min_days': 2,
+        'min_avg_amp_pct': 1.0,
+        'max_avg_amp_pct': 20.0,
+        'with_backtest': True,
+        'preview_pool': 5,
+        'min_preview_trips': 0,
+        'min_preview_return_pct': -999.0,
+        'min_preview_alpha_vs_all_in': -999_000.0,
+        'min_preview_cost_reduction_pct': 0.1,
+    })
+
+    assert resp.status_code == 200
+    assert resp.get_json()['rows'] == []
+
+
 def test_t0_candidates_endpoint_can_filter_negative_preview_alpha(tmp_path):
     root = _write_lc1(tmp_path, '688981.SH', [
         100.0, 98.0, 101.0, 101.0,
@@ -222,6 +247,35 @@ def test_previewed_candidates_sort_by_validation_return_when_available():
     rows.sort(key=_preview_sort_key, reverse=True)
 
     assert rows[0]['code'] == 'lower-full-return-good-validation'
+
+
+def test_previewed_candidates_sort_by_validation_cost_reduction_first():
+    rows = [
+        {
+            'code': 'higher-validation-return-lower-cost-cut',
+            'preview_total_return_pct': 20.0,
+            'preview_alpha_vs_all_in': 50_000.0,
+            'preview_cost_reduction_pct': 1.0,
+            'preview_validation_total_return_pct': 5.0,
+            'preview_validation_alpha_vs_all_in': 5_000.0,
+            'preview_validation_cost_reduction_pct': 0.6,
+            'preview_round_trips': 80,
+        },
+        {
+            'code': 'lower-validation-return-better-cost-cut',
+            'preview_total_return_pct': 8.0,
+            'preview_alpha_vs_all_in': 12_000.0,
+            'preview_cost_reduction_pct': 3.0,
+            'preview_validation_total_return_pct': 2.0,
+            'preview_validation_alpha_vs_all_in': 2_000.0,
+            'preview_validation_cost_reduction_pct': 2.1,
+            'preview_round_trips': 30,
+        },
+    ]
+
+    rows.sort(key=_preview_sort_key, reverse=True)
+
+    assert rows[0]['code'] == 'lower-validation-return-better-cost-cut'
 
 
 def test_preview_drawdown_filter_uses_absolute_drawdown_limit():

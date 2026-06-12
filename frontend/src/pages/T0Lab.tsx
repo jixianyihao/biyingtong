@@ -171,6 +171,9 @@ function CandidateList({
             {r.preview_alpha_vs_all_in != null && (
               <> · 跑赢全仓¥{fmtMoney(r.preview_alpha_vs_all_in)}</>
             )}
+            {r.preview_cost_reduction_pct != null && (
+              <> · 成本↓{fmtPct(r.preview_cost_reduction_pct)}</>
+            )}
           </div>
           {validationReturn != null && (
             <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-ghost)' }}>
@@ -238,12 +241,14 @@ export function T0Lab() {
       min_preview_win_rate: 50,
       min_preview_return_pct: 0,
       min_preview_alpha_vs_all_in: 0,
+      min_preview_cost_reduction_pct: 0,
       max_preview_drawdown_pct: 30,
       preview_validation_ratio: 0.35,
       min_preview_validation_trips: 8,
       min_preview_validation_win_rate: 50,
       min_preview_validation_return_pct: 0,
       min_preview_validation_alpha_vs_all_in: 0,
+      min_preview_validation_cost_reduction_pct: 0,
       max_preview_validation_drawdown_pct: 12,
       min_days: 50,
       min_avg_amp_pct: 3.0,

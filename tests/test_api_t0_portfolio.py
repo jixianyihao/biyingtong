@@ -166,6 +166,60 @@ def test_t0_portfolio_endpoint_can_select_strategy_on_train_slice(monkeypatch):
     assert body['strategy_selection_days'] == 2
 
 
+def test_t0_portfolio_endpoint_selects_variant_on_train_slice(monkeypatch):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _LateBullishFakeTDX())
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda bars, requested_mode='auto': {
+        'mode': 'strong_bull_sell_rebalance',
+        'base_position_pct': 0.85,
+        't_shares_pct': 0.15,
+        'strategy_params': {},
+    })
+    variants = [
+        {'selected_variant': 'train_cost_cut'},
+        {'selected_variant': 'full_sample_trap'},
+    ]
+    monkeypatch.setattr(t0_api, 't0_strategy_variants', lambda allocation: variants)
+
+    def fake_run(code, bars, *, allocation, initial_capital, strategy_params,
+                 base_position_pct=None, t_shares_pct=None):
+        days = t0_api._count_bar_days(bars)
+        variant = strategy_params['selected_variant']
+        # Training slice says train_cost_cut lowers cost better. Full sample
+        # would pick full_sample_trap if the endpoint still selected variants
+        # with future data.
+        cost = {
+            (2, 'train_cost_cut'): 2.0,
+            (2, 'full_sample_trap'): 0.5,
+            (4, 'train_cost_cut'): 1.0,
+            (4, 'full_sample_trap'): 3.0,
+        }[(days, variant)]
+        return {
+            'code': code,
+            'selected_variant': variant,
+            'total_return_pct': cost,
+            'alpha_vs_all_in_hold': 10_000.0,
+            'cost_reduction_pct': cost,
+            'win_rate': 60.0,
+            'max_drawdown_pct': -5.0,
+            'params': {'selected_variant': variant},
+        }
+
+    monkeypatch.setattr(t0_api, '_run_t0_portfolio_with_strategy', fake_run)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/portfolio', json={
+        'code': '688981.SH',
+        'initial_capital': 1_000_000,
+        'strategy_selection_ratio': 0.5,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['selected_variant'] == 'train_cost_cut'
+    assert body['cost_reduction_pct'] == 1.0
+
+
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(
     monkeypatch,
     tmp_path,
