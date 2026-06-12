@@ -534,6 +534,8 @@ export type T0CandidateRow = {
   preview_win_rate?: number;
   preview_max_drawdown_pct?: number;
   preview_selected_variant?: string;
+  preview_cost_reduction_pct?: number;
+  preview_cost_reduction_per_share?: number;
   preview_train_total_return_pct?: number;
   preview_train_alpha_vs_all_in?: number;
   preview_validation_total_return_pct?: number;
@@ -541,6 +543,8 @@ export type T0CandidateRow = {
   preview_validation_round_trips?: number;
   preview_validation_win_rate?: number;
   preview_validation_max_drawdown_pct?: number;
+  preview_validation_cost_reduction_pct?: number;
+  preview_validation_cost_reduction_per_share?: number;
 };
 
 export type T0CandidatesRequest = {
@@ -576,6 +580,7 @@ export type T0PortfolioRequest = {
   code: string;
   initial_capital?: number;
   allocation_mode?: 'auto' | 'bull' | 'balanced' | 'defensive';
+  strategy_selection_ratio?: number;
   base_position_pct?: number;
   t_shares_pct?: number;
   max_round_trips_per_day?: number;
@@ -614,6 +619,10 @@ export type T0PortfolioResponse = {
   alpha_vs_base_hold: number;
   alpha_vs_all_in_hold: number;
   t_pnl: number;
+  initial_cost_per_share: number;
+  effective_cost_per_share: number;
+  cost_reduction_per_share: number;
+  cost_reduction_pct: number;
   base_shares: number;
   t_shares: number;
   initial_cash: number;
@@ -625,6 +634,8 @@ export type T0PortfolioResponse = {
   win_rate: number;
   max_drawdown_pct: number;
   selected_variant?: string;
+  strategy_selection_ratio?: number;
+  strategy_selection_days?: number;
   allocation: T0Allocation;
   params: Record<string, unknown>;
 };

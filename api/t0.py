@@ -156,6 +156,10 @@ def _split_bars_for_validation(
     return train, validation
 
 
+def _count_bar_days(bars: list[dict]) -> int:
+    return len({d for d in (_bar_day(bar) for bar in bars) if d is not None})
+
+
 def _run_t0_portfolio_with_strategy(
     code: str,
     bars: list[dict],
@@ -367,6 +371,10 @@ def t0_candidates():
                 'preview_win_rate': result['win_rate'],
                 'preview_max_drawdown_pct': result['max_drawdown_pct'],
                 'preview_selected_variant': result['selected_variant'],
+                'preview_cost_reduction_pct': result['cost_reduction_pct'],
+                'preview_cost_reduction_per_share': (
+                    result['cost_reduction_per_share']
+                ),
             })
             validation_pass = True
             if validation_bars:
@@ -390,6 +398,12 @@ def t0_candidates():
                     'preview_validation_win_rate': validation_result['win_rate'],
                     'preview_validation_max_drawdown_pct': (
                         validation_result['max_drawdown_pct']
+                    ),
+                    'preview_validation_cost_reduction_pct': (
+                        validation_result['cost_reduction_pct']
+                    ),
+                    'preview_validation_cost_reduction_per_share': (
+                        validation_result['cost_reduction_per_share']
                     ),
                 })
                 validation_pass = (
@@ -448,8 +462,12 @@ def t0_portfolio():
         data_source = 'local_lc1' if bars else data_source
     if not bars:
         return jsonify({'error': f'no 1m bars for {code}'}), 404
+    strategy_selection_ratio = _body_float(body, 'strategy_selection_ratio', 0.0)
+    selection_bars, _ = _split_bars_for_validation(
+        bars, strategy_selection_ratio,
+    )
     allocation = choose_t0_allocation(
-        bars,
+        selection_bars,
         requested_mode=str(body.get('allocation_mode') or 'auto'),
     )
     base_position_pct = (
@@ -535,4 +553,8 @@ def t0_portfolio():
     )
     result['allocation'] = allocation
     result['data_source'] = data_source
+    result['strategy_selection_ratio'] = max(
+        0.0, min(0.8, strategy_selection_ratio),
+    )
+    result['strategy_selection_days'] = _count_bar_days(selection_bars)
     return jsonify(result)

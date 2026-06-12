@@ -38,6 +38,10 @@ def test_portfolio_starts_with_base_position_and_reserved_cash():
     assert result['initial_cash'] == pytest.approx(250_000)
     assert result['final_equity'] == pytest.approx(1_075_000)
     assert result['t_pnl'] == 0
+    assert result['initial_cost_per_share'] == pytest.approx(100.0)
+    assert result['effective_cost_per_share'] == pytest.approx(100.0)
+    assert result['cost_reduction_per_share'] == pytest.approx(0.0)
+    assert result['cost_reduction_pct'] == pytest.approx(0.0)
 
 
 def test_portfolio_buy_first_uses_reserved_cash_and_sells_old_shares():
@@ -68,6 +72,10 @@ def test_portfolio_buy_first_uses_reserved_cash_and_sells_old_shares():
     assert result['final_shares'] == 7500
     assert result['t_pnl'] == pytest.approx(4_500)
     assert result['alpha_vs_base_hold'] == pytest.approx(4_500)
+    assert result['initial_cost_per_share'] == pytest.approx(100.0)
+    assert result['effective_cost_per_share'] == pytest.approx(99.4)
+    assert result['cost_reduction_per_share'] == pytest.approx(0.6)
+    assert result['cost_reduction_pct'] == pytest.approx(0.6)
     assert [t['action'] for t in result['trades']] == ['buy_t', 'sell_back']
 
 

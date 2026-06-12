@@ -178,6 +178,9 @@ function CandidateList({
               {r.preview_validation_alpha_vs_all_in != null && (
                 <> · VAL α¥{fmtMoney(r.preview_validation_alpha_vs_all_in)}</>
               )}
+              {r.preview_validation_cost_reduction_pct != null && (
+                <> · 成本↓{fmtPct(r.preview_validation_cost_reduction_pct)}</>
+              )}
             </div>
           )}
         </button>
@@ -220,6 +223,7 @@ export function T0Lab() {
       code: code.trim().toUpperCase(),
       initial_capital: 1_000_000,
       allocation_mode: 'auto',
+      strategy_selection_ratio: 0.35,
     });
   }
 
@@ -461,6 +465,18 @@ export function T0Lab() {
                     {fmtMoney(portfolio.data.final_equity)}
                   </span>
                   {' '}({fmtPct(portfolio.data.total_return_pct)})
+                </div>
+                <div>
+                  成本{' '}
+                  <span style={{ color: 'var(--text-hi)' }}>
+                    {fmtNum(portfolio.data.initial_cost_per_share, 3)}
+                  </span>
+                  {' → '}
+                  <span style={{ color: portfolio.data.cost_reduction_per_share >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                    {fmtNum(portfolio.data.effective_cost_per_share, 3)}
+                  </span>
+                  {' '}({portfolio.data.cost_reduction_per_share >= 0 ? '↓' : '↑'}
+                  {fmtNum(Math.abs(portfolio.data.cost_reduction_per_share), 3)} / {fmtPct(portfolio.data.cost_reduction_pct)})
                 </div>
                 <div>
                   跑赢全仓{' '}

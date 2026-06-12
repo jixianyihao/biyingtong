@@ -44,6 +44,23 @@ class _BullishFakeTDX:
         return {}
 
 
+class _LateBullishFakeTDX:
+    def get_kline(self, code, period='1d', count=80, dividend_type='front'):
+        assert code == '688981.SH'
+        assert period == '1m'
+        return [
+            {'date': '2026-01-26 09:31:00', 'open': 100, 'high': 100, 'low': 100, 'close': 100, 'vol': 100000},
+            {'date': '2026-01-26 09:35:00', 'open': 98, 'high': 100, 'low': 97.8, 'close': 98, 'vol': 100000},
+            {'date': '2026-01-26 10:05:00', 'open': 101, 'high': 101.2, 'low': 97.8, 'close': 101, 'vol': 100000},
+            {'date': '2026-01-27 15:00:00', 'open': 102, 'high': 102, 'low': 102, 'close': 102, 'vol': 100000},
+            {'date': '2026-01-28 15:00:00', 'open': 108, 'high': 108, 'low': 108, 'close': 108, 'vol': 100000},
+            {'date': '2026-01-29 15:00:00', 'open': 116, 'high': 116, 'low': 116, 'close': 116, 'vol': 100000},
+        ]
+
+    def get_snapshot(self, code):  # pragma: no cover
+        return {}
+
+
 class _EmptyTDX:
     def get_kline(self, code, period='1d', count=80, dividend_type='front'):
         return []
@@ -125,6 +142,28 @@ def test_t0_portfolio_endpoint_auto_allocation_uses_bull_mode(monkeypatch):
     assert body['params']['low_band'] == 0.25
     assert body['params']['stop_loss_pct'] == 1.0
     assert body['base_shares'] == 9000
+
+
+def test_t0_portfolio_endpoint_can_select_strategy_on_train_slice(monkeypatch):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _LateBullishFakeTDX())
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/portfolio', json={
+        'code': '688981.SH',
+        'initial_capital': 1_000_000,
+        'strategy_selection_ratio': 0.5,
+        'fee_bps': 0,
+        'sell_tax_bps': 0,
+        'slippage_bps': 0,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['allocation']['mode'] == 'balanced_range'
+    assert body['params']['base_position_pct'] == 0.70
+    assert body['strategy_selection_ratio'] == 0.5
+    assert body['strategy_selection_days'] == 2
 
 
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(

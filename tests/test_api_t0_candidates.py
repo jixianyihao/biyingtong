@@ -94,6 +94,8 @@ def test_t0_candidates_endpoint_can_attach_portfolio_preview(tmp_path):
     assert row['preview_total_return_pct'] is not None
     assert row['preview_alpha_vs_all_in'] is not None
     assert row['preview_round_trips'] >= 0
+    assert row['preview_cost_reduction_pct'] is not None
+    assert row['preview_cost_reduction_per_share'] is not None
 
 
 def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
@@ -123,6 +125,8 @@ def test_t0_candidates_endpoint_can_attach_walk_forward_preview(tmp_path):
     assert row['preview_train_alpha_vs_all_in'] is not None
     assert row['preview_validation_total_return_pct'] is not None
     assert row['preview_validation_alpha_vs_all_in'] is not None
+    assert row['preview_validation_cost_reduction_pct'] is not None
+    assert row['preview_validation_cost_reduction_per_share'] is not None
 
 
 def test_t0_candidates_endpoint_can_filter_negative_preview_returns(tmp_path):

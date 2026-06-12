@@ -1457,9 +1457,17 @@ export function BacktestLab() {
       await api.purgeBacktests();
       setSessionId(null);
       setStartedAt(null);
+      queryClient.setQueriesData({ queryKey: ['backtests'] }, []);
+      queryClient.setQueriesData({ queryKey: ['sessions'] }, []);
+      queryClient.removeQueries({ queryKey: ['session'] });
+      queryClient.removeQueries({ queryKey: ['backtest-nav'] });
+      queryClient.removeQueries({ queryKey: ['backtest-trades'] });
+      queryClient.removeQueries({ queryKey: ['backtest-thinking'] });
+      queryClient.removeQueries({ queryKey: ['backtest-ledger'] });
+      queryClient.removeQueries({ queryKey: ['backtest-rating'] });
+      queryClient.removeQueries({ queryKey: ['monthly-returns'] });
       await queryClient.invalidateQueries({ queryKey: ['backtests'] });
       await queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      await queryClient.invalidateQueries({ queryKey: ['session'] });
     } catch (e) {
       setUiError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1603,14 +1611,14 @@ export function BacktestLab() {
           + 新建回测
         </button>
         <button
-            className="btn"
-            onClick={purgeHistory}
-            disabled={isPurging}
-            style={{ padding: '4px 12px', fontSize: 12, color: 'var(--down)', borderColor: 'var(--down-border)' }}
-            title="清空所有回测历史记录"
-          >
-            {isPurging ? '清空中…' : '清空'}
-          </button>
+          className="btn"
+          onClick={purgeHistory}
+          disabled={isPurging}
+          style={{ padding: '4px 12px', fontSize: 12, color: 'var(--down)', borderColor: 'var(--down-border)' }}
+          title="清空所有回测历史记录"
+        >
+          {isPurging ? '清空中…' : '清空'}
+        </button>
       </div>
 
       <div

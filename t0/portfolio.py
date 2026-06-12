@@ -81,6 +81,10 @@ def run_t0_portfolio_backtest(
     base_cost = buy_exec * base_shares
     base_fee = _fee(buy_exec, base_shares, fee_bps=fee_bps,
                     sell_tax_bps=sell_tax_bps, is_sell=False)
+    base_cost_with_fee = base_cost + base_fee
+    initial_cost_per_share = (
+        base_cost_with_fee / base_shares if base_shares > 0 else 0.0
+    )
     cash = initial_capital - base_cost - base_fee
     shares = base_shares
     t_shares = _round_lot(base_shares * max(0.0, t_shares_pct))
@@ -254,12 +258,25 @@ def run_t0_portfolio_backtest(
 
         close_price = day_rows[-1]['close']
         equity = cash + shares * close_price
+        effective_cost_per_share = (
+            (base_cost_with_fee - t_pnl) / base_shares
+            if base_shares > 0 else 0.0
+        )
+        cost_reduction_per_share = initial_cost_per_share - effective_cost_per_share
+        cost_reduction_pct = (
+            cost_reduction_per_share / initial_cost_per_share * 100.0
+            if initial_cost_per_share > 0 else 0.0
+        )
         daily.append({
             'date': day,
             'equity': round(equity, 4),
             'cash': round(cash, 4),
             'shares': shares,
             't_pnl': round(day_t_pnl, 4),
+            'cumulative_t_pnl': round(t_pnl, 4),
+            'effective_cost_per_share': round(effective_cost_per_share, 4),
+            'cost_reduction_per_share': round(cost_reduction_per_share, 4),
+            'cost_reduction_pct': round(cost_reduction_pct, 4),
             'pnl_pct': round((equity / initial_capital - 1.0) * 100.0, 4),
             'day_return_pct': round(
                 (equity / start_equity - 1.0) * 100.0 if start_equity > 0 else 0.0,
@@ -271,6 +288,14 @@ def run_t0_portfolio_backtest(
     base_hold_equity = (initial_capital - base_cost - base_fee) + base_shares * last_price
     all_in_hold_equity = all_in_cash + all_in_shares * last_price
     round_trips = wins + losses
+    effective_cost_per_share = (
+        (base_cost_with_fee - t_pnl) / base_shares if base_shares > 0 else 0.0
+    )
+    cost_reduction_per_share = initial_cost_per_share - effective_cost_per_share
+    cost_reduction_pct = (
+        cost_reduction_per_share / initial_cost_per_share * 100.0
+        if initial_cost_per_share > 0 else 0.0
+    )
 
     return {
         'code': code,
@@ -285,6 +310,10 @@ def run_t0_portfolio_backtest(
         'base_shares': base_shares,
         't_shares': t_shares,
         'initial_cash': round(initial_capital - base_cost - base_fee, 4),
+        'initial_cost_per_share': round(initial_cost_per_share, 4),
+        'effective_cost_per_share': round(effective_cost_per_share, 4),
+        'cost_reduction_per_share': round(cost_reduction_per_share, 4),
+        'cost_reduction_pct': round(cost_reduction_pct, 4),
         'final_cash': round(cash, 4),
         'final_shares': shares,
         'final_equity': round(final_equity, 4),
