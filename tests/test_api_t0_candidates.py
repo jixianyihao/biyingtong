@@ -927,6 +927,43 @@ def test_previewed_candidates_sort_by_validation_fold_stability_first():
     assert rows[0]['code'] == 'lower-tail-stable-folds'
 
 
+def test_previewed_candidates_sort_by_optimizer_preview_when_available():
+    rows = [
+        {
+            'code': 'preview-good-optimizer-weak',
+            'preview_validation_cost_reduction_pct': 5.0,
+            'preview_validation_pass_rate_pct': 100.0,
+            'preview_validation_worst_cost_reduction_pct': 2.0,
+            'preview_validation_min_cost_reduction_pct': -0.1,
+            'preview_validation_total_return_pct': 4.0,
+            'preview_validation_alpha_vs_all_in': 20_000.0,
+            'preview_round_trips': 80,
+            'optimizer_best_cost_reduction_pct': 0.4,
+            'optimizer_best_validation_cost_reduction_pct': 0.2,
+            'optimizer_best_fold_pass_rate_pct': 66.0,
+            'optimizer_best_worst_fold_cost_reduction_pct': -0.5,
+        },
+        {
+            'code': 'preview-ok-optimizer-strong',
+            'preview_validation_cost_reduction_pct': 1.0,
+            'preview_validation_pass_rate_pct': 66.0,
+            'preview_validation_worst_cost_reduction_pct': 0.2,
+            'preview_validation_min_cost_reduction_pct': -0.3,
+            'preview_validation_total_return_pct': 1.0,
+            'preview_validation_alpha_vs_all_in': 5_000.0,
+            'preview_round_trips': 40,
+            'optimizer_best_cost_reduction_pct': 2.0,
+            'optimizer_best_validation_cost_reduction_pct': 1.4,
+            'optimizer_best_fold_pass_rate_pct': 100.0,
+            'optimizer_best_worst_fold_cost_reduction_pct': 0.3,
+        },
+    ]
+
+    rows.sort(key=_preview_sort_key, reverse=True)
+
+    assert rows[0]['code'] == 'preview-ok-optimizer-strong'
+
+
 def test_previewed_candidates_sort_by_next_bar_stress_cost_first():
     rows = [
         {

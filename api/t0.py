@@ -114,10 +114,7 @@ def _has_body_value(body: dict, name: str) -> bool:
 
 def _preview_sort_key(
     row: dict,
-) -> tuple[
-    float, float, float, float, float, float, float, float, float, float,
-    float, float, float, float, float, float, float, float, float, int,
-]:
+) -> tuple[float, ...]:
     """Rank candidates by out-of-sample outcome when available.
 
     If fold fields are present, stable pass rate and worst-fold cost path are
@@ -175,7 +172,29 @@ def _preview_sort_key(
         'preview_validation_next_bar_avg_cost_reduction_pct',
         next_bar_cost,
     )
+    optimizer_validation_cost = row.get(
+        'optimizer_best_validation_cost_reduction_pct',
+    )
+    optimizer_full_cost = row.get('optimizer_best_cost_reduction_pct')
+    optimizer_has_best = (
+        1.0 if (
+            optimizer_validation_cost is not None or
+            optimizer_full_cost is not None
+        ) else 0.0
+    )
+    optimizer_fold_pass_rate = row.get(
+        'optimizer_best_fold_pass_rate_pct', 0.0,
+    )
+    optimizer_worst_fold_cost = row.get(
+        'optimizer_best_worst_fold_cost_reduction_pct',
+        optimizer_validation_cost,
+    )
     return (
+        optimizer_has_best,
+        float(optimizer_fold_pass_rate or 0.0),
+        float(optimizer_worst_fold_cost or 0.0),
+        float(optimizer_validation_cost or 0.0),
+        float(optimizer_full_cost or 0.0),
         has_next_bar_stress,
         float(next_bar_fold_pass_rate or 0.0),
         float(next_bar_fold_worst_cost or 0.0),
@@ -196,7 +215,7 @@ def _preview_sort_key(
         float(row.get('preview_min_cost_reduction_pct') or 0.0),
         float(row.get('preview_cost_reduction_positive_days_pct') or 0.0),
         float(row.get('preview_total_return_pct') or 0.0),
-        int(row.get('preview_round_trips') or 0),
+        float(row.get('preview_round_trips') or 0),
     )
 
 
