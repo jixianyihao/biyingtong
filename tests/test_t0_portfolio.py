@@ -248,3 +248,41 @@ def test_stop_after_cost_floor_blocks_future_t_attempts():
     assert result['cost_floor_stop_triggered'] is True
     assert result['min_cost_reduction_pct'] == pytest.approx(-0.3)
     assert [t['action'] for t in result['trades']] == ['sell_t', 'buy_back']
+
+
+def test_vwap_deviation_signal_can_open_buy_first_without_low_band_touch():
+    bars = [
+        _bar('2026-01-26 09:31:00', 100.0, high=102.0, low=97.0),
+        _bar('2026-01-26 09:35:00', 98.0, high=102.0, low=97.0),
+        _bar('2026-01-26 10:05:00', 100.0, high=102.0, low=97.0),
+        _bar('2026-01-26 15:00:00', 100.0, high=102.0, low=97.0),
+    ]
+    bars[0]['vol'] = 10_000
+    bars[1]['vol'] = 1_000
+    bars[2]['vol'] = 1_000
+
+    result = run_t0_portfolio_backtest(
+        '688981.SH',
+        bars,
+        initial_capital=100_000,
+        base_position_pct=0.80,
+        t_shares_pct=0.25,
+        allow_sell_first=False,
+        allow_buy_first=True,
+        signal_mode='vwap_deviation',
+        vwap_deviation_pct=1.0,
+        min_amplitude_pct=1.0,
+        low_band=0.01,
+        high_band=0.99,
+        take_profit_pct=1.0,
+        fee_bps=0.0,
+        sell_tax_bps=0.0,
+        slippage_bps=0.0,
+    )
+
+    assert result['round_trips'] == 1
+    assert result['t_pnl'] == pytest.approx(400.0)
+    assert result['cost_reduction_pct'] == pytest.approx(0.5)
+    assert [t['action'] for t in result['trades']] == ['buy_t', 'sell_back']
+    assert result['params']['signal_mode'] == 'vwap_deviation'
+    assert result['params']['vwap_deviation_pct'] == 1.0

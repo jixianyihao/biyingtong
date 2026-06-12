@@ -42,6 +42,7 @@ def _normalise_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
         close = _f(bar.get('close'))
         high = _f(bar.get('high'))
         low = _f(bar.get('low'))
+        vol = _f(bar.get('vol'))
         if dt is None or close is None or high is None or low is None:
             continue
         out.append({
@@ -51,6 +52,7 @@ def _normalise_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
             'close': close,
             'high': high,
             'low': low,
+            'vol': vol if vol is not None and vol > 0 else 1.0,
         })
     return sorted(out, key=lambda x: x['dt'])
 

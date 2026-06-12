@@ -599,6 +599,8 @@ export type T0PortfolioRequest = {
   max_round_trips_per_day?: number;
   stop_after_daily_loss?: boolean;
   stop_after_cost_floor_pct?: number;
+  signal_mode?: 'band' | 'vwap_deviation' | 'hybrid';
+  vwap_deviation_pct?: number;
   min_amplitude_pct?: number;
   high_band?: number;
   low_band?: number;

@@ -58,7 +58,18 @@ def t0_strategy_variants(allocation: dict[str, Any]) -> list[dict[str, Any]]:
             'take_profit_pct': max(0.5, min(base_take_profit, 0.7)),
             'stop_loss_pct': min(base_stop_loss, 0.8),
         }
-        return [default, active, guarded]
+        vwap_hybrid = {
+            **defaults,
+            'selected_variant': 'vwap_hybrid',
+            'signal_mode': 'hybrid',
+            'vwap_deviation_pct': 0.9,
+            'max_round_trips_per_day': max(2, base_rounds),
+            'stop_after_daily_loss': True,
+            'stop_after_cost_floor_pct': -1.0,
+            'take_profit_pct': max(0.45, min(base_take_profit, 0.7)),
+            'stop_loss_pct': min(base_stop_loss, 0.9),
+        }
+        return [default, active, guarded, vwap_hybrid]
 
     single = {
         **defaults,

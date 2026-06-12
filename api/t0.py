@@ -232,6 +232,10 @@ def _run_t0_portfolio_with_strategy(
             if strategy_params.get('stop_after_cost_floor_pct') is not None
             else None
         ),
+        signal_mode=str(strategy_params.get('signal_mode') or 'band'),
+        vwap_deviation_pct=float(
+            strategy_params.get('vwap_deviation_pct', 1.0),
+        ),
         earliest_entry_time=str(strategy_params.get('earliest_entry_time', '09:35')),
         latest_entry_time=str(strategy_params.get('latest_entry_time', '14:00')),
     )
@@ -584,7 +588,8 @@ def t0_portfolio():
         'stop_loss_pct', 'fee_bps', 'sell_tax_bps', 'slippage_bps',
         'allow_sell_first', 'allow_buy_first', 'max_round_trips_per_day',
         'stop_after_daily_loss', 'stop_after_cost_floor_pct',
-        'earliest_entry_time', 'latest_entry_time',
+        'signal_mode', 'vwap_deviation_pct', 'earliest_entry_time',
+        'latest_entry_time',
     }
     manual_strategy = any(_has_body_value(body, k) for k in manual_strategy_keys)
     if manual_strategy:
@@ -633,6 +638,15 @@ def t0_portfolio():
                 _body_float(body, 'stop_after_cost_floor_pct', 0.0)
                 if _has_body_value(body, 'stop_after_cost_floor_pct')
                 else strategy_defaults.get('stop_after_cost_floor_pct')
+            ),
+            'signal_mode': str(
+                body.get('signal_mode')
+                or strategy_defaults.get('signal_mode')
+                or 'band'
+            ),
+            'vwap_deviation_pct': _body_float(
+                body, 'vwap_deviation_pct',
+                float(strategy_defaults.get('vwap_deviation_pct', 1.0)),
             ),
             'earliest_entry_time': str(body.get('earliest_entry_time') or '09:35'),
             'latest_entry_time': str(

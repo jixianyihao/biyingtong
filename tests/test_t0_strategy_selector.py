@@ -132,6 +132,7 @@ def test_t0_strategy_variants_for_balanced_include_cost_basis_choices():
         'default',
         'cost_basis_active',
         'cost_basis_guarded',
+        'vwap_hybrid',
     ]
     assert variants[1]['max_round_trips_per_day'] >= 2
     assert variants[1]['stop_after_daily_loss'] is True
@@ -141,3 +142,6 @@ def test_t0_strategy_variants_for_balanced_include_cost_basis_choices():
     assert variants[0]['stop_after_cost_floor_pct'] == -2.0
     assert variants[1]['stop_after_cost_floor_pct'] == -1.5
     assert variants[2]['stop_after_cost_floor_pct'] == -0.8
+    assert variants[3]['signal_mode'] == 'hybrid'
+    assert variants[3]['vwap_deviation_pct'] == 0.9
+    assert variants[3]['stop_after_cost_floor_pct'] == -1.0
