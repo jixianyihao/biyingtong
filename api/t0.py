@@ -122,6 +122,10 @@ def _preview_drawdown_allowed(drawdown_pct: float, max_abs_pct: float) -> bool:
     return float(drawdown_pct or 0.0) >= -abs(float(max_abs_pct))
 
 
+def _preview_win_rate_allowed(win_rate: float, min_pct: float) -> bool:
+    return float(win_rate or 0.0) >= float(min_pct or 0.0)
+
+
 def _split_bars_for_validation(
     bars: list[dict],
     validation_ratio: float,
@@ -301,10 +305,17 @@ def t0_candidates():
         min_preview_alpha_vs_all_in = _body_float(
             body, 'min_preview_alpha_vs_all_in', float('-inf'),
         )
+        min_preview_win_rate = _body_float(body, 'min_preview_win_rate', 0.0)
         max_preview_drawdown_pct = _body_float(
             body, 'max_preview_drawdown_pct', float('inf'),
         )
         validation_ratio = _body_float(body, 'preview_validation_ratio', 0.0)
+        min_preview_validation_trips = max(
+            0, _body_int(body, 'min_preview_validation_trips', 0),
+        )
+        min_preview_validation_win_rate = _body_float(
+            body, 'min_preview_validation_win_rate', 0.0,
+        )
         min_preview_validation_return_pct = _body_float(
             body, 'min_preview_validation_return_pct', float('-inf'),
         )
@@ -382,6 +393,12 @@ def t0_candidates():
                     ),
                 })
                 validation_pass = (
+                    validation_result['round_trips'] >=
+                    min_preview_validation_trips and
+                    _preview_win_rate_allowed(
+                        validation_result['win_rate'],
+                        min_preview_validation_win_rate,
+                    ) and
                     validation_result['total_return_pct'] >=
                     min_preview_validation_return_pct and
                     validation_result['alpha_vs_all_in_hold'] >=
@@ -393,6 +410,9 @@ def t0_candidates():
                 )
             if (
                 result['round_trips'] >= min_preview_trips and
+                _preview_win_rate_allowed(
+                    result['win_rate'], min_preview_win_rate,
+                ) and
                 result['total_return_pct'] >= min_preview_return_pct and
                 result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in and
                 _preview_drawdown_allowed(

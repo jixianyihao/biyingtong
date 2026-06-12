@@ -550,10 +550,13 @@ export type T0CandidatesRequest = {
   with_backtest?: boolean;
   preview_pool?: number;
   min_preview_trips?: number;
+  min_preview_win_rate?: number;
   min_preview_return_pct?: number;
   min_preview_alpha_vs_all_in?: number;
   max_preview_drawdown_pct?: number;
   preview_validation_ratio?: number;
+  min_preview_validation_trips?: number;
+  min_preview_validation_win_rate?: number;
   min_preview_validation_return_pct?: number;
   min_preview_validation_alpha_vs_all_in?: number;
   max_preview_validation_drawdown_pct?: number;

@@ -5,7 +5,11 @@ from pathlib import Path
 
 from flask import Flask
 
-from api.t0 import _preview_drawdown_allowed, _preview_sort_key
+from api.t0 import (
+    _preview_drawdown_allowed,
+    _preview_sort_key,
+    _preview_win_rate_allowed,
+)
 
 
 def _fresh_flask_app():
@@ -221,3 +225,10 @@ def test_preview_drawdown_filter_uses_absolute_drawdown_limit():
     assert _preview_drawdown_allowed(0.0, 8.0)
     assert not _preview_drawdown_allowed(-8.1, 8.0)
     assert _preview_drawdown_allowed(-99.0, float('inf'))
+
+
+def test_preview_win_rate_filter_uses_minimum_percent_threshold():
+    assert _preview_win_rate_allowed(55.0, 50.0)
+    assert _preview_win_rate_allowed(50.0, 50.0)
+    assert not _preview_win_rate_allowed(49.9, 50.0)
+    assert _preview_win_rate_allowed(0.0, 0.0)
