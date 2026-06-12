@@ -145,6 +145,18 @@ def _preview_win_rate_allowed(win_rate: float, min_pct: float) -> bool:
     return float(win_rate or 0.0) >= float(min_pct or 0.0)
 
 
+def _preview_cost_path_allowed(
+    min_cost_reduction_pct: float,
+    positive_days_pct: float,
+    min_floor_pct: float,
+    min_positive_days_pct: float,
+) -> bool:
+    return (
+        float(min_cost_reduction_pct or 0.0) >= float(min_floor_pct) and
+        float(positive_days_pct or 0.0) >= float(min_positive_days_pct or 0.0)
+    )
+
+
 def _split_bars_for_validation(
     bars: list[dict],
     validation_ratio: float,
@@ -331,6 +343,12 @@ def t0_candidates():
         min_preview_cost_reduction_pct = _body_float(
             body, 'min_preview_cost_reduction_pct', float('-inf'),
         )
+        min_preview_min_cost_reduction_pct = _body_float(
+            body, 'min_preview_min_cost_reduction_pct', float('-inf'),
+        )
+        min_preview_cost_reduction_positive_days_pct = _body_float(
+            body, 'min_preview_cost_reduction_positive_days_pct', 0.0,
+        )
         min_preview_win_rate = _body_float(body, 'min_preview_win_rate', 0.0)
         max_preview_drawdown_pct = _body_float(
             body, 'max_preview_drawdown_pct', float('inf'),
@@ -350,6 +368,14 @@ def t0_candidates():
         )
         min_preview_validation_cost_reduction_pct = _body_float(
             body, 'min_preview_validation_cost_reduction_pct', float('-inf'),
+        )
+        min_preview_validation_min_cost_reduction_pct = _body_float(
+            body, 'min_preview_validation_min_cost_reduction_pct',
+            float('-inf'),
+        )
+        min_preview_validation_cost_reduction_positive_days_pct = _body_float(
+            body, 'min_preview_validation_cost_reduction_positive_days_pct',
+            0.0,
         )
         max_preview_validation_drawdown_pct = _body_float(
             body, 'max_preview_validation_drawdown_pct', float('inf'),
@@ -467,6 +493,16 @@ def t0_candidates():
                     min_preview_validation_alpha_vs_all_in and
                     validation_result['cost_reduction_pct'] >=
                     min_preview_validation_cost_reduction_pct and
+                    _preview_cost_path_allowed(
+                        validation_result['min_cost_reduction_pct'],
+                        validation_result[
+                            'cost_reduction_positive_days_pct'
+                        ],
+                        min_preview_validation_min_cost_reduction_pct,
+                        (
+                            min_preview_validation_cost_reduction_positive_days_pct
+                        ),
+                    ) and
                     _preview_drawdown_allowed(
                         validation_result['max_drawdown_pct'],
                         max_preview_validation_drawdown_pct,
@@ -480,6 +516,12 @@ def t0_candidates():
                 result['total_return_pct'] >= min_preview_return_pct and
                 result['alpha_vs_all_in_hold'] >= min_preview_alpha_vs_all_in and
                 result['cost_reduction_pct'] >= min_preview_cost_reduction_pct and
+                _preview_cost_path_allowed(
+                    result['min_cost_reduction_pct'],
+                    result['cost_reduction_positive_days_pct'],
+                    min_preview_min_cost_reduction_pct,
+                    min_preview_cost_reduction_positive_days_pct,
+                ) and
                 _preview_drawdown_allowed(
                     result['max_drawdown_pct'], max_preview_drawdown_pct,
                 ) and

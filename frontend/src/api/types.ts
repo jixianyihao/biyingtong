@@ -565,6 +565,8 @@ export type T0CandidatesRequest = {
   min_preview_return_pct?: number;
   min_preview_alpha_vs_all_in?: number;
   min_preview_cost_reduction_pct?: number;
+  min_preview_min_cost_reduction_pct?: number;
+  min_preview_cost_reduction_positive_days_pct?: number;
   max_preview_drawdown_pct?: number;
   preview_validation_ratio?: number;
   min_preview_validation_trips?: number;
@@ -572,6 +574,8 @@ export type T0CandidatesRequest = {
   min_preview_validation_return_pct?: number;
   min_preview_validation_alpha_vs_all_in?: number;
   min_preview_validation_cost_reduction_pct?: number;
+  min_preview_validation_min_cost_reduction_pct?: number;
+  min_preview_validation_cost_reduction_positive_days_pct?: number;
   max_preview_validation_drawdown_pct?: number;
   min_days?: number;
   min_avg_amp_pct?: number;
