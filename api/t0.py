@@ -1029,8 +1029,8 @@ def t0_optimize():
     base_params = {
         **base_params,
         'selected_variant': 'optimizer_candidate',
-        'signal_mode': 'hybrid',
-        'execution_style': 'next_bar',
+        'signal_mode': base_params.get('signal_mode', 'band'),
+        'execution_style': base_params.get('execution_style', 'market'),
         'stop_after_daily_loss': True,
         'fee_bps': _body_float(body, 'fee_bps', 2.5),
         'sell_tax_bps': _body_float(body, 'sell_tax_bps', 5.0),

@@ -423,8 +423,8 @@ def test_t0_optimize_endpoint_runs_bounded_parameter_batch(monkeypatch):
     assert captured['offset'] == 3
     assert captured['limit'] == 1
     assert captured['grid'] == {'take_profit_pct': [0.55, 0.65]}
-    assert captured['base_params']['signal_mode'] == 'hybrid'
-    assert captured['base_params']['execution_style'] == 'next_bar'
+    assert captured['base_params']['signal_mode'] == 'band'
+    assert captured['base_params']['execution_style'] == 'market'
 
 
 def test_t0_optimize_endpoint_uses_validation_aware_base_variant(monkeypatch):
@@ -497,6 +497,56 @@ def test_t0_optimize_endpoint_uses_validation_aware_base_variant(monkeypatch):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body['base_variant'] == 'validation_stable'
+
+
+def test_t0_optimize_endpoint_preserves_selected_base_signal_and_execution(
+    monkeypatch,
+):
+    import api.t0 as t0_api
+    monkeypatch.setattr(t0_api, 'tdx', _FakeTDX())
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda bars, requested_mode='auto': {
+        'mode': 'balanced_range',
+        'base_position_pct': 0.70,
+        't_shares_pct': 0.20,
+        'strategy_params': {},
+    })
+    monkeypatch.setattr(
+        t0_api,
+        't0_strategy_variants',
+        lambda allocation: [{
+            'selected_variant': 'default',
+            'signal_mode': 'band',
+            'execution_style': 'market',
+        }],
+    )
+    captured = {}
+
+    def fake_optimize(code, bars, **kwargs):
+        captured.update(kwargs)
+        return {
+            'total_grid': 1,
+            'offset': 0,
+            'limit': 1,
+            'evaluated': 1,
+            'next_offset': None,
+            'rows': [],
+            'rejected_full': 0,
+            'rejected_validation': 0,
+            'rejected_fold': 0,
+        }
+
+    monkeypatch.setattr(t0_api, 'optimize_t0_parameters', fake_optimize)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/optimize', json={
+        'code': '688981.SH',
+        'grid': {'take_profit_pct': [0.55]},
+        'limit': 1,
+    })
+
+    assert resp.status_code == 200
+    assert captured['base_params']['signal_mode'] == 'band'
+    assert captured['base_params']['execution_style'] == 'market'
 
 
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(
