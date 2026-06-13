@@ -82,3 +82,11 @@ def test_t0_signal_requires_code():
 
     assert resp.status_code == 400
     assert resp.get_json() == {'error': 'code required'}
+
+
+def test_default_t0_optimizer_grid_searches_adaptive_vwap_family():
+    from api.t0 import DEFAULT_T0_OPTIMIZER_GRID
+
+    assert 'adaptive_vwap' in DEFAULT_T0_OPTIMIZER_GRID['signal_mode']
+    assert 'hybrid_adaptive' in DEFAULT_T0_OPTIMIZER_GRID['signal_mode']
+    assert DEFAULT_T0_OPTIMIZER_GRID['vwap_zscore_threshold'] == [1.2, 1.5, 1.8]

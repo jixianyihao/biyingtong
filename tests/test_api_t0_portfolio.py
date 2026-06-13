@@ -556,6 +556,13 @@ def test_default_t0_optimizer_grid_sweeps_signal_and_execution_layers():
     assert t0_api.DEFAULT_T0_OPTIMIZER_GRID['signal_mode'] == [
         'band',
         'hybrid',
+        'adaptive_vwap',
+        'hybrid_adaptive',
+    ]
+    assert t0_api.DEFAULT_T0_OPTIMIZER_GRID['vwap_zscore_threshold'] == [
+        1.2,
+        1.5,
+        1.8,
     ]
     assert t0_api.DEFAULT_T0_OPTIMIZER_GRID['execution_style'] == [
         'market',
@@ -563,25 +570,35 @@ def test_default_t0_optimizer_grid_sweeps_signal_and_execution_layers():
     ]
 
 
-def test_default_t0_optimizer_grid_interleaves_signal_and_execution_early():
+def test_default_t0_optimizer_grid_interleaves_signal_zscore_and_execution_early():
     import api.t0 as t0_api
     from t0.optimizer import iter_parameter_grid
 
-    first_four = list(iter_parameter_grid(
+    first_signal_block = list(iter_parameter_grid(
         t0_api.DEFAULT_T0_OPTIMIZER_GRID,
-        limit=4,
+        limit=24,
     ))
-    pairs = {
+    signal_execution_pairs = {
         (row['signal_mode'], row['execution_style'])
-        for row in first_four
+        for row in first_signal_block
+    }
+    adaptive_zscores = {
+        row['vwap_zscore_threshold']
+        for row in first_signal_block
+        if row['signal_mode'] == 'adaptive_vwap'
     }
 
-    assert pairs == {
+    assert signal_execution_pairs == {
         ('band', 'market'),
         ('band', 'next_bar'),
         ('hybrid', 'market'),
         ('hybrid', 'next_bar'),
+        ('adaptive_vwap', 'market'),
+        ('adaptive_vwap', 'next_bar'),
+        ('hybrid_adaptive', 'market'),
+        ('hybrid_adaptive', 'next_bar'),
     }
+    assert adaptive_zscores == {1.2, 1.5, 1.8}
 
 
 def test_t0_portfolio_endpoint_falls_back_to_local_lc1_when_tdx_has_no_bars(

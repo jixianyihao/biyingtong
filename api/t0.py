@@ -30,7 +30,8 @@ DEFAULT_T0_OPTIMIZER_GRID = {
     'stop_after_cost_floor_pct': [-0.75, -1.0, -1.25],
     'max_round_trips_per_day': [1, 2],
     'latest_entry_time': ['13:30', '14:00'],
-    'signal_mode': ['band', 'hybrid'],
+    'signal_mode': ['band', 'hybrid', 'adaptive_vwap', 'hybrid_adaptive'],
+    'vwap_zscore_threshold': [1.2, 1.5, 1.8],
     'execution_style': ['market', 'next_bar'],
 }
 

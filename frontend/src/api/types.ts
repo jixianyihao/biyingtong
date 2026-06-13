@@ -637,8 +637,9 @@ export type T0PortfolioRequest = {
   max_round_trips_per_day?: number;
   stop_after_daily_loss?: boolean;
   stop_after_cost_floor_pct?: number;
-  signal_mode?: 'band' | 'vwap_deviation' | 'hybrid';
+  signal_mode?: 'band' | 'vwap_deviation' | 'hybrid' | 'adaptive_vwap' | 'hybrid_adaptive';
   vwap_deviation_pct?: number;
+  vwap_zscore_threshold?: number;
   execution_style?: 'market' | 'next_bar';
   min_amplitude_pct?: number;
   high_band?: number;
