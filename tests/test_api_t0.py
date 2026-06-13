@@ -84,6 +84,20 @@ def test_t0_signal_requires_code():
     assert resp.get_json() == {'error': 'code required'}
 
 
+def test_t0_strategy_profiles_endpoint_lists_pluggable_profiles():
+    app = _fresh_flask_app()
+
+    resp = app.test_client().get('/api/t0/strategy-profiles')
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['count'] == 1
+    profile = body['profiles'][0]
+    assert profile['name'] == 'adaptive_vwap_cost'
+    assert profile['display_name'] == 'Adaptive VWAP Cost Reduction'
+    assert profile['optimizer_grid_size'] == 5185
+
+
 def test_default_t0_optimizer_grid_searches_adaptive_vwap_family():
     from api.t0 import DEFAULT_T0_OPTIMIZER_GRID
 

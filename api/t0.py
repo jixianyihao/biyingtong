@@ -15,6 +15,11 @@ from t0.strategy_selector import (
     choose_best_validated_t0_result,
     t0_strategy_variants,
 )
+from t0.strategy_profiles import (
+    DEFAULT_T0_STRATEGY_PROFILE,
+    get_t0_strategy_profile,
+    list_t0_strategy_profiles,
+)
 from tdx_service import tdx
 
 from . import api_bp
@@ -23,17 +28,7 @@ from . import api_bp
 _T0_PORTFOLIO_PREVIEW_CACHE: dict[tuple, dict] = {}
 _T0_PORTFOLIO_PREVIEW_CACHE_MAX = 5_000
 
-DEFAULT_T0_OPTIMIZER_GRID = {
-    'take_profit_pct': [0.55, 0.65, 0.75],
-    'stop_loss_pct': [0.75, 0.9, 1.0],
-    'vwap_deviation_pct': [0.7, 0.9],
-    'stop_after_cost_floor_pct': [-0.75, -1.0, -1.25],
-    'max_round_trips_per_day': [1, 2],
-    'latest_entry_time': ['13:30', '14:00'],
-    'signal_mode': ['band', 'hybrid', 'adaptive_vwap', 'hybrid_adaptive'],
-    'vwap_zscore_threshold': [1.2, 1.5, 1.8],
-    'execution_style': ['market', 'next_bar'],
-}
+DEFAULT_T0_OPTIMIZER_GRID = DEFAULT_T0_STRATEGY_PROFILE.optimizer_grid
 
 
 def _float_arg(name: str, default: float):
@@ -44,6 +39,28 @@ def _float_arg(name: str, default: float):
         return float(raw), None
     except ValueError:
         return default, f'{name} must be numeric'
+
+
+def _optimizer_grid_size(grid: dict) -> int:
+    total = 1
+    for values in grid.values():
+        total *= len(list(values))
+    return total
+
+
+@api_bp.route('/t0/strategy-profiles')
+def t0_strategy_profiles():
+    profiles = []
+    for profile in list_t0_strategy_profiles():
+        profiles.append({
+            'name': profile.name,
+            'display_name': profile.display_name,
+            'description': profile.description,
+            'base_params': profile.base_params,
+            'optimizer_grid': profile.optimizer_grid,
+            'optimizer_grid_size': _optimizer_grid_size(profile.optimizer_grid) + 1,
+        })
+    return jsonify({'count': len(profiles), 'profiles': profiles})
 
 
 def _bar_day(bar: dict) -> date | None:
@@ -1080,6 +1097,10 @@ def t0_optimize():
     body = request.get_json(silent=True) or {}
     code = str(body.get('code') or '688981.SH').strip().upper()
     try:
+        strategy_profile = get_t0_strategy_profile(body.get('strategy_profile'))
+    except KeyError as exc:
+        return jsonify({'error': str(exc)}), 400
+    try:
         bars, data_source = _load_t0_bars_from_body(code, body)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
@@ -1149,7 +1170,7 @@ def t0_optimize():
         'sell_tax_bps': _body_float(body, 'sell_tax_bps', 5.0),
         'slippage_bps': _body_float(body, 'slippage_bps', 2.0),
     }
-    grid = body.get('grid') or DEFAULT_T0_OPTIMIZER_GRID
+    grid = body.get('grid') or strategy_profile.optimizer_grid
     if not isinstance(grid, dict):
         return jsonify({'error': 'grid must be an object'}), 400
 
@@ -1194,6 +1215,7 @@ def t0_optimize():
     return jsonify({
         'code': code,
         'data_source': data_source,
+        'strategy_profile': strategy_profile.name,
         'allocation': allocation,
         'base_variant': selected['selected_variant'],
         'optimizer': optimizer,

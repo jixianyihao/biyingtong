@@ -52,24 +52,13 @@ def _default_optimize(
     bars: list[dict[str, Any]],
     offset: int,
     limit: int,
+    strategy_profile: str | None = None,
 ):
-    from api.t0 import DEFAULT_T0_OPTIMIZER_GRID
-    from t0.optimizer import T0OptimizerConstraints, optimize_t0_parameters
+    from t0.optimizer import optimize_t0_parameters
     from t0.portfolio import run_t0_portfolio_backtest
+    from t0.strategy_profiles import get_t0_strategy_profile
 
-    base_params = {
-        'initial_capital': 1_000_000.0,
-        'base_position_pct': 0.75,
-        't_shares_pct': 0.20,
-        'min_amplitude_pct': 1.0,
-        'high_band': 0.82,
-        'low_band': 0.25,
-        'take_profit_pct': 0.75,
-        'stop_loss_pct': 1.0,
-        'allow_sell_first': True,
-        'allow_buy_first': True,
-        'stop_after_daily_loss': True,
-    }
+    profile = get_t0_strategy_profile(strategy_profile)
 
     def run_strategy(
         run_code: str,
@@ -81,20 +70,13 @@ def _default_optimize(
     return optimize_t0_parameters(
         code,
         bars,
-        base_params=base_params,
-        grid=DEFAULT_T0_OPTIMIZER_GRID,
+        base_params=profile.build_base_params(),
+        grid=profile.optimizer_grid,
         run_strategy=run_strategy,
         offset=offset,
         limit=limit,
         include_base_candidate=True,
-        constraints=T0OptimizerConstraints(
-            min_full_cost_reduction_pct=0.0,
-            min_validation_cost_reduction_pct=0.0,
-            min_full_round_trips=1,
-            min_validation_round_trips=1,
-            min_fold_cost_reduction_pct=-2.0,
-            min_fold_min_cost_reduction_pct=-2.0,
-        ),
+        constraints=profile.constraints,
     )
 
 
@@ -103,6 +85,7 @@ def run_spike(
     codes: list[str],
     start: str,
     end: str,
+    strategy_profile: str | None = None,
     optimizer_offset: int = 0,
     optimizer_limit: int,
     out_root: str | Path = 'data/qlib_research',
@@ -111,13 +94,19 @@ def run_spike(
         [str, list[dict[str, Any]], int, int], dict[str, Any]
     ] = _default_optimize,
 ) -> dict[str, Any]:
+    from t0.strategy_profiles import get_t0_strategy_profile
+
     root = Path(out_root)
     rows: list[dict[str, Any]] = []
+    profile = get_t0_strategy_profile(strategy_profile)
     for code in codes:
         bars = load_bars(code, start=start, end=end)
         csv_path = write_qlib_csv(code, bars, root / 'source' / '1min')
         features = summarize_intraday_features(code, bars)
-        opt = optimize(code, bars, optimizer_offset, optimizer_limit)
+        if optimize is _default_optimize:
+            opt = optimize(code, bars, optimizer_offset, optimizer_limit, profile.name)
+        else:
+            opt = optimize(code, bars, optimizer_offset, optimizer_limit)
         best = (opt.get('rows') or [{}])[0]
         validation = best.get('validation') or {}
         metrics = {
@@ -140,6 +129,7 @@ def run_spike(
                     'code': code,
                     'start': start,
                     'end': end,
+                    'strategy_profile': profile.name,
                     'optimizer_offset': optimizer_offset,
                     'optimizer_limit': optimizer_limit,
                 },
@@ -153,6 +143,7 @@ def run_spike(
         )
         rows.append({
             'code': code,
+            'strategy_profile': profile.name,
             'csv_path': str(csv_path),
             'features': features,
             'best_params': best.get('params') or {},
@@ -183,6 +174,8 @@ def run_sweep(
     codes: list[str],
     start: str,
     end: str,
+    strategy_profile: str | None = None,
+    optimizer_start_offset: int = 0,
     optimizer_batch_size: int,
     optimizer_max_evaluations: int,
     out_root: str | Path = 'data/qlib_research',
@@ -192,12 +185,13 @@ def run_sweep(
     ] = _default_optimize,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    start_offset = max(0, int(optimizer_start_offset or 0))
     batch_size = max(1, int(optimizer_batch_size or 1))
     max_evaluations = max(batch_size, int(optimizer_max_evaluations or batch_size))
 
     for code in codes:
         best_row: dict[str, Any] | None = None
-        offset = 0
+        offset = start_offset
         evaluated_total = 0
         batches = 0
 
@@ -207,6 +201,7 @@ def run_sweep(
                 codes=[code],
                 start=start,
                 end=end,
+                strategy_profile=strategy_profile,
                 optimizer_offset=offset,
                 optimizer_limit=limit,
                 out_root=out_root,
@@ -228,6 +223,7 @@ def run_sweep(
             offset += limit
 
         if best_row is not None:
+            best_row['sweep_start_offset'] = start_offset
             best_row['sweep_batches'] = batches
             best_row['sweep_evaluated'] = evaluated_total
             rows.append(best_row)
@@ -241,7 +237,9 @@ def main() -> int:
     parser.add_argument('--codes', required=True)
     parser.add_argument('--start', required=True)
     parser.add_argument('--end', required=True)
+    parser.add_argument('--strategy-profile', default='adaptive_vwap_cost')
     parser.add_argument('--sweep', action='store_true')
+    parser.add_argument('--optimizer-start-offset', type=int, default=0)
     parser.add_argument('--optimizer-batch-size', type=int, default=96)
     parser.add_argument('--optimizer-max-evaluations', type=int, default=384)
     parser.add_argument('--optimizer-offset', type=int, default=0)
@@ -254,6 +252,8 @@ def main() -> int:
             codes=codes,
             start=args.start,
             end=args.end,
+            strategy_profile=args.strategy_profile,
+            optimizer_start_offset=args.optimizer_start_offset,
             optimizer_batch_size=args.optimizer_batch_size,
             optimizer_max_evaluations=args.optimizer_max_evaluations,
             out_root=args.out_root,
@@ -263,6 +263,7 @@ def main() -> int:
             codes=codes,
             start=args.start,
             end=args.end,
+            strategy_profile=args.strategy_profile,
             optimizer_offset=args.optimizer_offset,
             optimizer_limit=args.optimizer_limit,
             out_root=args.out_root,

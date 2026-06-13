@@ -131,6 +131,49 @@ def test_run_spike_passes_optimizer_offset(tmp_path: Path):
     assert seen == {'offset': 96, 'limit': 12}
 
 
+def test_run_spike_reports_selected_strategy_profile(tmp_path: Path):
+    bars = [{
+        'ts': '2026-01-05 09:31:00',
+        'date': '2026-01-05',
+        'open': 10.0,
+        'high': 10.4,
+        'low': 9.8,
+        'close': 10.1,
+        'vol': 1000,
+    }]
+
+    def load_bars(code, start=None, end=None):
+        return bars
+
+    def optimize(code, loaded_bars, offset, limit):
+        return {
+            'next_offset': None,
+            'evaluated': limit,
+            'total_grid': 1,
+            'rows': [{
+                'score': 1.0,
+                'params': {'take_profit_pct': 0.55},
+                'validation': {'cost_reduction_pct': 0.3},
+                'fold_pass_rate_pct': 100.0,
+                'worst_fold_cost_reduction_pct': 0.1,
+            }],
+        }
+
+    result = run_spike(
+        codes=['300951.SZ'],
+        start='2026-01-01',
+        end='2026-04-01',
+        strategy_profile='adaptive_vwap_cost',
+        optimizer_offset=0,
+        optimizer_limit=12,
+        out_root=tmp_path,
+        load_bars=load_bars,
+        optimize=optimize,
+    )
+
+    assert result['rows'][0]['strategy_profile'] == 'adaptive_vwap_cost'
+
+
 def test_run_sweep_aggregates_best_row_across_optimizer_offsets(tmp_path: Path):
     bars = [
         {
@@ -182,6 +225,55 @@ def test_run_sweep_aggregates_best_row_across_optimizer_offsets(tmp_path: Path):
     assert result['rows'][0]['best_optimizer_offset'] == 10
     assert result['rows'][0]['sweep_batches'] == 3
     assert result['rows'][0]['sweep_evaluated'] == 30
+
+
+def test_run_sweep_can_resume_from_optimizer_start_offset(tmp_path: Path):
+    bars = [
+        {
+            'ts': '2026-01-05 09:31:00',
+            'date': '2026-01-05',
+            'open': 10.0,
+            'high': 10.4,
+            'low': 9.8,
+            'close': 10.1,
+            'vol': 1000,
+        },
+    ]
+    offsets = []
+
+    def load_bars(code, start=None, end=None):
+        return bars
+
+    def optimize(code, loaded_bars, offset, limit):
+        offsets.append(offset)
+        return {
+            'next_offset': offset + limit,
+            'evaluated': limit,
+            'total_grid': 100,
+            'rows': [{
+                'score': float(offset),
+                'params': {'offset': offset},
+                'validation': {'cost_reduction_pct': float(offset)},
+                'fold_pass_rate_pct': 66.6667,
+                'worst_fold_cost_reduction_pct': -0.1,
+            }],
+        }
+
+    result = run_sweep(
+        codes=['300951.SZ'],
+        start='2026-01-01',
+        end='2026-04-01',
+        optimizer_start_offset=50,
+        optimizer_batch_size=10,
+        optimizer_max_evaluations=20,
+        out_root=tmp_path,
+        load_bars=load_bars,
+        optimize=optimize,
+    )
+
+    assert offsets == [50, 60]
+    assert result['rows'][0]['best_optimizer_offset'] == 60
+    assert result['rows'][0]['sweep_evaluated'] == 20
 
 
 def test_spike_script_help_runs_when_executed_by_path():

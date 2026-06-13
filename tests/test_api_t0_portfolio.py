@@ -550,6 +550,58 @@ def test_t0_optimize_endpoint_preserves_selected_base_signal_and_execution(
     assert captured['base_params']['execution_style'] == 'market'
 
 
+def test_t0_optimize_endpoint_uses_named_strategy_profile_grid(monkeypatch):
+    import api.t0 as t0_api
+    from t0.strategy_profiles import get_t0_strategy_profile
+    monkeypatch.setattr(t0_api, 'tdx', _FakeTDX())
+    monkeypatch.setattr(t0_api, 'choose_t0_allocation', lambda bars, requested_mode='auto': {
+        'mode': 'balanced_range',
+        'base_position_pct': 0.70,
+        't_shares_pct': 0.20,
+        'strategy_params': {},
+    })
+    monkeypatch.setattr(
+        t0_api,
+        't0_strategy_variants',
+        lambda allocation: [{
+            'selected_variant': 'default',
+            'signal_mode': 'band',
+            'execution_style': 'market',
+        }],
+    )
+    captured = {}
+
+    def fake_optimize(code, bars, **kwargs):
+        captured.update(kwargs)
+        return {
+            'total_grid': 1,
+            'offset': 0,
+            'limit': 1,
+            'evaluated': 1,
+            'next_offset': None,
+            'rows': [],
+            'rejected_full': 0,
+            'rejected_validation': 0,
+            'rejected_fold': 0,
+        }
+
+    monkeypatch.setattr(t0_api, 'optimize_t0_parameters', fake_optimize)
+    app = _fresh_flask_app()
+
+    resp = app.test_client().post('/api/t0/optimize', json={
+        'code': '688981.SH',
+        'strategy_profile': 'adaptive_vwap_cost',
+        'limit': 1,
+    })
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['strategy_profile'] == 'adaptive_vwap_cost'
+    assert captured['grid'] == get_t0_strategy_profile(
+        'adaptive_vwap_cost',
+    ).optimizer_grid
+
+
 def test_default_t0_optimizer_grid_sweeps_signal_and_execution_layers():
     import api.t0 as t0_api
 
