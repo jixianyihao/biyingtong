@@ -2,12 +2,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any, Callable
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from qlib_research.exporter import write_qlib_csv
 from qlib_research.features import summarize_intraday_features
 from qlib_research.recorder import ResearchRun, record_research_run
+
+
+def _filter_bars_by_date(
+    bars: list[dict[str, Any]],
+    *,
+    start: str | None,
+    end: str | None,
+) -> list[dict[str, Any]]:
+    if not start and not end:
+        return bars
+    rows: list[dict[str, Any]] = []
+    for bar in bars:
+        day = str(bar.get('date') or bar.get('ts') or '')[:10]
+        if start and day < start:
+            continue
+        if end and day > end:
+            continue
+        rows.append(bar)
+    return rows
 
 
 def _default_load_bars(
@@ -16,7 +40,11 @@ def _default_load_bars(
     end: str | None = None,
 ):
     from t0.local_lc1 import load_lc1_bars_for_code
-    return load_lc1_bars_for_code(code, start=start, end=end)
+    return _filter_bars_by_date(
+        load_lc1_bars_for_code(code),
+        start=start,
+        end=end,
+    )
 
 
 def _default_optimize(

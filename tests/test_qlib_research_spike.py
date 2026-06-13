@@ -1,6 +1,8 @@
 from pathlib import Path
+import subprocess
+import sys
 
-from scripts.research.t0_qlib_spike import run_spike
+from scripts.research.t0_qlib_spike import _filter_bars_by_date, run_spike
 
 
 def test_run_spike_exports_features_optimizes_and_records(tmp_path: Path):
@@ -79,3 +81,39 @@ def test_run_spike_exports_features_optimizes_and_records(tmp_path: Path):
     assert row['best_validation_cost_reduction_pct'] == 1.25
     assert Path(row['csv_path']).exists()
     assert row['record_backend'] == 'jsonl'
+
+
+def test_spike_script_help_runs_when_executed_by_path():
+    proc = subprocess.run(
+        [
+            sys.executable,
+            'scripts/research/t0_qlib_spike.py',
+            '--help',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert '--codes' in proc.stdout
+
+
+def test_filter_bars_by_date_uses_inclusive_window():
+    bars = [
+        {'date': '2025-12-31 14:56:00', 'close': 9.9},
+        {'date': '2026-01-01 09:31:00', 'close': 10.0},
+        {'date': '2026-04-01 14:56:00', 'close': 10.5},
+        {'date': '2026-04-02 09:31:00', 'close': 10.6},
+    ]
+
+    filtered = _filter_bars_by_date(
+        bars,
+        start='2026-01-01',
+        end='2026-04-01',
+    )
+
+    assert [row['date'] for row in filtered] == [
+        '2026-01-01 09:31:00',
+        '2026-04-01 14:56:00',
+    ]
