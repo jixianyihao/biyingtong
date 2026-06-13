@@ -17,6 +17,10 @@ class T0OptimizerConstraints:
     min_validation_round_trips: int = 8
     min_fold_cost_reduction_pct: float = -1.2
     min_fold_min_cost_reduction_pct: float = -1.2
+    min_full_alpha_vs_all_in: float | None = None
+    min_validation_alpha_vs_all_in: float | None = None
+    max_full_drawdown_abs_pct: float | None = None
+    max_validation_drawdown_abs_pct: float | None = None
 
 
 def _bar_day(bar: dict) -> date | None:
@@ -112,6 +116,23 @@ def _passes_common(
     )
 
 
+def _passes_risk(
+    result: dict,
+    *,
+    min_alpha_vs_all_in: float | None,
+    max_drawdown_abs_pct: float | None,
+) -> bool:
+    if min_alpha_vs_all_in is not None:
+        alpha = float(result.get('alpha_vs_all_in_hold') or 0.0)
+        if alpha < float(min_alpha_vs_all_in):
+            return False
+    if max_drawdown_abs_pct is not None:
+        drawdown = float(result.get('max_drawdown_pct') or 0.0)
+        if abs(drawdown) > abs(float(max_drawdown_abs_pct)):
+            return False
+    return True
+
+
 def _score(full: dict, validation: dict, fold_results: list[dict]) -> float:
     worst_cost = min(
         (float(row.get('cost_reduction_pct') or 0.0) for row in fold_results),
@@ -180,6 +201,7 @@ def optimize_t0_parameters(
     rejected_full = 0
     rejected_validation = 0
     rejected_fold = 0
+    rejected_risk = 0
     evaluated = 0
 
     candidate_overrides: Iterable[dict[str, Any]]
@@ -217,6 +239,13 @@ def optimize_t0_parameters(
         ):
             rejected_full += 1
             continue
+        if not _passes_risk(
+            full,
+            min_alpha_vs_all_in=constraints.min_full_alpha_vs_all_in,
+            max_drawdown_abs_pct=constraints.max_full_drawdown_abs_pct,
+        ):
+            rejected_risk += 1
+            continue
         validation_result = run_strategy(code, validation_bars, params)
         if not _passes_common(
             validation_result,
@@ -224,6 +253,13 @@ def optimize_t0_parameters(
             min_trips=constraints.min_validation_round_trips,
         ):
             rejected_validation += 1
+            continue
+        if not _passes_risk(
+            validation_result,
+            min_alpha_vs_all_in=constraints.min_validation_alpha_vs_all_in,
+            max_drawdown_abs_pct=constraints.max_validation_drawdown_abs_pct,
+        ):
+            rejected_risk += 1
             continue
 
         fold_results = [run_strategy(code, fold, params) for fold in folds]
@@ -260,4 +296,5 @@ def optimize_t0_parameters(
         'rejected_full': rejected_full,
         'rejected_validation': rejected_validation,
         'rejected_fold': rejected_fold,
+        'rejected_risk': rejected_risk,
     }

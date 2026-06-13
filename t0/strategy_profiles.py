@@ -64,6 +64,10 @@ ADAPTIVE_VWAP_COST_PROFILE = T0StrategyProfile(
         min_validation_round_trips=1,
         min_fold_cost_reduction_pct=-2.0,
         min_fold_min_cost_reduction_pct=-2.0,
+        min_full_alpha_vs_all_in=0.0,
+        min_validation_alpha_vs_all_in=0.0,
+        max_full_drawdown_abs_pct=20.0,
+        max_validation_drawdown_abs_pct=20.0,
     ),
 )
 

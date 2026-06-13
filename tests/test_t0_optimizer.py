@@ -18,14 +18,22 @@ def _bar(day: str, close: float = 100.0) -> dict:
     }
 
 
-def _result(cost: float, min_cost: float, trips: int, ret: float = 1.0) -> dict:
+def _result(
+    cost: float,
+    min_cost: float,
+    trips: int,
+    ret: float = 1.0,
+    alpha: float = 1.0,
+    drawdown: float = -5.0,
+) -> dict:
     return {
         'cost_reduction_pct': cost,
         'min_cost_reduction_pct': min_cost,
         'cost_reduction_positive_days_pct': 80.0,
         'round_trips': trips,
         'total_return_pct': ret,
-        'max_drawdown_pct': -5.0,
+        'alpha_vs_all_in_hold': alpha,
+        'max_drawdown_pct': drawdown,
     }
 
 
@@ -171,6 +179,39 @@ def test_optimize_t0_parameters_rejects_candidates_with_bad_fold_cost_path():
 
     assert out['rows'] == []
     assert out['rejected_fold'] == 1
+
+
+def test_optimize_t0_parameters_rejects_candidates_with_bad_risk_guardrails():
+    bars = [_bar('2026-01-01'), _bar('2026-01-02'), _bar('2026-01-03'), _bar('2026-01-04')]
+    grid = {'take_profit_pct': [0.7, 0.8]}
+
+    def run_strategy(code: str, slice_bars: list[dict], params: dict) -> dict:
+        if params['take_profit_pct'] == 0.7:
+            return _result(cost=1.5, min_cost=-0.2, trips=30, alpha=-1.0)
+        return _result(cost=1.3, min_cost=-0.2, trips=30, drawdown=-18.0)
+
+    out = optimize_t0_parameters(
+        '300951.SZ',
+        bars,
+        base_params={},
+        grid=grid,
+        run_strategy=run_strategy,
+        validation_ratio=0.25,
+        fold_count=1,
+        constraints=T0OptimizerConstraints(
+            min_full_cost_reduction_pct=0.5,
+            min_validation_cost_reduction_pct=0.5,
+            min_full_round_trips=20,
+            min_validation_round_trips=8,
+            min_fold_cost_reduction_pct=-1.2,
+            min_fold_min_cost_reduction_pct=-1.2,
+            min_full_alpha_vs_all_in=0.0,
+            max_full_drawdown_abs_pct=12.0,
+        ),
+    )
+
+    assert out['rows'] == []
+    assert out['rejected_risk'] == 2
 
 
 def test_optimize_t0_parameters_reports_fold_stability_summary():
