@@ -360,6 +360,7 @@ def test_t0_candidates_endpoint_uses_validation_aware_variant(monkeypatch):
 
 def test_t0_candidates_endpoint_can_attach_optimizer_preview(monkeypatch):
     import api.t0 as t0_api
+    from t0.strategy_profiles import get_t0_strategy_profile
     captured = {}
 
     bars = [
@@ -437,6 +438,7 @@ def test_t0_candidates_endpoint_can_attach_optimizer_preview(monkeypatch):
         'top': 5,
         'with_backtest': True,
         'with_optimizer': True,
+        'strategy_profile': 'risk_balanced_adaptive_vwap_cost',
         'optimizer_limit': 2,
         'preview_pool': 5,
         'min_preview_trips': 0,
@@ -446,6 +448,9 @@ def test_t0_candidates_endpoint_can_attach_optimizer_preview(monkeypatch):
     assert resp.status_code == 200
     row = resp.get_json()['rows'][0]
     assert captured['code'] == '688981.SH'
+    assert captured['grid'] == get_t0_strategy_profile(
+        'risk_balanced_adaptive_vwap_cost',
+    ).optimizer_grid
     assert captured['include_base_candidate'] is True
     assert row['optimizer_evaluated'] == 2
     assert row['optimizer_best_score'] == 12.34

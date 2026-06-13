@@ -493,6 +493,13 @@ export function useT0Grid() {
   });
 }
 
+export function useT0StrategyProfiles() {
+  return useQuery({
+    queryKey: ['t0-strategy-profiles'],
+    queryFn: api.t0StrategyProfiles,
+  });
+}
+
 export function useT0Candidates() {
   return useMutation({
     mutationFn: (body: T0CandidatesRequest) => api.t0Candidates(body),

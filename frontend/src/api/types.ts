@@ -468,6 +468,20 @@ export type ScreenerResponse = {
 
 // ─── T0 Lab (POST /api/t0/grid) ─────────────────────────────────────────────
 
+export type T0StrategyProfile = {
+  name: string;
+  display_name: string;
+  description: string;
+  base_params: Record<string, unknown>;
+  optimizer_grid: Record<string, Array<number | string | boolean>>;
+  optimizer_grid_size: number;
+};
+
+export type T0StrategyProfilesResponse = {
+  count: number;
+  profiles: T0StrategyProfile[];
+};
+
 export type T0GridCoverage = {
   first: string | null;
   last: string | null;
@@ -587,6 +601,7 @@ export type T0CandidatesRequest = {
   top?: number;
   max_files?: number;
   score_profile?: 'raw_opportunity' | 'stable_t';
+  strategy_profile?: string;
   with_backtest?: boolean;
   with_optimizer?: boolean;
   with_next_bar_stress?: boolean;
@@ -652,6 +667,7 @@ export type T0PortfolioRequest = {
 
 export type T0OptimizeRequest = {
   code: string;
+  strategy_profile?: string;
   initial_capital?: number;
   allocation_mode?: 'auto' | 'bull' | 'balanced' | 'defensive';
   strategy_selection_ratio?: number;
@@ -685,6 +701,7 @@ export type T0OptimizeRow = {
 export type T0OptimizeResponse = {
   code: string;
   data_source: string;
+  strategy_profile: string;
   base_variant: string;
   allocation: T0Allocation;
   optimizer: {

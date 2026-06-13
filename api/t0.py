@@ -613,6 +613,10 @@ def t0_grid():
 @api_bp.route('/t0/candidates', methods=['POST'])
 def t0_candidates():
     body = request.get_json(silent=True) or {}
+    try:
+        strategy_profile = get_t0_strategy_profile(body.get('strategy_profile'))
+    except KeyError as exc:
+        return jsonify({'error': str(exc)}), 400
     roots = body.get('roots')
     if roots is not None and not isinstance(roots, list):
         return jsonify({'error': 'roots must be a list of minline directories'}), 400
@@ -1008,7 +1012,7 @@ def t0_candidates():
                     str(row['code']),
                     bars,
                     base_params=optimizer_base_params,
-                    grid=DEFAULT_T0_OPTIMIZER_GRID,
+                    grid=strategy_profile.optimizer_grid,
                     run_strategy=(
                         lambda c, slice_bars, params:
                         _run_t0_portfolio_with_strategy(

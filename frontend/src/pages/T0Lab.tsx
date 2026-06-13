@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
-import { useT0Candidates, useT0Grid, useT0Optimize, useT0Portfolio } from '../api/hooks';
+import {
+  useT0Candidates,
+  useT0Grid,
+  useT0Optimize,
+  useT0Portfolio,
+  useT0StrategyProfiles,
+} from '../api/hooks';
 import type { T0CandidateRow, T0GridRow } from '../api/types';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -244,13 +250,21 @@ function CandidateList({
 
 export function T0Lab() {
   const [code, setCode] = useState('688981.SH');
+  const [strategyProfile, setStrategyProfile] = useState(
+    'risk_balanced_adaptive_vwap_cost',
+  );
   const [minLastDate, setMinLastDate] = useState(todayIso());
   const [top, setTop] = useState(20);
   const grid = useT0Grid();
   const portfolio = useT0Portfolio();
   const optimizer = useT0Optimize();
   const candidates = useT0Candidates();
+  const strategyProfiles = useT0StrategyProfiles();
   const data = grid.data;
+  const selectedProfile = useMemo(
+    () => strategyProfiles.data?.profiles.find((p) => p.name === strategyProfile),
+    [strategyProfiles.data?.profiles, strategyProfile],
+  );
 
   const best = data?.rows?.[0];
   const coverageText = useMemo(() => {
@@ -269,6 +283,11 @@ export function T0Lab() {
 
   function setActiveCode(nextCode: string) {
     setCode(nextCode);
+    resetAnalysis();
+  }
+
+  function setActiveStrategyProfile(nextProfile: string) {
+    setStrategyProfile(nextProfile);
     resetAnalysis();
   }
 
@@ -295,6 +314,7 @@ export function T0Lab() {
   function runOptimizerBatch() {
     optimizer.mutate({
       code: code.trim().toUpperCase(),
+      strategy_profile: strategyProfile,
       initial_capital: 1_000_000,
       strategy_selection_ratio: 0.35,
       offset: optimizer.data?.optimizer.next_offset ?? 0,
@@ -309,6 +329,7 @@ export function T0Lab() {
       top: 30,
       max_files: 500,
       score_profile: 'stable_t',
+      strategy_profile: strategyProfile,
       with_backtest: true,
       with_optimizer: true,
       with_next_bar_stress: true,
@@ -400,6 +421,42 @@ export function T0Lab() {
                   outline: 'none',
                 }}
               />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-[11px] text-text-faint">
+                做T算法 Profile（候选扫描 + 参数优化）
+              </span>
+              <select
+                value={strategyProfile}
+                onChange={(e) => setActiveStrategyProfile(e.target.value)}
+                disabled={strategyProfiles.isLoading}
+                className="mono"
+                style={{
+                  background: 'var(--bg-2)',
+                  border: '1px solid var(--panel-border-soft)',
+                  color: 'var(--text-hi)',
+                  borderRadius: 4,
+                  padding: '7px 8px',
+                  fontSize: 12,
+                  outline: 'none',
+                }}
+              >
+                {(strategyProfiles.data?.profiles ?? []).map((profile) => (
+                  <option key={profile.name} value={profile.name}>
+                    {profile.display_name}
+                  </option>
+                ))}
+                {!strategyProfiles.data?.profiles?.length && (
+                  <option value={strategyProfile}>{strategyProfile}</option>
+                )}
+              </select>
+              {selectedProfile && (
+                <div className="text-[10.5px] text-text-faint" style={{ lineHeight: 1.45 }}>
+                  网格 {selectedProfile.optimizer_grid_size.toLocaleString('zh-CN')} 组 ·{' '}
+                  {selectedProfile.description}
+                </div>
+              )}
             </label>
 
             <label className="grid gap-1">
@@ -554,7 +611,7 @@ export function T0Lab() {
             {optimizer.data && (
               <div className="grid gap-1 mono text-[11px]" style={{ color: 'var(--text-dim)' }}>
                 <div>
-                  基准 {optimizer.data.base_variant} · 已评估 {optimizer.data.optimizer.evaluated}/
+                  Profile {optimizer.data.strategy_profile} · 基准 {optimizer.data.base_variant} · 已评估 {optimizer.data.optimizer.evaluated}/
                   {optimizer.data.optimizer.total_grid}
                   {optimizer.data.optimizer.next_offset != null && (
                     <> · 下批 {optimizer.data.optimizer.next_offset}</>
