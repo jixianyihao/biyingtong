@@ -51,9 +51,10 @@ def test_run_spike_exports_features_optimizes_and_records(tmp_path: Path):
         assert end == '2026-04-01'
         return bars
 
-    def optimize(code, loaded_bars, limit):
+    def optimize(code, loaded_bars, offset, limit):
         assert code == '300951.SZ'
         assert loaded_bars == bars
+        assert offset == 0
         assert limit == 12
         return {
             'rows': [{
@@ -69,6 +70,7 @@ def test_run_spike_exports_features_optimizes_and_records(tmp_path: Path):
         codes=['300951.SZ'],
         start='2026-01-01',
         end='2026-04-01',
+        optimizer_offset=0,
         optimizer_limit=12,
         out_root=tmp_path,
         load_bars=load_bars,
@@ -81,6 +83,48 @@ def test_run_spike_exports_features_optimizes_and_records(tmp_path: Path):
     assert row['best_validation_cost_reduction_pct'] == 1.25
     assert Path(row['csv_path']).exists()
     assert row['record_backend'] == 'jsonl'
+
+
+def test_run_spike_passes_optimizer_offset(tmp_path: Path):
+    bars = [
+        {
+            'ts': '2026-01-05 09:31:00',
+            'date': '2026-01-05',
+            'open': 10.0,
+            'high': 10.2,
+            'low': 9.9,
+            'close': 10.1,
+            'vol': 1000,
+        },
+    ]
+    seen = {}
+
+    def load_bars(code, start=None, end=None):
+        return bars
+
+    def optimize(code, loaded_bars, offset, limit):
+        seen['offset'] = offset
+        seen['limit'] = limit
+        return {
+            'rows': [{
+                'score': 1.0,
+                'params': {'signal_mode': 'band'},
+                'validation': {'cost_reduction_pct': 0.1},
+            }],
+        }
+
+    run_spike(
+        codes=['300951.SZ'],
+        start='2026-01-01',
+        end='2026-04-01',
+        optimizer_offset=96,
+        optimizer_limit=12,
+        out_root=tmp_path,
+        load_bars=load_bars,
+        optimize=optimize,
+    )
+
+    assert seen == {'offset': 96, 'limit': 12}
 
 
 def test_spike_script_help_runs_when_executed_by_path():

@@ -50,6 +50,7 @@ def _default_load_bars(
 def _default_optimize(
     code: str,
     bars: list[dict[str, Any]],
+    offset: int,
     limit: int,
 ):
     from api.t0 import DEFAULT_T0_OPTIMIZER_GRID
@@ -83,6 +84,7 @@ def _default_optimize(
         base_params=base_params,
         grid=DEFAULT_T0_OPTIMIZER_GRID,
         run_strategy=run_strategy,
+        offset=offset,
         limit=limit,
         include_base_candidate=True,
         constraints=T0OptimizerConstraints(
@@ -101,11 +103,12 @@ def run_spike(
     codes: list[str],
     start: str,
     end: str,
+    optimizer_offset: int = 0,
     optimizer_limit: int,
     out_root: str | Path = 'data/qlib_research',
     load_bars: Callable[..., list[dict[str, Any]]] = _default_load_bars,
     optimize: Callable[
-        [str, list[dict[str, Any]], int], dict[str, Any]
+        [str, list[dict[str, Any]], int, int], dict[str, Any]
     ] = _default_optimize,
 ) -> dict[str, Any]:
     root = Path(out_root)
@@ -114,7 +117,7 @@ def run_spike(
         bars = load_bars(code, start=start, end=end)
         csv_path = write_qlib_csv(code, bars, root / 'source' / '1min')
         features = summarize_intraday_features(code, bars)
-        opt = optimize(code, bars, optimizer_limit)
+        opt = optimize(code, bars, optimizer_offset, optimizer_limit)
         best = (opt.get('rows') or [{}])[0]
         validation = best.get('validation') or {}
         metrics = {
@@ -137,6 +140,7 @@ def run_spike(
                     'code': code,
                     'start': start,
                     'end': end,
+                    'optimizer_offset': optimizer_offset,
                     'optimizer_limit': optimizer_limit,
                 },
                 metrics=metrics,
@@ -171,6 +175,7 @@ def main() -> int:
     parser.add_argument('--codes', required=True)
     parser.add_argument('--start', required=True)
     parser.add_argument('--end', required=True)
+    parser.add_argument('--optimizer-offset', type=int, default=0)
     parser.add_argument('--optimizer-limit', type=int, default=96)
     parser.add_argument('--out-root', default='data/qlib_research')
     args = parser.parse_args()
@@ -178,6 +183,7 @@ def main() -> int:
         codes=[code.strip() for code in args.codes.split(',') if code.strip()],
         start=args.start,
         end=args.end,
+        optimizer_offset=args.optimizer_offset,
         optimizer_limit=args.optimizer_limit,
         out_root=args.out_root,
     )
