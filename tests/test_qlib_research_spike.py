@@ -2,7 +2,11 @@ from pathlib import Path
 import subprocess
 import sys
 
-from scripts.research.t0_qlib_spike import _filter_bars_by_date, run_spike
+from scripts.research.t0_qlib_spike import (
+    _filter_bars_by_date,
+    run_spike,
+    run_sweep,
+)
 
 
 def test_run_spike_exports_features_optimizes_and_records(tmp_path: Path):
@@ -125,6 +129,59 @@ def test_run_spike_passes_optimizer_offset(tmp_path: Path):
     )
 
     assert seen == {'offset': 96, 'limit': 12}
+
+
+def test_run_sweep_aggregates_best_row_across_optimizer_offsets(tmp_path: Path):
+    bars = [
+        {
+            'ts': '2026-01-05 09:31:00',
+            'date': '2026-01-05',
+            'open': 10.0,
+            'high': 10.4,
+            'low': 9.8,
+            'close': 10.1,
+            'vol': 1000,
+        },
+    ]
+    offsets = []
+
+    def load_bars(code, start=None, end=None):
+        return bars
+
+    def optimize(code, loaded_bars, offset, limit):
+        offsets.append(offset)
+        validation_cost = {0: 0.2, 10: 1.4, 20: 0.8}[offset]
+        return {
+            'next_offset': None if offset == 20 else offset + limit,
+            'evaluated': limit,
+            'total_grid': 30,
+            'rows': [{
+                'score': validation_cost,
+                'params': {'offset': offset},
+                'validation': {'cost_reduction_pct': validation_cost},
+                'fold_pass_rate_pct': 66.6667,
+                'worst_fold_cost_reduction_pct': -0.1,
+            }],
+        }
+
+    result = run_sweep(
+        codes=['300951.SZ'],
+        start='2026-01-01',
+        end='2026-04-01',
+        optimizer_batch_size=10,
+        optimizer_max_evaluations=30,
+        out_root=tmp_path,
+        load_bars=load_bars,
+        optimize=optimize,
+    )
+
+    assert offsets == [0, 10, 20]
+    assert result['count'] == 1
+    assert result['rows'][0]['code'] == '300951.SZ'
+    assert result['rows'][0]['best_validation_cost_reduction_pct'] == 1.4
+    assert result['rows'][0]['best_optimizer_offset'] == 10
+    assert result['rows'][0]['sweep_batches'] == 3
+    assert result['rows'][0]['sweep_evaluated'] == 30
 
 
 def test_spike_script_help_runs_when_executed_by_path():

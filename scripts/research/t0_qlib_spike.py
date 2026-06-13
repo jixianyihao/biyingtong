@@ -170,23 +170,103 @@ def run_spike(
     return {'count': len(rows), 'rows': rows}
 
 
+def _row_sort_key(row: dict[str, Any]) -> tuple[float, float, float]:
+    return (
+        float(row.get('best_validation_cost_reduction_pct') or 0.0),
+        float(row.get('best_fold_pass_rate_pct') or 0.0),
+        float(row.get('best_worst_fold_cost_reduction_pct') or 0.0),
+    )
+
+
+def run_sweep(
+    *,
+    codes: list[str],
+    start: str,
+    end: str,
+    optimizer_batch_size: int,
+    optimizer_max_evaluations: int,
+    out_root: str | Path = 'data/qlib_research',
+    load_bars: Callable[..., list[dict[str, Any]]] = _default_load_bars,
+    optimize: Callable[
+        [str, list[dict[str, Any]], int, int], dict[str, Any]
+    ] = _default_optimize,
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    batch_size = max(1, int(optimizer_batch_size or 1))
+    max_evaluations = max(batch_size, int(optimizer_max_evaluations or batch_size))
+
+    for code in codes:
+        best_row: dict[str, Any] | None = None
+        offset = 0
+        evaluated_total = 0
+        batches = 0
+
+        while evaluated_total < max_evaluations:
+            limit = min(batch_size, max_evaluations - evaluated_total)
+            result = run_spike(
+                codes=[code],
+                start=start,
+                end=end,
+                optimizer_offset=offset,
+                optimizer_limit=limit,
+                out_root=out_root,
+                load_bars=load_bars,
+                optimize=optimize,
+            )
+            batch_rows = result.get('rows') or []
+            if batch_rows:
+                candidate = dict(batch_rows[0])
+                candidate['best_optimizer_offset'] = offset
+                if best_row is None or _row_sort_key(candidate) > _row_sort_key(best_row):
+                    best_row = candidate
+            batches += 1
+            evaluated_total += limit
+
+            # The optimize result is not exposed by run_spike, so we advance by
+            # the requested limit. This keeps the sweep deterministic and lets
+            # callers choose how much of the grid to cover.
+            offset += limit
+
+        if best_row is not None:
+            best_row['sweep_batches'] = batches
+            best_row['sweep_evaluated'] = evaluated_total
+            rows.append(best_row)
+
+    rows.sort(key=_row_sort_key, reverse=True)
+    return {'count': len(rows), 'rows': rows}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--codes', required=True)
     parser.add_argument('--start', required=True)
     parser.add_argument('--end', required=True)
+    parser.add_argument('--sweep', action='store_true')
+    parser.add_argument('--optimizer-batch-size', type=int, default=96)
+    parser.add_argument('--optimizer-max-evaluations', type=int, default=384)
     parser.add_argument('--optimizer-offset', type=int, default=0)
     parser.add_argument('--optimizer-limit', type=int, default=96)
     parser.add_argument('--out-root', default='data/qlib_research')
     args = parser.parse_args()
-    result = run_spike(
-        codes=[code.strip() for code in args.codes.split(',') if code.strip()],
-        start=args.start,
-        end=args.end,
-        optimizer_offset=args.optimizer_offset,
-        optimizer_limit=args.optimizer_limit,
-        out_root=args.out_root,
-    )
+    codes = [code.strip() for code in args.codes.split(',') if code.strip()]
+    if args.sweep:
+        result = run_sweep(
+            codes=codes,
+            start=args.start,
+            end=args.end,
+            optimizer_batch_size=args.optimizer_batch_size,
+            optimizer_max_evaluations=args.optimizer_max_evaluations,
+            out_root=args.out_root,
+        )
+    else:
+        result = run_spike(
+            codes=codes,
+            start=args.start,
+            end=args.end,
+            optimizer_offset=args.optimizer_offset,
+            optimizer_limit=args.optimizer_limit,
+            out_root=args.out_root,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
