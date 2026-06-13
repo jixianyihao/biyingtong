@@ -453,12 +453,16 @@ def _run_t0_portfolio_with_strategy(
     t_shares_pct: float | None = None,
 ) -> dict:
     base_pct = (
-        float(base_position_pct)
+        float(strategy_params['base_position_pct'])
+        if strategy_params.get('base_position_pct') is not None
+        else float(base_position_pct)
         if base_position_pct is not None
         else float(allocation['base_position_pct'])
     )
     t_pct = (
-        float(t_shares_pct)
+        float(strategy_params['t_shares_pct'])
+        if strategy_params.get('t_shares_pct') is not None
+        else float(t_shares_pct)
         if t_shares_pct is not None
         else float(allocation['t_shares_pct'])
     )

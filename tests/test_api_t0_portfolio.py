@@ -602,6 +602,36 @@ def test_t0_optimize_endpoint_uses_named_strategy_profile_grid(monkeypatch):
     ).optimizer_grid
 
 
+def test_run_t0_portfolio_with_strategy_lets_profile_params_override_allocation(
+    monkeypatch,
+):
+    import api.t0 as t0_api
+    captured = {}
+
+    def fake_backtest(code, bars, **kwargs):
+        captured.update(kwargs)
+        return {'params': kwargs, 'selected_variant': 'profile_override'}
+
+    monkeypatch.setattr(t0_api, 'run_t0_portfolio_backtest', fake_backtest)
+
+    t0_api._run_t0_portfolio_with_strategy(
+        '688981.SH',
+        [{'date': '2026-01-01 09:31:00', 'close': 10.0}],
+        allocation={'base_position_pct': 0.70, 't_shares_pct': 0.20},
+        initial_capital=1_000_000.0,
+        base_position_pct=0.75,
+        t_shares_pct=0.25,
+        strategy_params={
+            'selected_variant': 'profile_override',
+            'base_position_pct': 0.55,
+            't_shares_pct': 0.15,
+        },
+    )
+
+    assert captured['base_position_pct'] == 0.55
+    assert captured['t_shares_pct'] == 0.15
+
+
 def test_default_t0_optimizer_grid_sweeps_signal_and_execution_layers():
     import api.t0 as t0_api
 

@@ -39,6 +39,17 @@ def test_t0_strategy_profile_can_merge_base_params_without_mutating_defaults():
 def test_t0_strategy_profile_registry_lists_and_rejects_unknown_profiles():
     names = [profile.name for profile in list_t0_strategy_profiles()]
 
-    assert names == ['adaptive_vwap_cost']
+    assert names == ['adaptive_vwap_cost', 'risk_balanced_adaptive_vwap_cost']
     with pytest.raises(KeyError):
         get_t0_strategy_profile('missing')
+
+
+def test_risk_balanced_t0_strategy_profile_sweeps_lower_base_exposure():
+    profile = get_t0_strategy_profile('risk_balanced_adaptive_vwap_cost')
+
+    assert profile.base_params['base_position_pct'] == 0.55
+    assert profile.optimizer_grid['base_position_pct'] == [0.45, 0.55, 0.65]
+    assert profile.optimizer_grid['t_shares_pct'] == [0.12, 0.16, 0.20]
+    assert profile.optimizer_grid['execution_style'] == ['next_bar']
+    assert profile.constraints.max_full_drawdown_abs_pct == 12.0
+    assert profile.constraints.max_validation_drawdown_abs_pct == 12.0

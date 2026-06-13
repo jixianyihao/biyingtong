@@ -91,11 +91,14 @@ def test_t0_strategy_profiles_endpoint_lists_pluggable_profiles():
 
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body['count'] == 1
+    assert body['count'] == 2
     profile = body['profiles'][0]
     assert profile['name'] == 'adaptive_vwap_cost'
     assert profile['display_name'] == 'Adaptive VWAP Cost Reduction'
     assert profile['optimizer_grid_size'] == 5185
+    risk_profile = body['profiles'][1]
+    assert risk_profile['name'] == 'risk_balanced_adaptive_vwap_cost'
+    assert risk_profile['optimizer_grid']['base_position_pct'] == [0.45, 0.55, 0.65]
 
 
 def test_default_t0_optimizer_grid_searches_adaptive_vwap_family():
