@@ -112,6 +112,46 @@ def test_candidate_sweep_can_compare_multiple_strategy_profiles():
     assert result['leaderboard'][0]['code'] == '600724.SH'
 
 
+def test_candidate_sweep_can_rerun_explicit_codes_without_scanning():
+    seen = {}
+
+    def scan_candidates(**kwargs):
+        raise AssertionError('explicit codes should bypass candidate scan')
+
+    def sweep(**kwargs):
+        seen['sweep_kwargs'] = kwargs
+        return {
+            'count': 1,
+            'rows': [{
+                'code': '600724.SH',
+                'strategy_profile': kwargs['strategy_profile'],
+                'best_validation_cost_reduction_pct': 1.0,
+                'best_fold_pass_rate_pct': 100.0,
+                'best_worst_fold_cost_reduction_pct': 0.2,
+            }],
+        }
+
+    result = run_candidate_sweep(
+        start='2026-01-01',
+        end='2026-04-01',
+        codes=['600724.SH', '300951.SZ'],
+        strategy_profile='risk_balanced_adaptive_vwap_cost',
+        optimizer_batch_size=96,
+        optimizer_max_evaluations=96,
+        scan_candidates=scan_candidates,
+        sweep=sweep,
+    )
+
+    assert result['candidate_count'] == 2
+    assert result['candidates'] == [
+        {'code': '600724.SH'},
+        {'code': '300951.SZ'},
+    ]
+    assert result['swept_codes'] == ['600724.SH', '300951.SZ']
+    assert seen['sweep_kwargs']['codes'] == ['600724.SH', '300951.SZ']
+    assert result['leaderboard'][0]['code'] == '600724.SH'
+
+
 def test_candidate_sweep_script_help_runs_when_executed_by_path():
     proc = subprocess.run(
         [

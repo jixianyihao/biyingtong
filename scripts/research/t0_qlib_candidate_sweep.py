@@ -31,6 +31,7 @@ def run_candidate_sweep(
     *,
     start: str,
     end: str,
+    codes: list[str] | None = None,
     strategy_profile: str = 'adaptive_vwap_cost',
     strategy_profiles: list[str] | None = None,
     candidate_top_n: int = 20,
@@ -41,23 +42,28 @@ def run_candidate_sweep(
     scan_candidates: Callable[..., list[dict[str, Any]]] = _default_scan_candidates,
     sweep: Callable[..., dict[str, Any]] = run_sweep,
 ) -> dict[str, Any]:
-    candidates = scan_candidates(
-        top_n=max(1, int(candidate_top_n)),
-        max_files=20_000,
-        score_profile='stable_t',
-        min_days=30,
-        min_avg_amp_pct=2.5,
-        max_avg_amp_pct=8.0,
-        min_price=2.0,
-        max_price=80.0,
-        min_return_pct=-35.0,
-        max_return_pct=80.0,
-    )
-    swept_codes = [
-        str(row['code'])
-        for row in candidates[:max(1, int(sweep_top_n))]
-        if row.get('code')
-    ]
+    explicit_codes = [code.strip().upper() for code in (codes or []) if code.strip()]
+    if explicit_codes:
+        candidates = [{'code': code} for code in explicit_codes]
+        swept_codes = explicit_codes
+    else:
+        candidates = scan_candidates(
+            top_n=max(1, int(candidate_top_n)),
+            max_files=20_000,
+            score_profile='stable_t',
+            min_days=30,
+            min_avg_amp_pct=2.5,
+            max_avg_amp_pct=8.0,
+            min_price=2.0,
+            max_price=80.0,
+            min_return_pct=-35.0,
+            max_return_pct=80.0,
+        )
+        swept_codes = [
+            str(row['code'])
+            for row in candidates[:max(1, int(sweep_top_n))]
+            if row.get('code')
+        ]
     profiles = strategy_profiles or [strategy_profile]
     profile_sweeps: dict[str, dict[str, Any]] = {}
     leaderboard: list[dict[str, Any]] = []
@@ -101,6 +107,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--start', required=True)
     parser.add_argument('--end', required=True)
+    parser.add_argument(
+        '--codes',
+        default='',
+        help='Comma-separated stock codes; skips candidate scan when set.',
+    )
     parser.add_argument('--strategy-profile', default='adaptive_vwap_cost')
     parser.add_argument(
         '--strategy-profiles',
@@ -116,6 +127,7 @@ def main() -> int:
     result = run_candidate_sweep(
         start=args.start,
         end=args.end,
+        codes=[code.strip() for code in args.codes.split(',') if code.strip()],
         strategy_profile=args.strategy_profile,
         strategy_profiles=(
             [p.strip() for p in args.strategy_profiles.split(',') if p.strip()]
