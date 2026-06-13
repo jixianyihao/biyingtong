@@ -13,6 +13,14 @@ if str(ROOT) not in sys.path:
 from scripts.research.t0_qlib_spike import run_sweep
 
 
+def _row_sort_key(row: dict[str, Any]) -> tuple[float, float, float]:
+    return (
+        float(row.get('best_validation_cost_reduction_pct') or 0.0),
+        float(row.get('best_fold_pass_rate_pct') or 0.0),
+        float(row.get('best_worst_fold_cost_reduction_pct') or 0.0),
+    )
+
+
 def _default_scan_candidates(**kwargs):
     from t0.local_lc1 import scan_lc1_candidates
 
@@ -24,6 +32,7 @@ def run_candidate_sweep(
     start: str,
     end: str,
     strategy_profile: str = 'adaptive_vwap_cost',
+    strategy_profiles: list[str] | None = None,
     candidate_top_n: int = 20,
     sweep_top_n: int = 5,
     optimizer_batch_size: int = 96,
@@ -49,22 +58,41 @@ def run_candidate_sweep(
         for row in candidates[:max(1, int(sweep_top_n))]
         if row.get('code')
     ]
-    sweep_result = (
-        sweep(
-            codes=swept_codes,
-            start=start,
-            end=end,
-            strategy_profile=strategy_profile,
-            optimizer_batch_size=optimizer_batch_size,
-            optimizer_max_evaluations=optimizer_max_evaluations,
-            out_root=out_root,
+    profiles = strategy_profiles or [strategy_profile]
+    profile_sweeps: dict[str, dict[str, Any]] = {}
+    leaderboard: list[dict[str, Any]] = []
+    for profile in profiles:
+        profile_result = (
+            sweep(
+                codes=swept_codes,
+                start=start,
+                end=end,
+                strategy_profile=profile,
+                optimizer_batch_size=optimizer_batch_size,
+                optimizer_max_evaluations=optimizer_max_evaluations,
+                out_root=out_root,
+            )
+            if swept_codes else {'count': 0, 'rows': []}
         )
-        if swept_codes else {'count': 0, 'rows': []}
+        profile_sweeps[profile] = profile_result
+        leaderboard.extend([
+            {**row, 'strategy_profile': row.get('strategy_profile') or profile}
+            for row in (profile_result.get('rows') or [])
+        ])
+    leaderboard.sort(key=_row_sort_key, reverse=True)
+
+    sweep_result = (
+        profile_sweeps[profiles[0]]
+        if len(profiles) == 1
+        else {'count': len(leaderboard), 'rows': leaderboard}
     )
     return {
         'candidate_count': len(candidates),
         'candidates': candidates,
         'swept_codes': swept_codes,
+        'strategy_profiles': profiles,
+        'profile_sweeps': profile_sweeps,
+        'leaderboard': leaderboard,
         'sweep': sweep_result,
     }
 
@@ -74,6 +102,11 @@ def main() -> int:
     parser.add_argument('--start', required=True)
     parser.add_argument('--end', required=True)
     parser.add_argument('--strategy-profile', default='adaptive_vwap_cost')
+    parser.add_argument(
+        '--strategy-profiles',
+        default='',
+        help='Comma-separated profile names; overrides --strategy-profile.',
+    )
     parser.add_argument('--candidate-top-n', type=int, default=20)
     parser.add_argument('--sweep-top-n', type=int, default=5)
     parser.add_argument('--optimizer-batch-size', type=int, default=96)
@@ -84,6 +117,10 @@ def main() -> int:
         start=args.start,
         end=args.end,
         strategy_profile=args.strategy_profile,
+        strategy_profiles=(
+            [p.strip() for p in args.strategy_profiles.split(',') if p.strip()]
+            or None
+        ),
         candidate_top_n=args.candidate_top_n,
         sweep_top_n=args.sweep_top_n,
         optimizer_batch_size=args.optimizer_batch_size,
