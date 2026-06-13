@@ -80,6 +80,18 @@ def _default_optimize(
     )
 
 
+def _optimizer_progress_fields(opt: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'optimizer_total_grid': opt.get('total_grid'),
+        'optimizer_evaluated': opt.get('evaluated'),
+        'optimizer_next_offset': opt.get('next_offset'),
+        'optimizer_rejected_full': opt.get('rejected_full', 0),
+        'optimizer_rejected_validation': opt.get('rejected_validation', 0),
+        'optimizer_rejected_fold': opt.get('rejected_fold', 0),
+        'optimizer_rejected_risk': opt.get('rejected_risk', 0),
+    }
+
+
 def run_spike(
     *,
     codes: list[str],
@@ -148,6 +160,7 @@ def run_spike(
             'features': features,
             'best_params': best.get('params') or {},
             'record_backend': record['backend'],
+            **_optimizer_progress_fields(opt),
             **metrics,
         })
     rows.sort(
@@ -194,6 +207,7 @@ def run_sweep(
         offset = start_offset
         evaluated_total = 0
         batches = 0
+        sweep_next_offset: int | None = offset
 
         while evaluated_total < max_evaluations:
             limit = min(batch_size, max_evaluations - evaluated_total)
@@ -215,17 +229,21 @@ def run_sweep(
                 if best_row is None or _row_sort_key(candidate) > _row_sort_key(best_row):
                     best_row = candidate
             batches += 1
-            evaluated_total += limit
+            evaluated = candidate.get('optimizer_evaluated') if batch_rows else None
+            evaluated_total += int(evaluated if evaluated is not None else limit)
 
-            # The optimize result is not exposed by run_spike, so we advance by
-            # the requested limit. This keeps the sweep deterministic and lets
-            # callers choose how much of the grid to cover.
-            offset += limit
+            next_offset = candidate.get('optimizer_next_offset') if batch_rows else None
+            if next_offset is None:
+                sweep_next_offset = None
+                break
+            offset = int(next_offset)
+            sweep_next_offset = offset
 
         if best_row is not None:
             best_row['sweep_start_offset'] = start_offset
             best_row['sweep_batches'] = batches
             best_row['sweep_evaluated'] = evaluated_total
+            best_row['sweep_next_offset'] = sweep_next_offset
             rows.append(best_row)
 
     rows.sort(key=_row_sort_key, reverse=True)
