@@ -91,7 +91,7 @@ def test_t0_strategy_profiles_endpoint_lists_pluggable_profiles():
 
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body['count'] == 2
+    assert body['count'] == 3
     profile = body['profiles'][0]
     assert profile['name'] == 'adaptive_vwap_cost'
     assert profile['display_name'] == 'Adaptive VWAP Cost Reduction'
@@ -99,6 +99,9 @@ def test_t0_strategy_profiles_endpoint_lists_pluggable_profiles():
     risk_profile = body['profiles'][1]
     assert risk_profile['name'] == 'risk_balanced_adaptive_vwap_cost'
     assert risk_profile['optimizer_grid']['base_position_pct'] == [0.45, 0.55, 0.65]
+    trend_profile = body['profiles'][2]
+    assert trend_profile['name'] == 'trend_pullback_t0_cost'
+    assert trend_profile['base_params']['allow_sell_first'] is False
 
 
 def test_default_t0_optimizer_grid_searches_adaptive_vwap_family():

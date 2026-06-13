@@ -39,7 +39,11 @@ def test_t0_strategy_profile_can_merge_base_params_without_mutating_defaults():
 def test_t0_strategy_profile_registry_lists_and_rejects_unknown_profiles():
     names = [profile.name for profile in list_t0_strategy_profiles()]
 
-    assert names == ['adaptive_vwap_cost', 'risk_balanced_adaptive_vwap_cost']
+    assert names == [
+        'adaptive_vwap_cost',
+        'risk_balanced_adaptive_vwap_cost',
+        'trend_pullback_t0_cost',
+    ]
     with pytest.raises(KeyError):
         get_t0_strategy_profile('missing')
 
@@ -53,3 +57,16 @@ def test_risk_balanced_t0_strategy_profile_sweeps_lower_base_exposure():
     assert profile.optimizer_grid['execution_style'] == ['next_bar']
     assert profile.constraints.max_full_drawdown_abs_pct == 12.0
     assert profile.constraints.max_validation_drawdown_abs_pct == 12.0
+
+
+def test_trend_pullback_t0_strategy_profile_avoids_sell_first_in_bull_trends():
+    profile = get_t0_strategy_profile('trend_pullback_t0_cost')
+
+    assert profile.base_params['allow_sell_first'] is False
+    assert profile.base_params['allow_buy_first'] is True
+    assert profile.optimizer_grid['base_position_pct'] == [0.55, 0.65, 0.75]
+    assert profile.optimizer_grid['signal_mode'] == ['adaptive_vwap', 'hybrid_adaptive']
+    assert profile.optimizer_grid['execution_style'] == ['next_bar']
+    assert profile.constraints.min_full_alpha_vs_all_in is None
+    assert profile.constraints.min_validation_alpha_vs_all_in is None
+    assert profile.constraints.max_full_drawdown_abs_pct == 16.0
